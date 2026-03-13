@@ -1,0 +1,208 @@
+# ME17Suite — Work Log
+
+## 2026-03-13 — Inicijalna analiza projekta
+
+### Sto sam radio
+Procitao i analizirao cijeli codebase: sve Python fajlove, test suite, README, CLAUDE.md i strukturu materijala.
+
+---
+
+## Pregled projekta
+
+**Cilj**: ECU tuning alat za Bosch ME17.8.5 na Sea-Doo 300 (Rotax 1630 ACE, MCU Infineon TC1762 TriCore).
+**Stack**: Python 3.14 + PyQt6
+**Bin fajlovi**: `ori_300.bin` (ORI, SW 10SW066726) i `npro_stg2_300.bin` (NPRo Stage 2, SW 10SW040039)
+
+---
+
+## Analiza po fajlovima
+
+### `core/engine.py` — Binary engine
+- Klasa `ME17Engine` — load/save + read/write primitivi
+- Validacija pri loadu: veličina fajla (mora biti točno 0x178000 = 1,540,096 B), SW ID @ 0x001A, MCU string @ 0x01FE00
+- Read primitivi: u8, u16 BE/LE, i16 BE/LE, u32 BE/LE, array varijante
+- Write primitivi: isti tipovi, auto-dirty flag, clamped vrijednosti
+- Region helpers: `in_cal()`, `in_code()`, `in_boot()`
+- `diff()` + `diff_summary()` — byte-per-byte usporedba, summary po regionima
+- `patch_cal()` + `get_cal_slice()` — zaštićeni CAL write
+- **NAPOMENA**: `patch_cal()` postoji ali je u CLAUDE.md navedeno da je CAL regija TriCore bytekod, ne kalibracija — treba pažnju pri pisanju u CAL
+
+### `core/map_finder.py` — Map discovery
+- Tri scan strategije:
+  1. **Signature scan** (RPM osi) — traži pattern `0x0200 0x0400 0x0600 0x0800 0x0A00 0x0C00` u CODE regionu
+  2. **Heuristic scan** (Rev limiter) — traži stride-0x18 pattern s monotonim RPM vrijednostima
+  3. **Known-address scan** (Torque mapa) — direktno na 0x02A0D8 i 0x02A5F0, validira LSB==0x00 i MSB u range 80–210
+- Potvrđene mape:
+  - RPM osa: 3× kopija @ 0x024F46, 0x025010, 0x0250DC (BE u16, 16 tačaka, 512–8448 rpm)
+  - Rev limiter: pronalazi do 5 kandidata s heuristikom
+  - Torque efficiency: 16×16, BE u16, Q8 (val/128 = faktor, 1.0 = 100%), mirror +0x518
+- `find_changed_regions()` — diff-guided blok scanner, grupira promjene >=N bajtova
+- **TODO**: Ignition, injection, lambda mape još nisu implementirane u finderu (samo dokumentirane u CLAUDE.md)
+
+### `core/map_editor.py` — Map editor
+- Wrapper oko `ME17Engine` sa validacijom
+- `write_cell()` — piše jednu ćeliju, konvertuje display→raw, validira range, auto-sinkronizira mirror
+- `write_map()` — batch write cijele mape s validacijom
+- `write_rev_limit_row()` — specijalizirani writer za rev limiter, validira soft < mid < hard
+- Ispravno barata signed/unsigned i BE/LE za sve tipove
+
+### `core/checksum.py` — Checksum engine
+- Implementiran Bosch CRC32 (poly 0x04C11DB7, big-endian bit order) + simple 16/32-bit aritmetički checksum
+- **Status: u istraživanju** — stvarne lokacije checksuma u BOOT regionu nisu identificirane
+- `verify()` — vraća SW ID status i CAL integrity, ali CRC32 u BOOT-u je UNKNOWN
+- `find_checksum_candidates()` — traži ne-nul u32 vrijednosti u 0x000–0x100 regiji
+- `update_all()` — NOT_IMPLEMENTED, placeholder
+- **Ovo je kritičan nedostatak** — bez ispravnog checksum update-a, flash roundtrip može biti opasan
+
+### `ui/main_window.py` — PyQt6 GUI
+- Dark theme (monospace, #1C1C1F pozadina, #4FC3F7 plava za akcente)
+- Komponente:
+  - `HeaderBar` — adaptivni header: Fajl1 → pojavi se Fajl2 gumb → pojavi se Diff gumb
+  - `MapTreeWidget` — stablo mapa grupirane po kategoriji (rpm_limiter, ignition, torque, lambda, axis, misc)
+  - `MapTableWidget` — tablica s heat-map bojanjem ćelija, žuto označava razlike između fajlova
+  - `DiffWidget` — tabela promijenjenih regiona po CAL/CODE/BOOT
+  - `InfoWidget` — prikaz SW info + checksum status
+  - `ScanWorker` — QThread za asinkrono skeniranje (da UI ne freezeuje)
+- Shortcuti: Ctrl+1 (Fajl1), Ctrl+2 (Fajl2), F5 (Scan), Ctrl+Q (Izlaz)
+- Pri loadu Fajla 1 auto-pokreće scan (QTimer 100ms delay)
+- **Nedostatak**: MapEditor nije integriran u UI — nema editovanja iz GUI-a, samo read/view
+
+### `main.py`
+- Minimalni entry point, dodaje root u sys.path, poziva `ui.main_window.run()`
+
+### `test/test_core.py`
+- 8 test funkcija na stvarnim bin fajlovima (ORI + STG2)
+- Testira: load, read primitivi, diff (assert-ira točne byte counts: CODE=7087, CAL=169912, BOOT=140), map finder, changed regions, checksum engine, write safety (bounds check)
+- Nema pytest dependency — čisti Python, radi s `python test/test_core.py`
+
+---
+
+## Poznate vrijednosti (iz diff analiza i koda)
+
+| Parametar | ORI | STG2 |
+|---|---|---|
+| SW ID | 10SW066726 | 10SW040039 |
+| Rev limiter soft | ~7041 rpm | ~7393 rpm (+352) |
+| Rev limiter hard | ~10667 rpm | ~11199 rpm (+532) |
+| Torque MSB range | 119–153 (93–120%) | 119–158 (93–123%) |
+| Diff BOOT | — | 140 B |
+| Diff CODE | — | 7,087 B |
+| Diff CAL | — | 169,912 B |
+
+---
+
+## Dodatni nalazi iz _BRIEFING.md
+
+### Ignition mape — precizni podaci
+- 16 mapa × 12×12 ćelija, format u8
+- Scale: **0.75°/bit** → raw 34 = 25.5° BTDC
+- ORI opseg: 24°–33.8° BTDC
+- STG2 opseg: 25.5°–36.8° BTDC (NPRo dao +3° do +6° advance)
+- Blokovi svako 144B od 0x02B730
+- **Osi mape (RPM × Load) još nisu identificirane**
+
+### Injection mapa — agresivan tune
+- Format: u16 LE, 12×32 ćelija @ 0x02439C (mirror 0x02451C)
+- ORI max: ~49151, STG2 max: **65535 (saturirano!)**
+- NPRo dramatično povećao injection duration
+- Fizikalna jedinica nepoznata bez A2L (vjerovatno μs ili 0.1μs)
+
+### Lambda mirror
+- Lambda mirror offset: **+0x518** (isto kao torque)
+- Adrese: 0x0266F0 (main) + 0x026C08 (mirror), 12×18, Q15 LE
+
+### Napomena o CAL regiji
+- CAL (0x060000+) je Bosch AUTOSAR/ASCET kompajlirani bytekod
+- Pronađeno 754 LE pointera u CODE koji pokazuju na CAL — ali CAL nije mape, dead end
+- Sve prave mape su isključivo u CODE regiji (0x010000–0x05FFFF)
+
+### Checksum status
+- ECU trenutno **prihvata fajlove bez ispravnog checksuma** (empirijski podatak, treba potvrditi)
+- Implementirati `update_all()` ostaje kritičan TODO ali može se testirati i bez njega
+
+### Sigurnosni limiti (ne prekoračiti)
+- Rev limiter minimum: 6000 rpm
+- Ignition advance maksimum: 42° BTDC (detonacija!)
+- Uvijek backup prije flasha, testirati na bench ECU-u
+
+---
+
+## Identificirani problemi / gaps
+
+1. **Checksum nije riješen** — `update_all()` je NOT_IMPLEMENTED. Svaki edit i save bez ispravnog checksuma može rezultirati brick-om ECU-a.
+2. **Map editor nije konektovan na UI** — `MapEditor` klasa postoji i radi, ali GUI nema editovanje. Samo pregled.
+3. **Ignition mapa nije u finderu** — CLAUDE.md dokumentira 16× ignition mapa @ 0x02B730, svakih 144B, 12×12 u8, ali `map_finder.py` nema implementaciju za to.
+4. **Injection i Lambda mape** — isto, dokumentirane u CLAUDE.md ali nema implementacije u finderu.
+5. **`__int__.py` umjesto `__init__.py`** — sva tri package init fajla imaju typo u imenu (`__int__.py`). Python ih ne učitava kao pakete, ali funkcionira jer se `sys.path` manipulacijom riješava import.
+6. **CAL vs CODE konfuzija** — u CLAUDE.md stoji da je CAL regija TriCore bytekod, ali `engine.py` ima `patch_cal()` koji dopušta pisanje u CAL. `map_editor.py` dopušta write u CAL ili CODE. Torque mapa je u CODE regionu (0x02A0D8), ne u CAL.
+
+---
+
+## Sljedeći logični koraci (TODO)
+
+### Agent: CHECKSUM_ENGINEER
+- [ ] Analizirati BOOT regiju oba fajla, naći gdje su checksum vrijednosti
+- [ ] Implementirati `update_all()` u `checksum.py`
+- [ ] Testirati: flashaj modificirani fajl, provjeri prihvata li ECU
+
+### Agent: MAP_RESEARCHER
+- [ ] Naći osi za ignition mapu (12 RPM × 12 Load tačaka) blizu 0x02B730
+- [ ] Identificirati fizikalnu jedinicu injection mape
+- [ ] Pronaći boost/wastegate mapu
+- [ ] Dokumentirati u `_materijali/MAP_RESEARCH.md`
+
+### Agent: UI_DEVELOPER
+- [ ] Konektovati `MapEditor` na GUI (editable TableWidget, dvoklick)
+- [ ] Implementirati undo/redo (Ctrl+Z / Ctrl+Y)
+- [ ] Prikaz osi (RPM × Load labele u tablici)
+- [ ] Export u CSV/Excel
+- [ ] Hex viewer tab
+
+### Agent: ANALYZER
+- [ ] Analizirati sve .bin dumpove u `_materijali/` (posebno RXP 300 21, GTI, Spark, Wake Pro)
+- [ ] Dokumentirati nalaze u `_materijali/FINDINGS.md`
+
+### Općenito
+- [ ] Popraviti `__int__.py` → `__init__.py` (typo u svim paketima)
+- [ ] Testirati save → flash roundtrip na bench ECU-u
+
+---
+
+---
+
+## 2026-03-13 — Faza 1 + 2 implementacija
+
+### Faza 1 — map_finder.py kompletno repisano
+- Dodate sve mape: Ignition (14/16×12×12 u8), Injection (12×32 u16 LE), Lambda (12×18 Q15 LE), Rev limiter (5 poznatih adresa)
+- `MapDef` prosiren s `cell_bytes` i `total_bytes` propertijem
+- `AxisDef` prosiren s `values` poljem za stvarne RPM vrijednosti
+- Rev limiter heuristika zategnuta (alignment provjera, MIN_STEP=200)
+- Ignition #08 i #09 ispravno isključeni: #08 ima vrijednosti do 227 (knock delta), #09 ima nule i male vrijednosti (trim)
+- Lambda potvrðena: λ 0.965–1.073 (ORI), λ 0.965–1.073 radi
+
+### Faza 2 — map_editor.py azuriran
+- `_read_raw` i `_write_one` podrzavaju u8 (1 bajt po celiji)
+- `write_cell` i `write_map` koriste `defn.cell_bytes` umjesto hardkodiranog 2
+- `write_rev_limit_scalar` dodan za 1×1 rev limiter scalare
+- Edit test potvrðen: IGN write (u8), LAM write (u16 LE Q15), TOR write (u16 BE Q8) — sve radi
+
+### Faza 2 — ui/main_window.py kompletan redesign
+- **MapLibraryPanel**: search + tree, adaptivne kategorije
+- **MapTableView**: RPM × Load osi iz `AxisDef.values`, heat-map, diff highlight
+- **PropertiesPanel**: ECU info, cell info (raw+display+adresa), ±step gumbi, direktni unos, map stats
+- **LogStrip + HexStrip**: donji panel, log s timestamp, hex pregled adrese
+- **Toolbar**: Open1/2, Save, Scan, Diff
+- **DiffWidget**: ostaje isti, ali sad u tab-u
+- Editovanje konektovano: click celija → PropertiesPanel → `MapEditor.write_cell()` → refresh
+
+### Stanje testova
+- Svi testovi prolaze (test/test_core.py)
+- 26 mapa pronaðeno u ORI i STG2
+- Edit write potvrðen za sve formate
+
+### Ostaje (sljedece faze)
+- Faza 3: Undo/redo, export CSV, compare side-by-side u map table
+- Faza 4: Checksum reverse engineering
+- Faza 5: Analiza dumpova u _materijali/
+
+*Azurirano: 2026-03-13*
