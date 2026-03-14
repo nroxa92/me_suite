@@ -1,6 +1,6 @@
 # ME17Suite — ECU Tuning Alat
 
-**Profesionalni alat za tuning Bosch ME17.8.5 ECU-a na Rotax ACE 1630 motoru (Sea-Doo 300/260 HP serija)**
+**Profesionalni alat za tuning Bosch ME17.8.5 ECU-a na Rotax ACE motorima (Sea-Doo 300 HP / Spark 90 HP)**
 
 ---
 
@@ -10,8 +10,9 @@ ME17Suite je desktop aplikacija u Pythonu koja omogućava čitanje, uređivanje 
 
 **Podržani ECU:** Bosch ME17.8.5
 **MCU:** Infineon TC1762 (TriCore arhitektura, Little Endian)
-**Motori:** Rotax ACE 1630 T (260 HP), 1630 HO (300 HP)
-**Vozila:** Sea-Doo RXP-X 300, RXT-X 300, GTX 300, Wake Pro 230 i dr.
+**Motori:** Rotax ACE 1630 (300 HP, 2016+), Rotax 900 HO/ACE (90 HP, Spark)
+**Vozila:** Sea-Doo RXP-X 300, RXT-X 300, GTX 300, Wake Pro 230, Spark 90 HP i dr.
+**Napomena:** Rotax 1503/1504 4-TEC (260 HP, pre-2016) i 1.6L 230 HP nisu podržani.
 
 ---
 

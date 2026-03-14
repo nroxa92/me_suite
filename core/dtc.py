@@ -30,9 +30,13 @@ Upravljanje DTC (Diagnostic Trouble Code) fault kodovima.
   Mirror offset 0x0366 potvrden za sve.
 
 === PODRSKA MOTORA ===
-  Rotax ACE 1630 300hp  — RXP-X 300, RXT-X 300, GTX 300, Wake Pro 230
-  Rotax ACE 1503 260hp  — RXT-X 260 (isti ECU, drugacije SW adrese moguce)
-  Rotax 900 HO / ACE    — Spark (drugacija CODE baza, traziti posebno)
+  Rotax ACE 1630 300hp  — RXP-X 300, RXT-X 300, GTX 300, Wake Pro 230 (2016+)
+                          SW varijante: ori_300 (offset 0x0366), rxpx300_17 (0x0362)
+  Rotax 900 HO/ACE 90hp — Sea-Doo Spark 2014+ (SW 666063, offset 0x0368)
+  NISU PODRZANI:
+    Rotax 1503/1504 4-TEC 260hp — RXT-X 260 (pre-2016, stariji blok, SW 524060)
+                                   DTC tablica single-storage, drugacija arhitektura
+    Rotax ACE 1630 230hp         — noviji 1.6L blok, SW nepoznat
 """
 
 from __future__ import annotations
@@ -114,14 +118,10 @@ DTC_REGISTRY: dict[int, DtcDef] = {d.code: d for d in [
     _d(0x2279, "ECM", "Air Intake Manifold Leak",          0x0217E8),
     _d(0x1106, "ECM", "Altitude Correction Not Plausible", 0x0218E6),
 
-    # ── Lambda heater power stage ─────────────────────────────────────────────
-    # Potvrdjeno u rxpx300_17 @ 0x021824/26/28/20, spark_90 @ 0x020F42/44/46/3E
-    _d(0x0030, "ECM", "Lambda Heater PS Upstream Open",    0x021824),
-    _d(0x0031, "ECM", "Lambda Heater PS Upstream Short GND", 0x021828),
-    _d(0x0032, "ECM", "Lambda Heater PS Upstream Short V+", 0x021826),
-    _d(0x0036, "ECM", "Lambda Heater PS Downstream Open",  0x021820),
-
     # ── Lambda / O2 senzor ────────────────────────────────────────────────────
+    # NAPOMENA: Rotax ACE 1630 i 900 HO ne koriste fizicku lambda sondu.
+    # Lambda mapa u kalibraciji je open-loop AFR korekcija (bez feedbacka).
+    # P003x (heater PS) kodovi su prisutni u binarnom fajlu ali nikad ne okidaju.
     _d(0x0130, "ECM", "O2 Sensor Downstream",              0x021858),
     _d(0x0131, "ECM", "O2 Sensor Signal Low",              0x021856),
     _d(0x0132, "ECM", "O2 Sensor Signal High",             0x021854),
