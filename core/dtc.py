@@ -114,6 +114,13 @@ DTC_REGISTRY: dict[int, DtcDef] = {d.code: d for d in [
     _d(0x2279, "ECM", "Air Intake Manifold Leak",          0x0217E8),
     _d(0x1106, "ECM", "Altitude Correction Not Plausible", 0x0218E6),
 
+    # ── Lambda heater power stage ─────────────────────────────────────────────
+    # Potvrdjeno u rxpx300_17 @ 0x021824/26/28/20, spark_90 @ 0x020F42/44/46/3E
+    _d(0x0030, "ECM", "Lambda Heater PS Upstream Open",    0x021824),
+    _d(0x0031, "ECM", "Lambda Heater PS Upstream Short GND", 0x021828),
+    _d(0x0032, "ECM", "Lambda Heater PS Upstream Short V+", 0x021826),
+    _d(0x0036, "ECM", "Lambda Heater PS Downstream Open",  0x021820),
+
     # ── Lambda / O2 senzor ────────────────────────────────────────────────────
     _d(0x0130, "ECM", "O2 Sensor Downstream",              0x021858),
     _d(0x0131, "ECM", "O2 Sensor Signal Low",              0x021856),
@@ -278,16 +285,192 @@ class DtcStatus:
         return f"AKTIVAN ({active}/{len(self.enable_values)} en){code_s}"
 
 
+# ─── DTC Scanner — runtime detekcija tablice ──────────────────────────────────
+
+class DtcScanResult:
+    """Rezultat dinamickog skeniranja DTC tablice u binarnom fajlu."""
+    def __init__(self, mirror_offset: int, addrs: dict, sw_hint: str = ""):
+        self.mirror_offset = mirror_offset          # potvrdjeni mirror offset
+        self.addrs: dict[int, int] = addrs          # {dtc_code: main_addr}
+        self.sw_hint = sw_hint
+
+    def __repr__(self):
+        return (f"DtcScanResult(offset=0x{self.mirror_offset:04X}, "
+                f"codes={len(self.addrs)}, hint={self.sw_hint!r})")
+
+
+class DtcScanner:
+    """
+    Dinamicki pronalazi DTC code storage tablicu u ME17.8.5 binarnom fajlu.
+
+    Radi za sve poznate SW verzije:
+      ori_300 (10SW066726) — offset 0x0366, baza ~0x021700
+      rxpx300_17           — offset 0x0362, baza ~0x021700
+      spark_90 (666063)    — offset 0x0368, baza ~0x020F00
+    """
+
+    # Skup kodova za detekciju — svi bi trebali biti u tablici
+    ANCHOR_CODES = {
+        0x0106, 0x0107, 0x0108,
+        0x0112, 0x0113,
+        0x0116, 0x0117, 0x0118,
+        0x0122, 0x0123,
+        0x0300, 0x0301, 0x0302,
+        0x0335, 0x0340,
+        0x0512, 0x0523,
+        0x1550, 0x1610, 0x1611,
+        0x1647, 0x1648,
+    }
+    # Siri skup za mapiranje adresa
+    ALL_CODES = set(DTC_REGISTRY.keys())
+
+    CODE_REGION_START = 0x010000
+    CODE_REGION_END   = 0x060000
+    OFFSET_MIN = 0x0280
+    OFFSET_MAX = 0x0600
+    ANCHOR_THRESHOLD = 10   # min anchor kodova za detekciju
+
+    @classmethod
+    def scan(cls, data: bytes) -> Optional["DtcScanResult"]:
+        """
+        Skeniraj binary i vrati DtcScanResult ili None ako tablica nije nadjena.
+
+        Podrzava:
+          - Mirror-pair storage: main + mirror (off 0x0280-0x0600) — 300hp i 90hp Spark
+          - Single storage: samo jedan primjerak, bez mirrora — 260hp (SW 524060)
+        """
+        region_end = min(cls.CODE_REGION_END, len(data))
+        # DTC tablica je uvijek u 0x020000-0x025000 za poznate SW verzije
+        VOTE_START = 0x020000
+        VOTE_END   = min(0x025000, region_end)
+
+        # Korak 1: nadji sve adrese anchor kodova u glasonom prozoru
+        code_to_addrs: dict[int, list[int]] = {}
+        for addr in range(VOTE_START, VOTE_END - 1, 2):
+            val = struct.unpack_from("<H", data, addr)[0]
+            if val in cls.ANCHOR_CODES:
+                code_to_addrs.setdefault(val, []).append(addr)
+
+        if not code_to_addrs:
+            return None
+
+        # Korak 2: glasanje za mirror offset — samo unutar VOTE prozora
+        # Filtriraj kodove koji se pojavljuju previse puta (lazni pozitivni iz kalibracijskih tablica)
+        from collections import Counter
+        offset_votes: Counter = Counter()
+        for code, addrs in code_to_addrs.items():
+            if len(addrs) < 2 or len(addrs) > 4:
+                continue  # previse pojava = nije DTC storage, preskoci
+            for i, a1 in enumerate(addrs):
+                for a2 in addrs[i + 1:]:
+                    off = a2 - a1
+                    if cls.OFFSET_MIN <= off <= cls.OFFSET_MAX:
+                        offset_votes[off] += 1
+
+        # Korak 3a: mirror-pair mode (najcesci slucaj)
+        if offset_votes:
+            best_offset, best_votes = offset_votes.most_common(1)[0]
+            if best_votes >= 5:
+                found_addrs: dict[int, int] = {}
+                # Skupljaj parove samo u VOTE prozoru da izbjegnemo lazne pozitivne
+                for addr in range(VOTE_START, VOTE_END - 1, 2):
+                    val = struct.unpack_from("<H", data, addr)[0]
+                    if val not in cls.ALL_CODES:
+                        continue
+                    mirror = addr + best_offset
+                    if mirror + 2 <= len(data):
+                        if struct.unpack_from("<H", data, mirror)[0] == val and val not in found_addrs:
+                            found_addrs[val] = addr
+                if len(found_addrs) >= cls.ANCHOR_THRESHOLD:
+                    return cls._make_result(found_addrs, best_offset)
+
+        # Korak 3b: fallback — single storage (bez mirrora), npr. rxtx_260
+        # Trazi gusti klaster DTC kodova u prozoru 1KB
+        best_window_addr = 0
+        best_window_count = 0
+        best_window_codes: dict[int, int] = {}
+        WINDOW = 0x800
+        for start in range(cls.CODE_REGION_START, cls.CODE_REGION_END - WINDOW, 0x100):
+            window: dict[int, int] = {}
+            for off in range(0, WINDOW, 2):
+                if start + off + 2 > len(data):
+                    break
+                val = struct.unpack_from("<H", data, start + off)[0]
+                if val in cls.ALL_CODES and val not in window:
+                    window[val] = start + off
+            if len(window) > best_window_count:
+                best_window_count = len(window)
+                best_window_addr = start
+                best_window_codes = dict(window)
+
+        if best_window_count >= cls.ANCHOR_THRESHOLD:
+            # Single storage — mirror offset = 0 (koristit ce isti addr za oboje)
+            return cls._make_result(best_window_codes, 0, single_storage=True)
+
+        return None
+
+    @classmethod
+    def _make_result(cls, found_addrs: dict, offset: int,
+                     single_storage: bool = False) -> "DtcScanResult":
+        # Odredi SW hint
+        p1550 = found_addrs.get(0x1550, 0)
+        if p1550 == 0x02187E:
+            sw_hint = "rxpx300_17 (SW ~17)"
+        elif p1550 == 0x021888:
+            sw_hint = "ori_300 (10SW066726)"
+        elif 0x020F00 <= p1550 <= 0x020FFF:
+            sw_hint = "spark_90 (666063)"
+        elif single_storage:
+            p106 = found_addrs.get(0x0106, 0)
+            sw_hint = f"single-storage (P0106@0x{p106:06X})"
+        else:
+            sw_hint = f"unknown-pair (P1550@0x{p1550:06X})"
+        return DtcScanResult(offset, found_addrs, sw_hint)
+
+
 # ─── DTC Engine ───────────────────────────────────────────────────────────────
 
 class DtcEngine:
     """
     DTC provjera i iskljucivanje za ME17.8.5.
+
+    Automatski detektira DTC tablicu za bilo koji SW:
+      - ori_300 (offset 0x0366), rxpx300_17 (0x0362), spark_90 (0x0368)
     Checksum se NE mijenja (sve promjene su u CODE regiji).
     """
 
     def __init__(self, engine):
         self.eng = engine
+        self._scan: Optional[DtcScanResult] = None
+        self._rescan()
+
+    def _rescan(self):
+        """(Re)skeniraj ucitani binary za DTC tablicu."""
+        self._scan = DtcScanner.scan(self.eng.get_bytes())
+
+    def _resolve(self, dtc_code: int) -> tuple[int, int]:
+        """
+        Vrati (main_addr, mirror_addr) za dati DTC kod.
+        Prioritet: skenirano > registry default.
+        Za single-storage (offset=0): mirror_addr = main_addr.
+        """
+        if self._scan and dtc_code in self._scan.addrs:
+            main = self._scan.addrs[dtc_code]
+            if self._scan.mirror_offset == 0:
+                return main, main   # single-storage: isti addr
+            return main, main + self._scan.mirror_offset
+        defn = DTC_REGISTRY.get(dtc_code)
+        if defn:
+            return defn.code_addr, defn.mirror_addr
+        return 0, 0
+
+    @property
+    def scan_result(self) -> Optional[DtcScanResult]:
+        return self._scan
+
+    @property
+    def mirror_offset(self) -> int:
+        return self._scan.mirror_offset if self._scan else MIRROR_OFFSET
 
     def get_status(self, dtc_code: int) -> Optional[DtcStatus]:
         defn = DTC_REGISTRY.get(dtc_code)
@@ -298,12 +481,15 @@ class DtcEngine:
             enable_vals = [data[defn.enable_addr + i] for i in range(defn.enable_size)]
         else:
             enable_vals = []
-        code_main   = struct.unpack_from("<H", data, defn.code_addr)[0]
-        code_mirror = struct.unpack_from("<H", data, defn.mirror_addr)[0]
+        main_addr, mirror_addr = self._resolve(dtc_code)
+        if main_addr == 0:
+            return None
+        code_main   = struct.unpack_from("<H", data, main_addr)[0]
+        code_mirror = struct.unpack_from("<H", data, mirror_addr)[0]
         return DtcStatus(defn, enable_vals, code_main, code_mirror)
 
     def get_all_status(self) -> list[DtcStatus]:
-        return [s for code in DTC_REGISTRY if (s := self.get_status(code))]
+        return [s for code in DTC_REGISTRY if (s := self.get_status(code)) is not None]
 
     def get_active(self) -> list[DtcStatus]:
         """Vrati samo aktivne (neprazne) DTC-ove."""
@@ -320,8 +506,13 @@ class DtcEngine:
         if not defn:
             return {"status": "ERROR", "message": f"Nepoznati DTC: P{dtc_code:04X}"}
 
+        main_addr, mirror_addr = self._resolve(dtc_code)
+        if main_addr == 0:
+            return {"status": "ERROR",
+                    "message": f"{defn.p_code} — adresa nije nadjena u ovom binarnom fajlu."}
+
         status_before = self.get_status(dtc_code)
-        if status_before.is_off:
+        if status_before and status_before.is_off:
             return {"status": "ALREADY_OFF",
                     "message": f"{defn.p_code} je vec iskljucen."}
 
@@ -331,14 +522,16 @@ class DtcEngine:
                 self.eng.write_u8(defn.enable_addr + i, 0x00)
 
         # Code storage
-        self.eng.write_u16_le(defn.code_addr,   0x0000)
-        self.eng.write_u16_le(defn.mirror_addr, 0x0000)
+        self.eng.write_u16_le(main_addr,   0x0000)
+        self.eng.write_u16_le(mirror_addr, 0x0000)
 
         return {
             "status":        "OK",
             "message":       f"{defn.p_code} ({defn.name}) — iskljucen.",
-            "enable_before": [hex(b) for b in status_before.enable_values],
-            "code_before":   f"0x{status_before.code_main:04X}",
+            "main_addr":     f"0x{main_addr:06X}",
+            "mirror_addr":   f"0x{mirror_addr:06X}",
+            "enable_before": [hex(b) for b in (status_before.enable_values if status_before else [])],
+            "code_before":   f"0x{status_before.code_main:04X}" if status_before else "?",
             "bytes_changed": (defn.enable_size if defn.enable_addr else 0) + 4,
         }
 
@@ -350,18 +543,23 @@ class DtcEngine:
         if enable_value not in (0x04, 0x05, 0x06):
             return {"status": "ERROR", "message": f"Nevazeca enable vrijednost: 0x{enable_value:02X}"}
 
+        main_addr, mirror_addr = self._resolve(dtc_code)
+        if main_addr == 0:
+            return {"status": "ERROR",
+                    "message": f"{defn.p_code} — adresa nije nadjena."}
+
         if defn.enable_addr and defn.enable_size:
             for i in range(defn.enable_size):
                 self.eng.write_u8(defn.enable_addr + i, enable_value)
 
-        self.eng.write_u16_le(defn.code_addr,   defn.code)
-        self.eng.write_u16_le(defn.mirror_addr, defn.code)
+        self.eng.write_u16_le(main_addr,   defn.code)
+        self.eng.write_u16_le(mirror_addr, defn.code)
 
         return {"status": "OK",
                 "message": f"{defn.p_code} ({defn.name}) — ukljucen (en=0x{enable_value:02X})."}
 
     def dtc_off_all(self) -> dict:
-        """Isklju?i sve poznate ECM DTC-ove."""
+        """Isklj?uci sve poznate ECM DTC-ove."""
         results = {}
         for code in DTC_REGISTRY:
             r = self.dtc_off(code)

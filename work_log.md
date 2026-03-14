@@ -1,5 +1,24 @@
 # ME17Suite — Work Log
 
+## 2026-03-14 19:30 — Faza 7: DTC multi-SW podrška + runtime scanner
+
+### Što je napravljeno
+- **dtc-buds2+gemini.pdf** pročitan (8 stranica, Gemini prijevod BRP liste):
+  - 4 nova potvrđena koda: P0030, P0031, P0032, P0036 (lambda heater PS)
+  - Verificirani u rxpx300_17 (0x021820-0x021828) i spark_90 (0x020F3E-0x020F46)
+- **core/dtc.py** — kompletni rewrite DtcEngine + novi `DtcScanner`:
+  - `DtcScanner.scan(data)` — runtime detekcija DTC tablice u bilo kojoj binarki
+    - Glasački algoritam za mirror offset (filtrirani anchor kodovi ≤4 pojave)
+    - Mirror-pair mode (offset 0x0280-0x0600): rxpx300_17 (0x0362), spark_90 (0x0368), ori_300 (0x0366)
+    - Single-storage fallback: rxtx_260 (260hp SW 524060) — bez mirrora
+  - `DtcScanResult`: mirror_offset, addrs dict, sw_hint
+  - `DtcEngine._resolve()`: prioritizira skenirane adrese nad registry defaultima
+  - 115 kodova u DTC_REGISTRY (was 111)
+- **Potvrđeni SW varijante**:
+  - rxpx300_17 (300hp SW ~17): offset 0x0362, 115 parova, baza ~0x021700
+  - spark_90 (90hp 666063): offset 0x0368, 112 parova, baza ~0x020F00
+  - rxtx_260 (260hp SW 524060): single-storage, 112 kodova, baza ~0x020F80
+
 ## 2026-03-14 18:15 — Faza 6: DTC OFF — backend + GUI panel kompletiran
 
 ### Što je napravljeno
