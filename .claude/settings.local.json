@@ -23,7 +23,8 @@
       "Bash(grep:*)",
       "Bash(python3:*)",
       "Bash(find:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(cd:*)"
     ]
   }
 }
