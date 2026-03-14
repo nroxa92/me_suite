@@ -1,5 +1,38 @@
 # ME17Suite — Work Log
 
+## 2026-03-14 22:00 — Aktivni problemi (TODO lista)
+
+### Problemi za rješavanje (po prioritetu)
+1. ❌ **Ignition #08 pada validaciju** — `knock validacija pala — preskacam` @ 0x02BBB0; trebalo provjeriti stvarne vrijednosti i ispraviti granice ili reklasificirati mapu
+2. ❌ **Boost pressure target mapa** — adresa neidentificirana; diff ORI vs STG2 daje trag (CODE razlike)
+3. ❌ **Nepoznate osi (Y load, inj X, lam X)** — `values=None`; trebaju A2L ili binary scan
+4. ❌ **DTC enable_addr samo P0523+P1550** — 109 kodova nema granularno isključivanje enable bajta
+5. ❌ **IAT / Coolant / Pedal / Idle / Knock sensitivity mape** — adrese neidentificirane
+
+### Riješeno u ovoj sesiji (prije TODO)
+- ✅ Faza 8: UI Redesign v2a Medium Dark
+- ✅ Torque Y osa → `_LOAD_AXIS_16` (count=16)
+- ✅ Ignition knock validacija — djelomično (0–48), ali #08 još uvijek pada
+- ✅ Fajl 2 usporedba: auto-refresh + žute stavke u stablu
+- ✅ DTC Disable All Monitor gumb u UI
+- ✅ Status bar, DTC lista 111 kodova
+
+## 2026-03-14 21:00 — Faza 8: UI Redesign v2a Medium Dark + DTC lista
+
+### Što je napravljeno
+- **ui/main_window.py** — potpuni vizualni redizajn prema v2a specifikaciji:
+  - **STYLESHEET**: zamijenjen v2a Medium Dark (bg #1e1e1e, panel #252526, accent #0e639c)
+  - **MapLibraryPanel**: `setFixedWidth(220)`, kategorije s ikonama (⚡💉⚙🧪🔴📊❗), Segoe UI fonti, item sizeHint
+  - **MAP_COLORS_IGN**: nova 9-stupanjska heatmap paleta (hladno plavo → toplo ružičasto)
+  - **MapTableView**: redizajniran bez `hdr` labele — badge bar s `lbl_map_title` + 3 badge labele (dim·dtype, unit, @addr); row height 32px, col width 54px, Consolas 10pt; `_heat()` zamijenjen `_cell_colors()`; `btn_reset` → `btn_danger`
+  - **PropertiesPanel**: `setFixedWidth(270)`, val_lbl u frameu s `border-left:3px solid #0e639c`, label stilovi → #888/#9cdcfe
+  - **HexStrip**: `#569cd6` adrese, `#888888` bajtovi, HTML format
+  - **LogStrip**: v2a level boje (ok=#4ec9b0, info=#9cdcfe, warn=#e5c07b, err=#f48771)
+  - **DiffWidget**: v2a boje regija
+  - **DtcPanel**: kompletno prerađen — horizontalni split: lijevo DTC lista (240px, QListWidget, 111 kodova, crvena=aktivno/siva=isključeno), desno detalji; gumbi s `btn_danger`/`btn_success` objectName; warn labela; `_populate_list()` + `_on_list_click()`; lista se osvježava pri promjeni statusa
+  - **MainWindow**: `setMinimumSize(1280, 720)`, splitter 220/950/270, `_file_lbl` #9cdcfe boja
+- Importi: dodani `QListWidget`, `QListWidgetItem`, `QSize`
+
 ## 2026-03-14 19:30 — Faza 7: DTC multi-SW podrška + runtime scanner
 
 ### Što je napravljeno

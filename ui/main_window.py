@@ -43,114 +43,259 @@ from core.dtc import DtcEngine, DTC_REGISTRY, DtcStatus
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
 
 STYLESHEET = """
-* { font-family: "Consolas", "Courier New", monospace; font-size: 12px; }
-QMainWindow, QWidget { background-color: #252529; color: #C8C8D0; }
-
-QMenuBar {
-    background: #1A1A1E; color: #606070;
-    border-bottom: 1px solid #303038; padding: 2px 4px;
+* {
+    font-family: "Segoe UI", "Arial", sans-serif;
+    font-size: 13px;
+    color: #cccccc;
 }
-QMenuBar::item { padding: 4px 10px; border-radius: 3px; }
-QMenuBar::item:selected { background: #2A2A32; color: #E0E0E8; }
+
+QMainWindow, QWidget {
+    background-color: #1e1e1e;
+    color: #cccccc;
+}
+
+/* ── MENUBAR ── */
+QMenuBar {
+    background: #323233;
+    color: #cccccc;
+    border-bottom: 1px solid #111;
+    padding: 2px 4px;
+    font-size: 13px;
+}
+QMenuBar::item {
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: transparent;
+}
+QMenuBar::item:selected { background: #444444; color: #ffffff; }
 QMenu {
-    background: #1E1E22; color: #C8C8D0;
-    border: 1px solid #303038; padding: 2px 0;
+    background: #252526;
+    color: #cccccc;
+    border: 1px solid #454545;
+    padding: 3px 0;
 }
 QMenu::item { padding: 5px 20px 5px 12px; }
-QMenu::item:selected { background: #1E3A5F; color: #4FC3F7; }
-QMenu::separator { height: 1px; background: #303038; margin: 4px 0; }
+QMenu::item:selected { background: #04395e; color: #ffffff; }
+QMenu::separator { height: 1px; background: #333333; margin: 3px 0; }
 
+/* ── TOOLBAR ── */
 QToolBar {
-    background: #1A1A1E; border-bottom: 1px solid #303038;
-    padding: 3px 8px; spacing: 2px;
+    background: #2d2d2d;
+    border-bottom: 1px solid #111;
+    padding: 4px 8px;
+    spacing: 3px;
 }
-QToolBar::separator { background: #303038; width: 1px; margin: 4px 6px; }
+QToolBar::separator { width: 1px; background: #555555; margin: 3px 5px; }
+QToolButton {
+    background: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 12px;
+    color: #cccccc;
+    font-size: 13px;
+}
+QToolButton:hover { background: #4a4a4a; border-color: #666666; }
+QToolButton:pressed { background: #2a2a2a; }
+QToolButton:checked { background: #0e639c; border-color: #1177bb; color: #ffffff; }
 
-QSplitter::handle { background: #303038; }
-QSplitter::handle:horizontal { width: 1px; }
-QSplitter::handle:vertical   { height: 1px; }
-
-QTreeWidget {
-    background: #1A1A1E; border: none; color: #707080; outline: none;
-}
-QTreeWidget::item { padding: 3px 4px; }
-QTreeWidget::item:selected {
-    background: #1A2F4A; color: #4FC3F7;
-    border-left: 2px solid #4FC3F7;
-}
-QTreeWidget::item:hover:!selected { background: #222228; }
-QTreeWidget::branch { background: #1A1A1E; }
-
-QTabWidget::pane {
-    border: none; border-top: 1px solid #303038; background: #202024;
-}
-QTabBar { background: #1A1A1E; }
-QTabBar::tab {
-    background: #1A1A1E; color: #484858; padding: 5px 14px;
-    border: none; border-bottom: 2px solid transparent; margin-right: 1px;
-}
-QTabBar::tab:selected { color: #4FC3F7; border-bottom: 2px solid #4FC3F7; background: #202024; }
-QTabBar::tab:hover:!selected { color: #808090; }
-
-QTableWidget {
-    background: #1A1A1E; border: none; color: #C0C0C8;
-    gridline-color: #222228; outline: none;
-}
-QTableWidget::item { padding: 2px 4px; }
-QTableWidget::item:selected { background: #1A2F4A; color: #4FC3F7; }
-QHeaderView::section {
-    background: #1E1E22; color: #484858; border: none;
-    border-right: 1px solid #222228; border-bottom: 1px solid #222228;
-    padding: 2px 5px; font-size: 10px;
-}
-
+/* ── GUMBI ── */
 QPushButton {
-    background: #222228; color: #808090;
-    border: 1px solid #303038; border-radius: 3px;
-    padding: 3px 9px; min-height: 22px;
+    background: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 12px;
+    color: #cccccc;
+    font-size: 13px;
+    min-height: 26px;
 }
-QPushButton:hover  { background: #2A2A32; color: #C0C0C8; border-color: #3A3A48; }
-QPushButton:pressed { background: #1A2F4A; color: #4FC3F7; }
-QPushButton#primary { background: #1A3A5A; color: #4FC3F7; border-color: #2A4A6A; }
-QPushButton#primary:hover { background: #1E4468; }
-QPushButton#warn { background: #2A1A10; color: #FF8C42; border-color: #3A2A18; }
-QPushButton#warn:hover { background: #362010; }
-QPushButton:disabled { color: #303038; border-color: #252528; background: #1E1E22; }
-
-QLineEdit {
-    background: #1A1A1E; border: 1px solid #303038; border-radius: 3px;
-    color: #C8C8D0; padding: 3px 7px;
+QPushButton:hover { background: #4a4a4a; border-color: #666666; }
+QPushButton:pressed { background: #2a2a2a; }
+QPushButton:disabled { background: #2a2a2a; color: #555555; border-color: #3a3a3a; }
+QPushButton#btn_primary {
+    background: #0e639c;
+    border-color: #1177bb;
+    color: #ffffff;
+    font-weight: bold;
 }
-QLineEdit:focus { border-color: #4FC3F7; }
-QLineEdit::placeholder { color: #363646; }
-
-QTextEdit { background: #141418; border: none; color: #404858; font-size: 11px; }
-
-QGroupBox {
-    border: 1px solid #303038; border-radius: 3px;
-    margin-top: 14px; padding: 4px 4px 4px 4px; color: #454555;
-    font-size: 10px; letter-spacing: 1px;
+QPushButton#btn_primary:hover { background: #1177bb; }
+QPushButton#primary {
+    background: #0e639c;
+    border-color: #1177bb;
+    color: #ffffff;
+    font-weight: bold;
 }
-QGroupBox::title {
-    subcontrol-origin: margin; subcontrol-position: top left;
-    padding: 0 5px; left: 7px; top: 1px;
+QPushButton#primary:hover { background: #1177bb; }
+QPushButton#btn_success { background: #007a4d; border-color: #009960; color: #ffffff; }
+QPushButton#btn_danger { background: #3c3c3c; border-color: #555555; color: #f48771; }
+QPushButton#btn_danger:hover { background: #4a2020; border-color: #f48771; }
+
+/* ── TREE WIDGET ── */
+QTreeWidget {
+    background: #252526;
+    border: none;
+    color: #cccccc;
+    font-size: 13px;
+    outline: none;
+    show-decoration-selected: 1;
+}
+QTreeWidget::item { padding: 4px 4px; border-left: 2px solid transparent; }
+QTreeWidget::item:hover { background: #2a2d2e; }
+QTreeWidget::item:selected {
+    background: #04395e;
+    color: #ffffff;
+    border-left: 2px solid #0e639c;
+}
+QTreeWidget::branch { background: #252526; }
+
+/* ── TABLICA ── */
+QTableWidget {
+    background: #1e1e1e;
+    border: none;
+    gridline-color: #2a2a2a;
+    color: #cccccc;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 13px;
+    selection-background-color: #04395e;
+}
+QTableWidget::item { padding: 2px 4px; border: none; }
+QTableWidget::item:selected { background: #04395e; color: #ffffff; }
+QHeaderView::section {
+    background: #2d2d2d;
+    color: #666666;
+    padding: 4px 6px;
+    border: none;
+    border-right: 1px solid #333333;
+    border-bottom: 1px solid #333333;
+    font-family: "Consolas", monospace;
+    font-size: 11px;
+    font-weight: normal;
 }
 
-QScrollBar:vertical { background: #1A1A1E; width: 6px; border: none; }
-QScrollBar::handle:vertical { background: #303040; border-radius: 3px; min-height: 20px; }
-QScrollBar::handle:vertical:hover { background: #3A3A50; }
+/* ── SCROLL BAROVI ── */
+QScrollBar:vertical { background: #252526; width: 10px; border: none; }
+QScrollBar::handle:vertical {
+    background: #555555; border-radius: 5px; min-height: 20px; margin: 2px;
+}
+QScrollBar::handle:vertical:hover { background: #777777; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar:horizontal { background: #1A1A1E; height: 6px; border: none; }
-QScrollBar::handle:horizontal { background: #303040; border-radius: 3px; }
+QScrollBar:horizontal { background: #252526; height: 10px; border: none; }
+QScrollBar::handle:horizontal {
+    background: #555555; border-radius: 5px; min-width: 20px; margin: 2px;
+}
+QScrollBar::handle:horizontal:hover { background: #777777; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
-QStatusBar {
-    background: #141418; color: #404050;
-    border-top: 1px solid #222228; padding: 0 8px; font-size: 11px;
+/* ── TAB WIDGET ── */
+QTabWidget::pane { border: none; border-top: 1px solid #333333; background: #252526; }
+QTabBar::tab {
+    background: #252526;
+    color: #969696;
+    padding: 7px 20px;
+    border-top: 2px solid transparent;
+    font-size: 13px;
 }
-QStatusBar::item { border: none; }
-QProgressBar { background: #252529; border: none; height: 2px; color: transparent; }
-QProgressBar::chunk { background: #4FC3F7; }
+QTabBar::tab:hover { color: #cccccc; background: #2d2d2d; }
+QTabBar::tab:selected { background: #1e1e1e; color: #ffffff; border-top-color: #0e639c; }
+
+/* ── LINE EDIT ── */
+QLineEdit {
+    background: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 10px;
+    color: #cccccc;
+    font-size: 13px;
+    selection-background-color: #0e639c;
+}
+QLineEdit:focus { border-color: #0e639c; background: #2a2a2a; }
+QLineEdit::placeholder { color: #555555; }
+
+/* ── SPLITTER ── */
+QSplitter::handle { background: #333333; }
+QSplitter::handle:horizontal { width: 1px; }
+QSplitter::handle:vertical { height: 1px; }
+
+/* ── STATUS BAR ── */
+QStatusBar {
+    background: #007acc;
+    color: rgba(255,255,255,0.9);
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+    border-top: none;
+}
+QStatusBar::item { border-right: 1px solid rgba(255,255,255,0.2); padding: 0 12px; }
+QStatusBar QLabel { color: rgba(255,255,255,0.9); font-family: "Consolas", monospace; font-size: 12px; }
+
+/* ── LABELE ── */
+QLabel#lbl_map_title {
+    font-family: "Consolas", monospace; font-size: 14px; font-weight: bold; color: #9cdcfe;
+}
+QLabel#lbl_section {
+    font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #999999;
+}
+QLabel#lbl_value_big {
+    font-family: "Consolas", monospace; font-size: 32px; color: #9cdcfe; font-weight: bold;
+}
+QLabel#lbl_addr { font-family: "Consolas", monospace; font-size: 11px; color: #555555; }
+QLabel#lbl_ok   { color: #4ec9b0; font-weight: bold; }
+QLabel#lbl_warn { color: #e5c07b; font-weight: bold; }
+QLabel#lbl_error { color: #f48771; font-weight: bold; }
+
+/* ── GROUP BOX ── */
+QGroupBox {
+    border: 1px solid #333333;
+    border-radius: 5px;
+    margin-top: 8px;
+    padding: 8px;
+    color: #999999;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    background: #252526;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+    background: #252526;
+}
+
+/* ── COMBO BOX ── */
+QComboBox {
+    background: #3c3c3c; border: 1px solid #555555; border-radius: 4px;
+    padding: 5px 10px; color: #cccccc; font-size: 13px; min-height: 26px;
+}
+QComboBox:hover { border-color: #666666; }
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox QAbstractItemView {
+    background: #252526; border: 1px solid #555555;
+    selection-background-color: #04395e; color: #cccccc;
+}
+
+/* ── LIST WIDGET ── */
+QListWidget {
+    background: #252526; border: none; color: #cccccc;
+    font-family: "Consolas", monospace; font-size: 12px; outline: none;
+}
+QListWidget::item { padding: 3px 8px; border-bottom: 1px solid #2a2a2a; }
+QListWidget::item:hover { background: #2a2d2e; }
+QListWidget::item:selected { background: #04395e; color: #ffffff; }
+
+/* ── TOOLTIP ── */
+QToolTip {
+    background: #2d2d2d; color: #cccccc; border: 1px solid #555555;
+    padding: 4px 8px; font-size: 12px; border-radius: 3px;
+}
+
+/* ── MESSAGE BOX ── */
+QMessageBox { background: #252526; color: #cccccc; }
+
+/* ── PROGRESS BAR ── */
+QProgressBar {
+    background: #3c3c3c; border: 1px solid #555555; border-radius: 4px;
+    height: 6px; text-align: center; color: transparent;
+}
+QProgressBar::chunk { background: #0e639c; border-radius: 4px; }
 """
 
 
@@ -180,49 +325,59 @@ class MapLibraryPanel(QWidget):
     map_selected = pyqtSignal(object)
 
     CATEGORIES = {
-        "ignition":    ("Ignition",      "#FFB74D"),
-        "injection":   ("Injection",     "#FF7043"),
-        "torque":      ("Torque",        "#81C784"),
-        "lambda":      ("Lambda / AFR",  "#64B5F6"),
-        "rpm_limiter": ("Rev Limiter",   "#EF5350"),
-        "axis":        ("RPM Axes",      "#BA68C8"),
-        "dtc":         ("DTC / Faults",  "#F06292"),
-        "misc":        ("Other",          "#90A4AE"),
+        "ignition":    ("⚡ Ignition",    "#9cdcfe"),
+        "injection":   ("💉 Injection",   "#9cdcfe"),
+        "torque":      ("⚙ Torque",       "#9cdcfe"),
+        "lambda":      ("🧪 Lambda / AFR","#9cdcfe"),
+        "rpm_limiter": ("🔴 Rev Limiter", "#9cdcfe"),
+        "axis":        ("📊 RPM Axes",    "#9cdcfe"),
+        "dtc":         ("❗ DTC / Faults","#9cdcfe"),
+        "misc":        ("  Other",         "#9cdcfe"),
     }
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(200); self.setMaximumWidth(260)
+        self.setFixedWidth(220)
         self._all: list[FoundMap] = []
+        self._compare: list[FoundMap] = []
 
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
 
         self._hdr = QLabel("  MAP LIBRARY")
         self._hdr.setStyleSheet(
-            "background:#1A1A1E; color:#404050; font-size:10px; "
-            "padding:5px 8px; border-bottom:1px solid #303038; letter-spacing:1.5px;"
+            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
+            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
         )
         lo.addWidget(self._hdr)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("  search...")
+        self.search.setPlaceholderText("🔍  Pretraži mape...")
+        self.search.setFixedHeight(32)
+        self.search.setObjectName("search_maps")
         self.search.setStyleSheet(
-            "background:#141418; border:none; border-bottom:1px solid #303038; "
-            "border-radius:0; padding:4px 8px; color:#808090;"
+            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
+            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
         )
         self.search.textChanged.connect(self._filter)
         lo.addWidget(self.search)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setIndentation(10)
+        self.tree.setIndentation(12)
         self.tree.itemClicked.connect(self._click)
         lo.addWidget(self.tree, 1)
 
-    def populate(self, maps: list[FoundMap]):
+    def populate(self, maps: list[FoundMap], compare: list[FoundMap] | None = None):
         self._all = maps
-        self._hdr.setText(f"  MAP LIBRARY — {len(maps)}")
+        self._compare = compare or []
+        n = len(maps)
+        self._hdr.setText(f"  MAP LIBRARY — {n}")
         self._render(maps)
+
+    def mark_diff(self, compare: list[FoundMap]):
+        """Označi mape koje se razlikuju od fajla 2 (žuta boja stavke)."""
+        self._compare = compare
+        self._render(self._all)
 
     def _filter(self, t: str):
         self._render([m for m in self._all if t.lower() in m.defn.name.lower()] if t else self._all)
@@ -231,16 +386,34 @@ class MapLibraryPanel(QWidget):
         self.tree.clear()
         cats = {}
         for key, (label, color) in self.CATEGORIES.items():
-            it = QTreeWidgetItem(self.tree, [f"  {label}"])
-            it.setForeground(0, QColor(color))
+            it = QTreeWidgetItem(self.tree, [label])
+            it.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
+            it.setForeground(0, QBrush(QColor("#9cdcfe")))
+            it.setSizeHint(0, QSize(0, 28))
             it.setExpanded(True)
             cats[key] = it
+        # Indeks mapa iz fajla 2 po imenu za brzu usporedbu
+        cmp_by_name = {m.defn.name: m for m in self._compare}
+
         for fm in maps:
             dims = f"{fm.defn.rows}×{fm.defn.cols}" if fm.defn.rows > 1 else "scalar"
-            ch = QTreeWidgetItem(cats.get(fm.defn.category, cats["misc"]),
-                                 [f"  {fm.defn.name}"])
-            ch.setForeground(0, QColor("#707080"))
-            ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n{fm.defn.description}")
+            ch = QTreeWidgetItem(cats.get(fm.defn.category, cats["misc"]))
+
+            # Provjeri razlikuje li se od fajla 2
+            fm2 = cmp_by_name.get(fm.defn.name)
+            is_diff = fm2 is not None and fm.data != fm2.data
+
+            name_txt = f"  {'● ' if is_diff else ''}{fm.defn.name}"
+            ch.setText(0, name_txt)
+            ch.setFont(0, QFont("Segoe UI", 13))
+            if is_diff:
+                ch.setForeground(0, QBrush(QColor("#e5c07b")))   # žuta = razlika
+                ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n"
+                                  f"[RAZLIKA vs Fajl 2]\n{fm.defn.description}")
+            else:
+                ch.setForeground(0, QBrush(QColor("#cccccc")))
+                ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n{fm.defn.description}")
+            ch.setSizeHint(0, QSize(0, 26))
             ch.setData(0, Qt.ItemDataRole.UserRole, fm)
         for it in cats.values():
             it.setHidden(it.childCount() == 0)
@@ -248,6 +421,27 @@ class MapLibraryPanel(QWidget):
     def _click(self, item: QTreeWidgetItem):
         fm = item.data(0, Qt.ItemDataRole.UserRole)
         if fm: self.map_selected.emit(fm)
+
+
+# ─── Heatmap paleta ───────────────────────────────────────────────────────────
+
+MAP_COLORS_IGN = [
+    (QColor("#1c3461"), QColor("#7eb8f7")),  # c0 — najhladniji
+    (QColor("#1a4a6a"), QColor("#7ec8f7")),  # c1
+    (QColor("#0d6b5c"), QColor("#7ef7e0")),  # c2
+    (QColor("#1a6b2a"), QColor("#7ef79e")),  # c3
+    (QColor("#4a6b0a"), QColor("#d0f77e")),  # c4 — sredina
+    (QColor("#7a6000"), QColor("#f7d87e")),  # c5
+    (QColor("#8a3800"), QColor("#f7b07e")),  # c6
+    (QColor("#8a1800"), QColor("#f77e7e")),  # c7
+    (QColor("#7a0020"), QColor("#f77ea8")),  # c8 — najvrući
+]
+
+def _cell_colors(raw_val: int, raw_min: int, raw_max: int):
+    """Vrati (bg, fg) QColor par prema heatmap paleti."""
+    p = (raw_val - raw_min) / max(raw_max - raw_min, 1)
+    idx = min(int(p * len(MAP_COLORS_IGN)), len(MAP_COLORS_IGN) - 1)
+    return MAP_COLORS_IGN[idx]
 
 
 # ─── Map Table View ───────────────────────────────────────────────────────────
@@ -259,31 +453,43 @@ class MapTableView(QWidget):
         super().__init__(parent)
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
 
-        self.hdr = QLabel("  Select a map from the tree")
-        self.hdr.setStyleSheet(
-            "color:#363646; padding:5px 10px; background:#1A1A1E; "
-            "border-bottom:1px solid #303038; font-size:11px;"
-        )
-        lo.addWidget(self.hdr)
+        # Badge bar (naziv mape + dim/dtype/unit/addr)
+        self._map_bar = QWidget()
+        self._map_bar.setStyleSheet("background:#252526; border-bottom:1px solid #333333;")
+        mbl = QHBoxLayout(self._map_bar); mbl.setContentsMargins(8,4,8,4); mbl.setSpacing(6)
 
-        # Action bar
-        ab = QWidget(); ab.setStyleSheet("background:#1E1E22; border-bottom:1px solid #303038;")
-        abl = QHBoxLayout(ab); abl.setContentsMargins(6,2,6,2); abl.setSpacing(4)
+        self._lbl_name = QLabel("Odaberi mapu iz stabla")
+        self._lbl_name.setObjectName("lbl_map_title")
+        mbl.addWidget(self._lbl_name)
+
+        self._badge_dim  = self._make_badge("", "blue")
+        self._badge_unit = self._make_badge("", "green")
+        self._badge_addr = self._make_badge("", "gray")
+        for b in [self._badge_dim, self._badge_unit, self._badge_addr]:
+            b.hide(); mbl.addWidget(b)
+
+        mbl.addStretch()
+
         self.btn_copy  = _btn("Copy")
         self.btn_csv   = _btn("Export CSV")
-        self.btn_reset = _btn("Reset", "warn")
+        self.btn_reset = _btn("Reset")
+        self.btn_reset.setObjectName("btn_danger")
         for b in [self.btn_copy, self.btn_csv, self.btn_reset]:
-            b.setFixedHeight(22); abl.addWidget(b)
-        abl.addStretch()
-        self._meta = QLabel(); self._meta.setStyleSheet("color:#383848; font-size:10px;")
-        abl.addWidget(self._meta)
-        self.action_bar = ab; self.action_bar.hide()
-        lo.addWidget(ab)
+            b.setFixedHeight(26)
+            b.hide()
+            mbl.addWidget(b)
+
+        lo.addWidget(self._map_bar)
 
         self.table = QTableWidget()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.table.horizontalHeader().setDefaultSectionSize(54)
+        self.table.horizontalHeader().setFont(QFont("Consolas", 9))
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.verticalHeader().setFont(QFont("Consolas", 9))
+        self.table.verticalHeader().setFixedWidth(44)
+        self.table.setFont(QFont("Consolas", 10))
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.cellClicked.connect(lambda r,c: self._fm and self.cell_clicked.emit(r,c,self._fm))
         lo.addWidget(self.table, 1)
@@ -291,20 +497,37 @@ class MapTableView(QWidget):
         self._fm:  FoundMap | None = None
         self._fm2: FoundMap | None = None
 
+    @staticmethod
+    def _make_badge(text: str, style: str = "blue") -> QLabel:
+        lbl = QLabel(text)
+        colors = {
+            "blue":  "background:#0e3a5c;color:#9cdcfe;border:1px solid #0e639c;",
+            "green": "background:#0d3321;color:#4ec9b0;border:1px solid #4ec9b0;",
+            "gray":  "background:#2a2a2a;color:#888888;border:1px solid #444444;",
+        }
+        lbl.setStyleSheet(f"""
+            QLabel {{
+                {colors.get(style, colors['gray'])}
+                border-radius: 10px;
+                padding: 2px 8px;
+                font-family: Consolas;
+                font-size: 11px;
+                font-weight: bold;
+            }}
+        """)
+        return lbl
+
     def show_map(self, fm: FoundMap, compare: FoundMap | None = None):
         self._fm = fm; self._fm2 = compare
         defn = fm.defn
 
-        self.hdr.setText(
-            f"  <b style='color:#4FC3F7'>{defn.name}</b>"
-            f"  <span style='color:#383848'>@0x{fm.address:06X}</span>"
-            f"  <span style='color:#484858'>{defn.rows}×{defn.cols}"
-            f"  {defn.dtype}  ×{defn.scale}  {defn.unit}</span>"
-        )
-        self.hdr.setTextFormat(Qt.TextFormat.RichText)
-        self.hdr.setStyleSheet("padding:5px 10px; background:#1A1A1E; border-bottom:1px solid #303038; font-size:11px;")
-        self._meta.setText(f"mirror +0x{defn.mirror_offset:X}" if defn.mirror_offset else "")
-        self.action_bar.show()
+        self._lbl_name.setText(defn.name)
+        self._badge_dim.setText(f"{defn.rows}×{defn.cols} · {defn.dtype}")
+        self._badge_unit.setText(f"×{defn.scale} · {defn.unit}" if defn.unit else f"×{defn.scale}")
+        self._badge_addr.setText(f"@ 0x{fm.address:06X}")
+        for b in [self._badge_dim, self._badge_unit, self._badge_addr,
+                  self.btn_copy, self.btn_csv, self.btn_reset]:
+            b.show()
 
         rows, cols = defn.rows, defn.cols
         data  = fm.data
@@ -321,7 +544,6 @@ class MapTableView(QWidget):
 
         mn = min(data) if data else 0
         mx = max(data) if data else 1
-        rng = mx - mn if mx != mn else 1
 
         for r in range(rows):
             for c in range(cols):
@@ -334,10 +556,13 @@ class MapTableView(QWidget):
                 item = QTableWidgetItem(txt)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 item.setData(Qt.ItemDataRole.UserRole, raw)
-                bg = self._heat((raw - mn) / rng)
                 if data2 and idx < len(data2) and data2[idx] != raw:
-                    bg = QColor("#28200A"); item.setForeground(QBrush(QColor("#FFD54F")))
-                item.setBackground(QBrush(bg))
+                    item.setBackground(QBrush(QColor("#3a3010")))
+                    item.setForeground(QBrush(QColor("#e5c07b")))
+                else:
+                    bg, fg = _cell_colors(raw, mn, mx)
+                    item.setBackground(QBrush(bg))
+                    item.setForeground(QBrush(fg))
                 self.table.setItem(r, c, item)
 
     def refresh_cell(self, row: int, col: int, new_raw: int):
@@ -348,30 +573,17 @@ class MapTableView(QWidget):
         item = self.table.item(row, col)
         if not item: return
         item.setText(txt); item.setData(Qt.ItemDataRole.UserRole, new_raw)
-        mn  = min(self._fm.data); mx = max(self._fm.data)
-        rng = mx - mn if mx != mn else 1
-        item.setBackground(QBrush(self._heat((new_raw - mn) / rng)))
-        item.setForeground(QBrush(QColor("#E0E0E8")))
+        mn = min(self._fm.data); mx = max(self._fm.data)
+        bg, fg = _cell_colors(new_raw, mn, mx)
+        item.setBackground(QBrush(bg))
+        item.setForeground(QBrush(fg))
 
     def clear(self):
         self._fm = None; self.table.setRowCount(0); self.table.setColumnCount(0)
-        self.hdr.setText("  Select a map from the tree")
-        self.hdr.setStyleSheet("color:#363646; padding:5px 10px; background:#1A1A1E; border-bottom:1px solid #303038; font-size:11px;")
-        self.action_bar.hide()
-
-    @staticmethod
-    def _heat(t: float) -> QColor:
-        t = max(0.0, min(1.0, t))
-        if t < 0.33:
-            tt = t / 0.33
-            r,g,b = int(20+tt*12), int(24+tt*32), int(44+tt*10)
-        elif t < 0.66:
-            tt = (t-0.33)/0.33
-            r,g,b = int(32+tt*28), int(56-tt*10), int(54-tt*20)
-        else:
-            tt = (t-0.66)/0.34
-            r,g,b = int(60+tt*48), int(46-tt*18), int(34-tt*14)
-        return QColor(max(0,min(255,r)), max(0,min(255,g)), max(0,min(255,b)))
+        self._lbl_name.setText("Odaberi mapu iz stabla")
+        for b in [self._badge_dim, self._badge_unit, self._badge_addr,
+                  self.btn_copy, self.btn_csv, self.btn_reset]:
+            b.hide()
 
 
 # ─── Properties panel — 3 taba ────────────────────────────────────────────────
@@ -381,7 +593,7 @@ class PropertiesPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(260); self.setMaximumWidth(310)
+        self.setFixedWidth(270)
         self._fm:      FoundMap | None = None
         self._row = self._col = 0
 
@@ -389,8 +601,8 @@ class PropertiesPanel(QWidget):
 
         hdr = QLabel("  PROPERTIES")
         hdr.setStyleSheet(
-            "background:#1A1A1E; color:#404050; font-size:10px; "
-            "padding:5px 8px; border-bottom:1px solid #303038; letter-spacing:1.5px;"
+            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
+            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
         )
         lo.addWidget(hdr)
 
@@ -402,22 +614,33 @@ class PropertiesPanel(QWidget):
         cell_w = QWidget()
         cell_lo = QVBoxLayout(cell_w); cell_lo.setContentsMargins(8,8,8,8); cell_lo.setSpacing(6)
 
-        self._pos_lbl = QLabel("Select a cell")
-        self._pos_lbl.setStyleSheet("color:#404050; font-size:10px;")
+        self._pos_lbl = QLabel("Odaberi ćeliju")
+        self._pos_lbl.setStyleSheet("color:#888888; font-size:12px;")
         cell_lo.addWidget(self._pos_lbl)
 
+        # Big value frame s border-left akcentom
+        val_frame = QFrame()
+        val_frame.setStyleSheet("""
+            QFrame {
+                background: #2a2a2a;
+                border: 1px solid #333333;
+                border-left: 3px solid #0e639c;
+                border-radius: 5px;
+            }
+        """)
+        val_fl = QVBoxLayout(val_frame); val_fl.setContentsMargins(8,8,8,8); val_fl.setSpacing(2)
+
         self._val_lbl = QLabel("—")
+        self._val_lbl.setObjectName("lbl_value_big")
         self._val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._val_lbl.setStyleSheet(
-            "color:#4FC3F7; font-size:30px; font-weight:bold; "
-            "background:#1A1A1E; border:1px solid #303038; border-radius:3px; padding:6px;"
-        )
-        cell_lo.addWidget(self._val_lbl)
+        val_fl.addWidget(self._val_lbl)
 
         self._raw_lbl = QLabel("—")
+        self._raw_lbl.setObjectName("lbl_addr")
         self._raw_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._raw_lbl.setStyleSheet("color:#383848; font-size:10px;")
-        cell_lo.addWidget(self._raw_lbl)
+        val_fl.addWidget(self._raw_lbl)
+
+        cell_lo.addWidget(val_frame)
 
         # Step gumbi — 2×2 grid
         step_grid = QGridLayout(); step_grid.setSpacing(3)
@@ -441,7 +664,7 @@ class PropertiesPanel(QWidget):
         cell_lo.addLayout(inp_lo)
 
         self._addr_lbl = QLabel("—")
-        self._addr_lbl.setStyleSheet("color:#303040; font-size:10px;")
+        self._addr_lbl.setObjectName("lbl_addr")
         cell_lo.addWidget(self._addr_lbl)
         cell_lo.addStretch()
         self._cell_w = cell_w
@@ -455,8 +678,10 @@ class PropertiesPanel(QWidget):
         sg = QGridLayout(stats_g); sg.setSpacing(3)
         self._st: dict[str, QLabel] = {}
         for i, k in enumerate(["Min","Max","Prosjek","Raspon","Celije","Mirror"]):
-            kl = QLabel(k+":"); kl.setStyleSheet("color:#454555; font-size:11px;")
-            vl = QLabel("—");   vl.setStyleSheet("color:#707080; font-size:11px;")
+            kl = QLabel(k+":"); kl.setStyleSheet("color:#888888; font-size:13px;")
+            vl = QLabel("—")
+            vl.setFont(QFont("Consolas", 11))
+            vl.setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
             vl.setAlignment(Qt.AlignmentFlag.AlignRight)
             sg.addWidget(kl, i, 0); sg.addWidget(vl, i, 1)
             self._st[k] = vl
@@ -466,7 +691,7 @@ class PropertiesPanel(QWidget):
         nl = QVBoxLayout(notes_g); nl.setContentsMargins(6,6,6,6)
         self._notes = QLabel("—")
         self._notes.setWordWrap(True)
-        self._notes.setStyleSheet("color:#3A3A4A; font-size:10px; line-height:140%;")
+        self._notes.setStyleSheet("color:#666666; font-size:12px;")
         nl.addWidget(self._notes)
         map_lo.addWidget(notes_g)
         map_lo.addStretch()
@@ -480,8 +705,10 @@ class PropertiesPanel(QWidget):
         eg = QGridLayout(ecu_g); eg.setSpacing(3)
         self._ecu: dict[str, QLabel] = {}
         for i, k in enumerate(["Model","SW ID","MCU","Velicina","Checksum","Platform"]):
-            kl = QLabel(k+":"); kl.setStyleSheet("color:#454555; font-size:11px;")
-            vl = QLabel("—");   vl.setStyleSheet("color:#707080; font-size:11px;")
+            kl = QLabel(k+":"); kl.setStyleSheet("color:#888888; font-size:13px;")
+            vl = QLabel("—")
+            vl.setFont(QFont("Consolas", 11))
+            vl.setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
             vl.setAlignment(Qt.AlignmentFlag.AlignRight)
             eg.addWidget(kl, i, 0); eg.addWidget(vl, i, 1)
             self._ecu[k] = vl
@@ -495,7 +722,8 @@ class PropertiesPanel(QWidget):
             "CAL   0x060000–0x15FFFF  1 MB  [bytekod]\n"
             "FILL  0x160000–0x178000  96 KB"
         )
-        mem_txt.setStyleSheet("color:#3A3A4A; font-size:10px; line-height:160%;")
+        mem_txt.setFont(QFont("Consolas", 10))
+        mem_txt.setStyleSheet("color:#666666; font-size:12px;")
         ml.addWidget(mem_txt)
         ecu_lo.addWidget(mem_g)
         ecu_lo.addStretch()
@@ -508,14 +736,14 @@ class PropertiesPanel(QWidget):
         cs   = ChecksumEngine(eng).verify()
         self._ecu["Model"].setText("ME17.8.5")
         self._ecu["SW ID"].setText(info.sw_id)
-        self._ecu["SW ID"].setStyleSheet("color:#4FC3F7; font-size:11px;")
+        self._ecu["SW ID"].setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
         self._ecu["MCU"].setText("TC1762 LE" if info.mcu_confirmed else "NEPOTVRDJEN")
         self._ecu["Velicina"].setText(f"{info.file_size // 1024} KB")
         self._ecu["Platform"].setText("VM_CB.04.80.00" if info.platform_confirmed else "—")
         ok = cs.get("sw_id", {}).get("status") == "OK"
         self._ecu["Checksum"].setText("SW OK" if ok else "PENDING")
         self._ecu["Checksum"].setStyleSheet(
-            f"color:{'#4CAF50' if ok else '#FFB74D'}; font-size:11px;"
+            f"color:{'#4ec9b0' if ok else '#e5c07b'}; font-size:12px; font-weight:bold;"
         )
 
     def show_map_stats(self, fm: FoundMap):
@@ -575,7 +803,7 @@ class PropertiesPanel(QWidget):
             self._inp.setStyleSheet("")
         except ValueError:
             self._inp.setStyleSheet(
-                "background:#2A1010; border:1px solid #EF5350; border-radius:3px; padding:3px 7px;"
+                "background:#2a1010; border:1px solid #f48771; border-radius:4px; padding:5px 10px;"
             )
             QTimer.singleShot(800, lambda: self._inp.setStyleSheet(""))
 
@@ -588,13 +816,16 @@ class HexStrip(QWidget):
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
         hdr = QLabel("  HEX VIEW")
         hdr.setStyleSheet(
-            "color:#303040; font-size:10px; letter-spacing:1.5px; "
-            "padding:2px 8px; background:#141418; border-bottom:1px solid #222228;"
+            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
+            "padding:3px 8px; background:#252526; border-bottom:1px solid #333333;"
         )
         lo.addWidget(hdr)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 10))
+        self.text.setFont(QFont("Consolas", 12))
+        self.text.setStyleSheet(
+            "QTextEdit { background:#252526; color:#666666; border:none; padding:6px 10px; }"
+        )
         lo.addWidget(self.text, 1)
 
     def show(self, eng: ME17Engine, addr: int, length: int = 64):
@@ -603,12 +834,12 @@ class HexStrip(QWidget):
         lines = []
         for i in range(0, min(length, len(data)-addr), 16):
             ch  = data[addr+i: addr+i+16]
-            hx  = " ".join(f"{b:02X}" for b in ch)
+            hx  = " ".join(f"0x{b:02X}" for b in ch)
             asc = "".join(chr(b) if 32 <= b < 127 else "·" for b in ch)
             lines.append(
-                f'<span style="color:#263646">0x{addr+i:06X}</span>  '
-                f'<span style="color:#383848">{hx:<47}</span>  '
-                f'<span style="color:#2E3040">{asc}</span>'
+                f'<span style="color:#569cd6">0x{addr+i:06X}:</span>  '
+                f'<span style="color:#888888">{hx}</span>  '
+                f'<span style="color:#444444">{asc}</span>'
             )
         self.text.setHtml("<br>".join(lines))
 
@@ -621,21 +852,25 @@ class LogStrip(QWidget):
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
         hdr = QLabel("  LOG")
         hdr.setStyleSheet(
-            "color:#303040; font-size:10px; letter-spacing:1.5px; "
-            "padding:2px 8px; background:#141418; border-bottom:1px solid #222228;"
+            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
+            "padding:3px 8px; background:#252526; border-bottom:1px solid #333333;"
         )
         lo.addWidget(hdr)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 10))
+        self.text.setFont(QFont("Consolas", 12))
+        self.text.setStyleSheet(
+            "QTextEdit { background:#252526; color:#969696; border:none; padding:6px 8px; }"
+        )
         lo.addWidget(self.text, 1)
 
     def log(self, msg: str, level: str = "info"):
-        colors = {"ok":"#4CAF50","info":"#4FC3F7","warn":"#FFB74D","err":"#EF5350"}
+        colors = {"ok": "#4ec9b0", "info": "#9cdcfe", "warn": "#e5c07b", "err": "#f48771"}
         ts = datetime.now().strftime("%H:%M:%S")
+        color = colors.get(level, "#969696")
         self.text.append(
-            f'<span style="color:#263030">{ts}</span>  '
-            f'<span style="color:{colors.get(level,"#606070")}">{msg}</span>'
+            f'<span style="color:#555555">{ts}</span> '
+            f'<span style="color:{color}">{msg}</span>'
         )
         self.text.verticalScrollBar().setValue(self.text.verticalScrollBar().maximum())
 
@@ -647,7 +882,7 @@ class DiffWidget(QWidget):
         super().__init__(parent)
         lo = QVBoxLayout(self); lo.setContentsMargins(12,12,12,12); lo.setSpacing(8)
         self.lbl = QLabel("Ucitaj oba fajla za diff")
-        self.lbl.setStyleSheet("color:#363646; padding:8px;")
+        self.lbl.setStyleSheet("color:#666666; padding:8px; font-size:13px;")
         lo.addWidget(self.lbl)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Region","Start","End","Velicina"])
@@ -662,14 +897,14 @@ class DiffWidget(QWidget):
             f"CAL: {s['CAL']:,} B    Ukupno: {sum(s.values()):,} B razlicito"
         )
         self.lbl.setStyleSheet(
-            "color:#4FC3F7; padding:8px; background:#1A1A1E; border-bottom:1px solid #303038;"
+            "color:#9cdcfe; padding:8px; background:#252526; border-bottom:1px solid #333333; font-size:13px;"
         )
         blocks = MapFinder(eng1).find_changed_regions(eng2, min_block=16)
         self.table.setRowCount(len(blocks))
         colors = {
-            "CAL":  ("#1A3020","#81C784"),
-            "CODE": ("#1A2030","#64B5F6"),
-            "BOOT": ("#302010","#FFB74D"),
+            "CAL":  ("#0d3321","#4ec9b0"),
+            "CODE": ("#0e3a5c","#9cdcfe"),
+            "BOOT": ("#3a2a00","#e5c07b"),
         }
         for i, b in enumerate(blocks):
             reg = "CAL" if b["in_cal"] else ("CODE" if b["in_code"] else "BOOT")
@@ -695,126 +930,176 @@ class DtcPanel(QWidget):
         self._dtc_eng: DtcEngine | None = None
         self._cur_code: int | None = None
 
-        lo = QVBoxLayout(self)
-        lo.setContentsMargins(16, 12, 16, 12)
-        lo.setSpacing(8)
+        # Horizontalni split: lista lijevo, detalji desno
+        root_lo = QHBoxLayout(self)
+        root_lo.setContentsMargins(0, 0, 0, 0)
+        root_lo.setSpacing(0)
+
+        # ── Lijeva kolona: DTC lista ───────────────────────────────────────────
+        left_w = QWidget()
+        left_w.setFixedWidth(240)
+        left_w.setStyleSheet("background:#252526; border-right:1px solid #333333;")
+        left_lo = QVBoxLayout(left_w); left_lo.setContentsMargins(0,0,0,0); left_lo.setSpacing(0)
+
+        lst_hdr = QLabel("  DTC LISTA")
+        lst_hdr.setStyleSheet(
+            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
+            "padding:6px 8px; border-bottom:1px solid #333333;"
+        )
+        left_lo.addWidget(lst_hdr)
+
+        self._dtc_list = QListWidget()
+        self._dtc_list.setFont(QFont("Consolas", 12))
+        self._dtc_list.itemClicked.connect(self._on_list_click)
+        left_lo.addWidget(self._dtc_list, 1)
+
+        root_lo.addWidget(left_w)
+
+        # ── Desna kolona: detalji odabranog DTC ───────────────────────────────
+        right_w = QWidget()
+        right_lo = QVBoxLayout(right_w)
+        right_lo.setContentsMargins(16, 12, 16, 12)
+        right_lo.setSpacing(8)
 
         # Zaglavlje
         self._hdr = QLabel("  DTC MANAGER")
         self._hdr.setStyleSheet(
-            "color:#F06292; font-size:11px; letter-spacing:1.5px; "
-            "background:#1A1A1E; padding:6px 8px; border-bottom:1px solid #303038;"
+            "color:#f48771; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
+            "background:#252526; padding:6px 8px; border-bottom:1px solid #333333;"
         )
-        lo.addWidget(self._hdr)
+        right_lo.addWidget(self._hdr)
 
         # Status row
         status_row = QHBoxLayout(); status_row.setSpacing(16)
 
         self._code_lbl = QLabel("—")
-        self._code_lbl.setStyleSheet("color:#F06292; font-size:18px; font-weight:bold;")
+        self._code_lbl.setFont(QFont("Consolas", 16, QFont.Weight.Bold))
+        self._code_lbl.setStyleSheet("color:#f48771; font-size:18px; font-weight:bold;")
         status_row.addWidget(self._code_lbl)
 
         self._name_lbl = QLabel("")
-        self._name_lbl.setStyleSheet("color:#808090; font-size:12px;")
+        self._name_lbl.setStyleSheet("color:#969696; font-size:12px;")
         status_row.addWidget(self._name_lbl)
 
         status_row.addStretch()
 
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet("color:#81C784; font-size:12px; font-weight:bold;")
+        self._status_lbl.setStyleSheet("color:#4ec9b0; font-size:12px; font-weight:bold;")
         status_row.addWidget(self._status_lbl)
 
-        lo.addLayout(status_row)
+        right_lo.addLayout(status_row)
 
         # Separator
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#303038;")
-        lo.addWidget(sep)
+        sep.setStyleSheet("background:#333333; max-height:1px;")
+        right_lo.addWidget(sep)
 
         # Enable bajti
-        grp_enable = QGroupBox("Enable bajti (0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno)")
-        grp_enable.setStyleSheet(
-            "QGroupBox { color:#606070; border:1px solid #303038; border-radius:3px; "
-            "margin-top:8px; padding-top:10px; font-size:10px; } "
-            "QGroupBox::title { subcontrol-origin:margin; left:8px; padding:0 4px; }"
-        )
+        grp_enable = QGroupBox("Enable bajti  (0x06=aktivno · 0x05=djelom. · 0x04=upoz. · 0x00=isključeno)")
         grp_lo = QVBoxLayout(grp_enable)
         self._enable_tbl = QTableWidget(1, 1)
         self._enable_tbl.setMaximumHeight(72)
         self._enable_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._enable_tbl.verticalHeader().hide()
-        self._enable_tbl.setStyleSheet(
-            "QTableWidget { background:#1A1A1E; border:none; gridline-color:#303038; }"
-            "QHeaderView::section { background:#202028; color:#505060; border:none; padding:2px 6px; }"
-        )
         grp_lo.addWidget(self._enable_tbl)
-        lo.addWidget(grp_enable)
+        right_lo.addWidget(grp_enable)
 
         # Code storage
         grp_code = QGroupBox("Code storage (LE u16)")
-        grp_code.setStyleSheet(grp_enable.styleSheet())
         code_lo = QGridLayout(grp_code)
-        code_lo.addWidget(QLabel("Main:"),   0, 0)
+        kl_main = QLabel("Main:"); kl_main.setStyleSheet("color:#888888;")
+        code_lo.addWidget(kl_main, 0, 0)
         self._code_main_lbl = QLabel("—")
-        self._code_main_lbl.setStyleSheet("color:#4FC3F7;")
+        self._code_main_lbl.setFont(QFont("Consolas", 11))
+        self._code_main_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
         code_lo.addWidget(self._code_main_lbl, 0, 1)
-        code_lo.addWidget(QLabel("Mirror:"), 1, 0)
+        kl_mir = QLabel("Mirror:"); kl_mir.setStyleSheet("color:#888888;")
+        code_lo.addWidget(kl_mir, 1, 0)
         self._code_mirror_lbl = QLabel("—")
-        self._code_mirror_lbl.setStyleSheet("color:#4FC3F7;")
+        self._code_mirror_lbl.setFont(QFont("Consolas", 11))
+        self._code_mirror_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
         code_lo.addWidget(self._code_mirror_lbl, 1, 1)
         code_lo.setColumnStretch(2, 1)
-        lo.addWidget(grp_code)
+        right_lo.addWidget(grp_code)
 
-        # Notes
+        # Notes + upozorenje
         self._notes_lbl = QLabel("")
-        self._notes_lbl.setStyleSheet("color:#484858; font-size:10px;")
+        self._notes_lbl.setStyleSheet("color:#666666; font-size:12px;")
         self._notes_lbl.setWordWrap(True)
-        lo.addWidget(self._notes_lbl)
+        right_lo.addWidget(self._notes_lbl)
 
-        lo.addStretch()
+        warn_lbl = QLabel("⚠  Isključivanje DTC-a deaktivira zaštitu motora!")
+        warn_lbl.setStyleSheet("color:#e5c07b; font-size:12px; font-weight:bold;")
+        right_lo.addWidget(warn_lbl)
+
+        right_lo.addStretch()
 
         # Gumbi
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
 
         self._btn_off = QPushButton("DTC OFF — Isključi")
-        self._btn_off.setStyleSheet(
-            "QPushButton { background:#5A1020; color:#F06292; border:1px solid #8B2030; "
-            "padding:8px 20px; border-radius:3px; font-weight:bold; } "
-            "QPushButton:hover { background:#6A1828; } "
-            "QPushButton:disabled { background:#2A2030; color:#484858; border-color:#303038; }"
-        )
+        self._btn_off.setObjectName("btn_danger")
+        self._btn_off.setFixedHeight(32)
+        self._btn_off.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         self._btn_off.clicked.connect(self._do_off)
         btn_row.addWidget(self._btn_off)
 
         self._btn_all_off = QPushButton("Svi DTC OFF")
-        self._btn_all_off.setStyleSheet(
-            "QPushButton { background:#3A1020; color:#B06070; border:1px solid #6B2030; "
-            "padding:8px 16px; border-radius:3px; } "
-            "QPushButton:hover { background:#4A1828; } "
-            "QPushButton:disabled { background:#2A2030; color:#484858; border-color:#303038; }"
-        )
+        self._btn_all_off.setObjectName("btn_danger")
+        self._btn_all_off.setFixedHeight(32)
         self._btn_all_off.clicked.connect(self._do_all_off)
         btn_row.addWidget(self._btn_all_off)
+
+        self._btn_disable_all = QPushButton("Disable All Monitor")
+        self._btn_disable_all.setObjectName("btn_danger")
+        self._btn_disable_all.setFixedHeight(32)
+        self._btn_disable_all.setToolTip(
+            "Nulira cijelu enable tablicu (0x021080–0x0210BD).\n"
+            "Najjača opcija — ECU neće detektirati niti jedan fault.\n"
+            "Koristiti oprezno: neke greške štite motor (misfire, oil pressure)."
+        )
+        self._btn_disable_all.clicked.connect(self._do_disable_all)
+        btn_row.addWidget(self._btn_disable_all)
 
         btn_row.addStretch()
 
         self._btn_on = QPushButton("DTC ON — Vrati")
-        self._btn_on.setStyleSheet(
-            "QPushButton { background:#1A3020; color:#81C784; border:1px solid #2B6030; "
-            "padding:8px 16px; border-radius:3px; } "
-            "QPushButton:hover { background:#1E3826; } "
-            "QPushButton:disabled { background:#202028; color:#484858; border-color:#303038; }"
-        )
+        self._btn_on.setObjectName("btn_success")
+        self._btn_on.setFixedHeight(32)
         self._btn_on.clicked.connect(self._do_on)
         btn_row.addWidget(self._btn_on)
 
-        lo.addLayout(btn_row)
+        right_lo.addLayout(btn_row)
+
+        root_lo.addWidget(right_w, 1)
 
         self._set_buttons_enabled(False)
 
     def set_engine(self, eng: DtcEngine | None):
         self._dtc_eng = eng
         self._set_buttons_enabled(eng is not None)
+        self._populate_list()
+
+    def _populate_list(self):
+        """Napuni DTC listu sa svim poznatim kodovima iz registra."""
+        self._dtc_list.clear()
+        for code, defn in sorted(DTC_REGISTRY.items()):
+            item = QListWidgetItem(f"  {defn.p_code}  {defn.name}")
+            item.setData(Qt.ItemDataRole.UserRole, code)
+            if self._dtc_eng:
+                status = self._dtc_eng.get_status(code)
+                if status and status.is_off:
+                    item.setForeground(QBrush(QColor("#555555")))
+                else:
+                    item.setForeground(QBrush(QColor("#f48771")))
+            else:
+                item.setForeground(QBrush(QColor("#666666")))
+            self._dtc_list.addItem(item)
+
+    def _on_list_click(self, item: QListWidgetItem):
+        code = item.data(Qt.ItemDataRole.UserRole)
+        if code is not None:
+            self.show_dtc(code)
 
     def show_dtc(self, dtc_code: int):
         """Prikaži status zadanog DTC-a."""
@@ -835,10 +1120,17 @@ class DtcPanel(QWidget):
 
         if status.is_off:
             self._status_lbl.setText("● OFF")
-            self._status_lbl.setStyleSheet("color:#4A9A5A; font-size:12px; font-weight:bold;")
+            self._status_lbl.setStyleSheet("color:#4ec9b0; font-size:12px; font-weight:bold;")
         else:
             self._status_lbl.setText("● AKTIVAN")
-            self._status_lbl.setStyleSheet("color:#F06292; font-size:12px; font-weight:bold;")
+            self._status_lbl.setStyleSheet("color:#f48771; font-size:12px; font-weight:bold;")
+
+        # Osvježi boju u listi
+        for i in range(self._dtc_list.count()):
+            it = self._dtc_list.item(i)
+            if it.data(Qt.ItemDataRole.UserRole) == self._cur_code:
+                it.setForeground(QBrush(QColor("#555555") if status.is_off else QColor("#f48771")))
+                break
 
         # Enable tablica
         n = len(status.enable_values)
@@ -849,11 +1141,11 @@ class DtcPanel(QWidget):
         for i, val in enumerate(status.enable_values):
             item = QTableWidgetItem(f"0x{val:02X}")
             if val == 0x00:
-                item.setForeground(QBrush(QColor("#4A9A5A")))
+                item.setForeground(QBrush(QColor("#4ec9b0")))
             elif val == 0x06:
-                item.setForeground(QBrush(QColor("#F06292")))
+                item.setForeground(QBrush(QColor("#f48771")))
             else:
-                item.setForeground(QBrush(QColor("#FFB74D")))
+                item.setForeground(QBrush(QColor("#e5c07b")))
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._enable_tbl.setItem(0, i, item)
 
@@ -910,10 +1202,19 @@ class DtcPanel(QWidget):
         else:
             self.action_done.emit(f"GREŠKA: {msg}")
 
+    def _do_disable_all(self):
+        if not self._dtc_eng:
+            return
+        result = self._dtc_eng.disable_all_monitoring()
+        self.action_done.emit(f"Disable All Monitor: {result.get('message', '')}")
+        # Osvježi listu
+        self._populate_list()
+
     def _set_buttons_enabled(self, enabled: bool):
         self._btn_off.setEnabled(enabled)
         self._btn_on.setEnabled(enabled)
         self._btn_all_off.setEnabled(enabled)
+        self._btn_disable_all.setEnabled(enabled)
 
 
 # ─── Scan worker ──────────────────────────────────────────────────────────────
@@ -951,6 +1252,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._build_menus()
         self.setWindowTitle("ME17Suite  —  Bosch ME17.8.5 Rotax Editor")
+        self.setMinimumSize(1280, 720)
         self.resize(1440, 900)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
@@ -996,7 +1298,7 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
 
         self._file_lbl = QLabel("  nema fajla")
-        self._file_lbl.setStyleSheet("color:#383848; padding:0 10px; font-size:11px;")
+        self._file_lbl.setStyleSheet("color:#666666; padding:0 10px; font-size:13px;")
         tb.addWidget(self._file_lbl)
 
         # Progress
@@ -1053,7 +1355,7 @@ class MainWindow(QMainWindow):
         self.props.edit_requested.connect(self._on_edit)
         main_split.addWidget(self.props)
 
-        main_split.setSizes([230, 970, 265])
+        main_split.setSizes([220, 950, 270])
         main_split.setStretchFactor(0, 0)
         main_split.setStretchFactor(1, 1)
         main_split.setStretchFactor(2, 0)
@@ -1109,8 +1411,8 @@ class MainWindow(QMainWindow):
             self.dtc_eng = DtcEngine(eng); self.dtc_panel.set_engine(self.dtc_eng)
             name = Path(path).name
             self._file_lbl.setText(
-                f"  <b style='color:#4FC3F7'>{info.sw_id}</b>"
-                f"  <span style='color:#383848'>{name}</span>"
+                f"  <b style='color:#9cdcfe'>{info.sw_id}</b>"
+                f"  <span style='color:#888888'>{name}</span>"
             )
             self._file_lbl.setTextFormat(Qt.TextFormat.RichText)
             self.btn_open2.setEnabled(True); self.btn_save.setEnabled(True)
@@ -1177,7 +1479,12 @@ class MainWindow(QMainWindow):
 
     def _done2(self, maps):
         self.maps2 = maps
-        self.log_strip.log(f"Fajl 2: {len(maps)} mapa.", "info")
+        self.log_strip.log(f"Fajl 2: {len(maps)} mapa pronadjeno.", "ok")
+        # Označi razlike u stablu
+        self.map_lib.mark_diff(maps)
+        # Osvježi trenutno prikazanu mapu da se doda usporedba
+        if self._cur and self._cur.defn.category != "dtc":
+            self._on_map_selected(self._cur)
 
     # ── Map selection ─────────────────────────────────────────────────────────
 

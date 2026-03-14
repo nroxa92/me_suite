@@ -103,10 +103,13 @@ _RPM_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
 _RPM_AXIS_16 = AxisDef(count=16, byte_order="BE", dtype="u16",
                         scale=1.0, unit="rpm", values=_RPM_16)
 
-# Osa opterecenja — pretpostavlja se MAP% ili mg/stroke (12 tocaka, nepoznate vrijednosti)
+# Osa opterecenja — pretpostavlja se MAP% ili mg/stroke (nepoznate vrijednosti bez A2L)
 # Za Rotax ACE 1630 s superchargerom: MAP > 100% je moguc (boost)
-# Za tocne vrijednosti potreban je A2L/ASAP2 fajl
 _LOAD_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
+                         scale=1.0, unit="%MAP", values=None)  # vrijednosti nepoznate
+
+# Y osa za torque (16×16) — 16 tocaka opterecenja
+_LOAD_AXIS_16 = AxisDef(count=16, byte_order="BE", dtype="u16",
                          scale=1.0, unit="%MAP", values=None)  # vrijednosti nepoznate
 
 
@@ -278,7 +281,7 @@ _TORQUE_DEF = MapDef(
     offset_val    = 0.0,
     unit          = "%",
     axis_x        = _RPM_AXIS_16,
-    axis_y        = _LOAD_AXIS_12,   # 16 redova ali axis def ima 12 — TODO: identificirati
+    axis_y        = _LOAD_AXIS_16,
     raw_min       = 80,
     raw_max       = 200,
     mirror_offset = 0x518,
@@ -535,10 +538,17 @@ class MapFinder:
 
             raw = list(data[addr:addr + IGN_STRIDE])
 
-            # Validacija: sve vrijednosti u fizikalnom opsegu (12°–42° BTDC)
-            if not all(16 <= v <= 58 for v in raw):
-                if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: validacija pala — preskacam")
-                continue
+            # Validacija: knock mape (idx 8,9) imaju retard delta 0-40,
+            # normalne timing mape imaju raspon 16-58 (12°–43.5° BTDC)
+            is_knock = idx in (8, 9)
+            if is_knock:
+                if not all(0 <= v <= 48 for v in raw):
+                    if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: knock validacija pala — preskacam")
+                    continue
+            else:
+                if not all(16 <= v <= 58 for v in raw):
+                    if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: validacija pala — preskacam")
+                    continue
 
             # Mora biti nekakva varijacija (nije sve ista vrijednost)
             if max(raw) - min(raw) < 2:
