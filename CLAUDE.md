@@ -30,6 +30,7 @@
 - Svi importi su APSOLUTNI (from core.engine, ne from ..core.engine)
 - Pokretati testove iz me_suite root foldera
 - CAL regija je read-only — ne pisati tamo!
+- **GitHub je backup — NIKADA ne commitati niti pushati na GitHub. To radi isključivo korisnik.**
 ```
 
 Sa ovim fajlom, Claude zna SVE o projektu od prve poruke — nema potrebe da svaki put objašnjavaš kontekst.
