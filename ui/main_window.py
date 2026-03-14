@@ -28,8 +28,9 @@ from PyQt6.QtWidgets import (
     QLabel, QTabWidget, QTableWidget, QTableWidgetItem, QMessageBox,
     QProgressBar, QFrame, QPushButton, QHeaderView, QScrollArea,
     QLineEdit, QToolBar, QTextEdit, QGroupBox, QSizePolicy,
+    QListWidget, QListWidgetItem,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence
 
 from core.engine import ME17Engine

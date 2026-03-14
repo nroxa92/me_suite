@@ -103,6 +103,12 @@ _RPM_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
 _RPM_AXIS_16 = AxisDef(count=16, byte_order="BE", dtype="u16",
                         scale=1.0, unit="rpm", values=_RPM_16)
 
+# Osa opterecenja — pretpostavlja se MAP% ili mg/stroke (12 tocaka, nepoznate vrijednosti)
+# Za Rotax ACE 1630 s superchargerom: MAP > 100% je moguc (boost)
+# Za tocne vrijednosti potreban je A2L/ASAP2 fajl
+_LOAD_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
+                         scale=1.0, unit="%MAP", values=None)  # vrijednosti nepoznate
+
 
 # ─── RPM osa definicija ───────────────────────────────────────────────────────
 
@@ -110,14 +116,18 @@ _RPM_SIG = bytes([0x02,0x00, 0x04,0x00, 0x06,0x00,
                   0x08,0x00, 0x0A,0x00, 0x0C,0x00])
 
 _RPM_AXIS_DEF = MapDef(
-    name        = "rpm_axis",
-    description = "RPM osa — 16 tacaka, 512–8448 rpm (3× mirror)",
+    name        = "RPM osa (globalna)",
+    description = (
+        "Globalna RPM osa za sve 2D mape — 16 tocaka, 512–8448 rpm. "
+        "Promjena ove ose mijenja X-os svih mapa koje je koriste (ignition, torque). "
+        "Postoje 3 identicne kopije (mirror) u binarnom fajlu."
+    ),
     category    = "axis",
     rows=1, cols=16,
     byte_order  = "BE", dtype = "u16",
     scale       = 1.0, unit = "rpm",
     raw_min     = 256, raw_max = 9000,
-    notes       = "Potvrdjeno: ORI @ 0x024F46 / 0x025010 / 0x0250DC",
+    notes       = "Potvrdjeno: 3× mirror @ 0x024F46 / 0x025010 / 0x0250DC",
 )
 
 
@@ -155,49 +165,61 @@ IGN_BASE   = 0x02B730
 IGN_STRIDE = 144          # 12 × 12 × 1 bajt (u8)
 IGN_COUNT  = 16
 
-# Pretpostavljeni nazivi (3 cilindra × 5 uvjeta + 1 global)
-# Redoslijed ce biti potvrđen analizom podataka
+# Nazivi ignition mapa — 16 mapa svakih 144B (12×12 u8, 0.75°/bit):
+#   00-07  Osnovna timing mapa (razliciti uvjeti: toplina, load, boost...)
+#   08-09  Knock delta/trim — POTVRDJENO: negativni pomaci, manji raspon = retard korekcija
+#   10-15  Pomocna mapa (neidentificirana: moguce cold start, decel, overrun)
+# VAZNO: uvjeti i redoslijed po cilindru NISU verificirani bez A2L fajla.
 _IGN_NAMES = [
-    "ign_cyl1_normal",  # 0
-    "ign_cyl2_normal",  # 1
-    "ign_cyl3_normal",  # 2
-    "ign_cyl1_hot",     # 3
-    "ign_cyl2_hot",     # 4
-    "ign_cyl3_hot",     # 5
-    "ign_cyl1_knock",   # 6
-    "ign_cyl2_knock",   # 7
-    "ign_cyl3_knock",   # 8
-    "ign_cyl1_decel",   # 9
-    "ign_cyl2_decel",   # 10
-    "ign_cyl3_decel",   # 11
-    "ign_enrich_1",     # 12
-    "ign_enrich_2",     # 13
-    "ign_enrich_3",     # 14
-    "ign_global",       # 15
+    "Paljenje — Osnovna 1",          # 00
+    "Paljenje — Osnovna 2",          # 01
+    "Paljenje — Osnovna 3",          # 02
+    "Paljenje — Osnovna 4",          # 03
+    "Paljenje — Osnovna 5",          # 04
+    "Paljenje — Osnovna 6",          # 05
+    "Paljenje — Osnovna 7",          # 06
+    "Paljenje — Osnovna 8",          # 07
+    "Paljenje — Knock korekcija 1",  # 08  POTVRDJENO: knock delta/trim mapa
+    "Paljenje — Knock korekcija 2",  # 09  POTVRDJENO: knock delta/trim mapa
+    "Paljenje — Pomocna 1",          # 10  neidentificirana
+    "Paljenje — Pomocna 2",          # 11  neidentificirana
+    "Paljenje — Pomocna 3",          # 12  neidentificirana
+    "Paljenje — Pomocna 4",          # 13  neidentificirana
+    "Paljenje — Pomocna 5",          # 14  neidentificirana
+    "Paljenje — Pomocna 6",          # 15  neidentificirana
 ]
 
 def _make_ign_def(idx: int) -> MapDef:
     addr = IGN_BASE + idx * IGN_STRIDE
+    is_knock = idx in (8, 9)
     return MapDef(
         name         = _IGN_NAMES[idx],
-        description  = f"Ignition map #{idx:02d} — {_IGN_NAMES[idx]} @ 0x{addr:06X}",
+        description  = (
+            f"Korekcija predpaljenja za knock/detonaciju #{idx-7} — "
+            "negativne vrijednosti = kasnjenje (retard). "
+            "Automatski se oduzima od osnovne mape pri detekciji detonacije."
+            if is_knock else
+            f"Kut predpaljenja (timing advance) — mapa #{idx:02d}. "
+            "Osi: RPM (x) × opterecenje/MAP (y). "
+            "Razlicite mape aktivne su za razlicite uvjete (toplina, boost, stanje motora)."
+        ),
         category     = "ignition",
         rows=12, cols=12,
-        byte_order   = "BE",    # single byte, endian nebitan
+        byte_order   = "BE",
         dtype        = "u8",
-        scale        = 0.75,    # °/bit
+        scale        = 0.75,    # 0.75°/bit
         offset_val   = 0.0,
-        unit         = "°BTDC",
+        unit         = "°BTDC" if not is_knock else "°",
         axis_x       = _RPM_AXIS_12,
-        axis_y       = None,    # Load osa nepoznata
-        raw_min      = 16,      # 12° BTDC minimum
-        raw_max      = 56,      # 42° BTDC maksimum (sigurnosni limit)
+        axis_y       = _LOAD_AXIS_12,
+        raw_min      = 0  if is_knock else 16,
+        raw_max      = 40 if is_knock else 56,
         mirror_offset= 0,
         notes        = (
-            f"Ignition mapa #{idx:02d}. "
-            "Scale: 0.75°/bit (raw 34 = 25.5° BTDC). "
-            "ORI: 24–33.75°, STG2: 25.5–36.75°. "
-            "Load osa nije identificirana — vjerovatno MAP% ili mg/stroke."
+            f"Adresa: 0x{addr:06X}. Scale: 0.75°/bit. "
+            + ("KNOCK TRIM: retard delta oduzet od osnove pri detonaciji. " if is_knock else
+               "ORI: 24–33.75° BTDC, STG2: do 36.75° BTDC. ")
+            + "Os Y: pretpostavljeno MAP/opterecenje, nije verificirano bez A2L."
         ),
     )
 
@@ -211,23 +233,29 @@ INJ_MIRROR        = 0x02451C
 INJ_MIRROR_OFFSET = INJ_MIRROR - INJ_MAIN   # 0x180
 
 _INJ_DEF = MapDef(
-    name          = "injection_duration",
-    description   = "Injection duration mapa — trajanje ubrizgavanja, 12×32 u16 LE",
+    name          = "Ubrizgavanje — pulsna sirina",
+    description   = (
+        "Trajanje ubrizgavanja (pulsna sirina injektora) — 12×32 tablica. "
+        "Vece vrijednosti = vise goriva. "
+        "Osi: pretpostavljeno RPM (stupci) × opterecenje/MAP (redovi). "
+        "ORI max ~49151, STG2 saturiran na 65535 (agresivan tune)."
+    ),
     category      = "injection",
     rows=12, cols=32,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0,
     offset_val    = 0.0,
-    unit          = "raw",      # fizikalna jedinica nepoznata (μs ili 0.1μs)
-    axis_x        = None,       # 32 stupca — os nepoznata
-    axis_y        = None,       # 12 redova — os nepoznata
+    unit          = "raw [µs?]",   # fizikalna jedinica nepoznata bez A2L
+    axis_x        = None,          # 32 stupca — nepoznata os (vjerojatno RPM prosireniji)
+    axis_y        = _LOAD_AXIS_12, # 12 redova — opterecenje/MAP
     raw_min       = 0,
     raw_max       = 0xFFFF,
     mirror_offset = INJ_MIRROR_OFFSET,
     notes         = (
         f"Main @ 0x{INJ_MAIN:06X}, mirror @ 0x{INJ_MIRROR:06X} (+0x{INJ_MIRROR_OFFSET:X}). "
-        "ORI max ~49151, STG2 max 65535 (saturirano — agresivan tune). "
-        "Fizikalna jedinica nepoznata bez A2L fajla (vjerovatno μs ili 0.1μs)."
+        "ORI max ~49151, STG2 max 65535. "
+        "Fizikalna jedinica nepoznata bez A2L (vjerojatno µs ili 0.1µs). "
+        "32 stupca = sirniji RPM raspon od ignition (12 stupaca)."
     ),
 )
 
@@ -235,23 +263,31 @@ _INJ_DEF = MapDef(
 # ─── Torque mapa ─────────────────────────────────────────────────────────────
 
 _TORQUE_DEF = MapDef(
-    name          = "torque_efficiency",
-    description   = "Torque efficiency — faktor momenta 16×16, Q8 BE (0x80=100%)",
+    name          = "Moment — faktor ogranicenja [%]",
+    description   = (
+        "Faktor ogranicenja momenta — 16×16 tablica (Q8 format). "
+        "ECU mnozi zahtijevani moment s ovim faktorom. "
+        "100% = puni moment, <100% = ogranicenje (limp mode, TOPS, toplinski). "
+        "Osi: RPM (x) × opterecenje/MAP (y). "
+        "Format: raw MSB / 128 = faktor (0x80=1.0=100%)."
+    ),
     category      = "torque",
     rows=16, cols=16,
     byte_order    = "BE", dtype = "u16",
     scale         = 1.0 / 128.0,
     offset_val    = 0.0,
-    unit          = "factor",
+    unit          = "%",
     axis_x        = _RPM_AXIS_16,
-    axis_y        = None,
+    axis_y        = _LOAD_AXIS_12,   # 16 redova ali axis def ima 12 — TODO: identificirati
     raw_min       = 80,
     raw_max       = 200,
     mirror_offset = 0x518,
     notes         = (
         "Main @ 0x02A0D8, mirror @ 0x02A5F0 (+0x518). "
-        "LSB uvijek 0x00 — podatak je u MSB bajtu. "
-        "0x80=128=1.0=100%, ORI: 93–120%, STG2: 93–123%."
+        "LSB uvijek 0x00 — podatak samo u MSB. "
+        "ORI raspon: 93–120%, STG2: 93–123%. "
+        "Povecanje vrijednosti = vise momenta (deaktivacija ogranicenja). "
+        "Paziti: TOPS sistem koristi ovu tablicu za zastitu."
     ),
 )
 
@@ -263,23 +299,31 @@ LAM_MIRROR        = 0x026C08
 LAM_MIRROR_OFFSET = LAM_MIRROR - LAM_MAIN   # 0x518
 
 _LAMBDA_DEF = MapDef(
-    name          = "lambda_correction",
-    description   = "Lambda correction mapa — AFR korekcija 12×18, Q15 LE",
+    name          = "Lambda — ciljni AFR (open-loop)",
+    description   = (
+        "Ciljni lambda faktor za ubrizgavanje — 12×18 tablica (Q15 LE). "
+        "Rotax ACE 1630/900 NEMA fizicku lambda sondu — ovo je open-loop AFR cilj "
+        "preracunat iz mape (ne iz mjerenja). "
+        "lambda < 1.0 = bogata smjesa (vise goriva, hladjenje klipa, puni gas). "
+        "lambda > 1.0 = siromasna smjesa (stednja, parcijalno opterecenje). "
+        "Osi: RPM (x) × opterecenje/MAP (y)."
+    ),
     category      = "lambda",
     rows=12, cols=18,
     byte_order    = "LE", dtype = "u16",
-    scale         = 1.0 / 32768.0,   # Q15: 32768 = 1.0 (λ=1.0 = stoichiometric)
+    scale         = 1.0 / 32768.0,   # Q15: 32768 = 1.0
     offset_val    = 0.0,
     unit          = "λ",
-    axis_x        = None,
-    axis_y        = None,
-    raw_min       = 16384,    # λ = 0.5 (bogat limit)
-    raw_max       = 65535,    # λ ≈ 2.0 (siromasan limit)
+    axis_x        = None,    # 18 stupaca — nepoznata os (vise od 12 RPM tocaka)
+    axis_y        = _LOAD_AXIS_12,
+    raw_min       = 16384,   # λ = 0.50 (max bogato)
+    raw_max       = 65535,   # λ = 2.00 (max siromasno)
     mirror_offset = LAM_MIRROR_OFFSET,
     notes         = (
         f"Main @ 0x{LAM_MAIN:06X}, mirror @ 0x{LAM_MIRROR:06X} (+0x{LAM_MIRROR_OFFSET:X}). "
-        "Q15 format: raw / 32768 = lambda faktor. "
-        "32768 = λ1.0 (stoichiometric), tipicni opseg 0.8–1.2."
+        "Q15 format: raw / 32768 = lambda. 32768 = λ1.0 (stehiometrijsko). "
+        "Tipicni raspon: 0.80 (bogato, puni gas) do 1.05 (malo siromasno, stednja). "
+        "NEMA feedback loop — promjena ove mape direktno mijenja AFR."
     ),
 )
 
