@@ -184,6 +184,7 @@ class MapLibraryPanel(QWidget):
         "lambda":      ("Lambda / AFR",  "#64B5F6"),
         "rpm_limiter": ("Rev Limiter",   "#EF5350"),
         "axis":        ("RPM Axes",      "#BA68C8"),
+        "dtc":         ("DTC / Faults",  "#F06292"),
         "misc":        ("Other",          "#90A4AE"),
     }
 

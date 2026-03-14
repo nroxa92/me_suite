@@ -1,5 +1,33 @@
 # ME17Suite — Work Log
 
+## 2026-03-14 17:30 — DTC analiza + implementacija, README, CLAUDE.md
+
+### Što je napravljeno
+- **DTC analiza**: scan svih dostupnih fajlova (ori_300, rxpx300_17, wakepro_230). Potvrđene adrese:
+  - P1550 enable @ 0x02108A (10B), code @ 0x021888, mirror @ 0x021BEE (ori_300)
+  - P0523 enable @ 0x02108E (11B), code @ 0x02188C, mirror @ 0x021BF2 (ori_300)
+  - CS se NE mijenja za DTC OFF (samo CODE promjene)
+- **map_finder.py**: dodana DTC kategorija, `_DTC_P1550_ENABLE_DEF`, `_DTC_P0523_ENABLE_DEF`, `_scan_dtc()` metoda
+- **ui/main_window.py**: dodana "DTC / Faults" (#F06292) kategorija u `CATEGORIES` dict
+- **README.md**: potpuno prepisano na hrvatskom kao opis alata
+- **CLAUDE.md**: dodano "isključivo HRVATSKI" pravilo i "Work Log — OBAVEZNO" sekcija
+
+### Faze projekta (ažurirano)
+- Faza 1 ✅ — map_finder: 30 mapa (ignition, injection, lambda, torque, rev limiter, RPM osi)
+- Faza 2 ✅ — GUI redesign: search+tree, heat-map tablica, properties panel
+- Faza 3 ✅ — Undo/Redo, CSV export, direktni unos
+- Faza 4 ✅ — Checksum: CRC32-HDLC closed-form, residua 0x6E23044F, MITM inverz
+- Faza 5 ✅ — Analiza fajlova (unknow/, DTC OFF/), DTC struktura identificirana
+- Faza 6 🔶 — DTC OFF GUI: implementacija + testiranje, pronalazak svih DTC adresa
+
+### TODO za Fazu 6
+- [ ] core/dtc.py — `dtc_off(data, dtc_code)` funkcija (nulira enable + code bajte)
+- [ ] Scan preostalih DTC-ova u ori_300 (cjelokupna enable tablica mapirana)
+- [ ] GUI: DTC tab/panel za pregledanje i isključivanje
+- [ ] Testiranje na svim dostupnim fajlovima
+
+---
+
 ## 2026-03-13 — Inicijalna analiza projekta
 
 ### Sto sam radio

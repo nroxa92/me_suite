@@ -284,6 +284,62 @@ _LAMBDA_DEF = MapDef(
 )
 
 
+# ─── DTC definicije ──────────────────────────────────────────────────────────
+#
+# TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
+# (SW 10SW066726). Potrebna provjera na svakom novom fajlu.
+#
+# Struktura DTC u ME17.8.5:
+#   Enable tablica @ ~0x021080: svaki bajt = jedan DTC senzor
+#     0x06 = aktivno praćenje, 0x05 = djelomično, 0x04 = samo upozorenje, 0x00 = isključeno
+#   DTC code storage (LE u16): dva mjesta (main + mirror)
+#
+# Referentne adrese (rxpx300_17, SW 10SW066726 — provjereno diff analizom):
+#   P1550 enable:  0x02108A (10B)  |  P1550 code: 0x02187E + mirror 0x021BE0
+# Verificirane adrese za ori_300:
+#   P1550 code @ 0x021888, mirror @ 0x021BEE
+#   P0523 code @ 0x02188C, mirror @ 0x021BF2
+
+# P1550 — senzor tlaka punjenja (turbo boost sensor)
+_DTC_P1550_ENABLE_ADDR = 0x02108A   # 10B enable flags (zajednicki za vise DTC-ova)
+_DTC_P1550_CODE_ADDR   = 0x021888   # 2B LE u16 = 0x1550 (ori_300 adresa)
+_DTC_P1550_MIRROR_ADDR = 0x021BEE   # 2B LE u16 mirror (ori_300 adresa)
+
+_DTC_P1550_ENABLE_DEF = MapDef(
+    name        = "DTC P1550 — Enable flags",
+    description = "Bajti koji kontroliraju nadzor senzora tlaka punjenja (P1550). "
+                  "0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno. "
+                  "TODO: adresa ovisna o SW verziji — provjeriti za svaki fajl.",
+    category    = "dtc",
+    rows        = 1,
+    cols        = 10,
+    byte_order  = "LE",
+    dtype       = "u8",
+    scale       = 1.0,
+    unit        = "",
+    notes       = f"Enable @ 0x{_DTC_P1550_ENABLE_ADDR:06X} (10B), "
+                  f"code @ 0x{_DTC_P1550_CODE_ADDR:06X}, mirror @ 0x{_DTC_P1550_MIRROR_ADDR:06X}",
+)
+
+_DTC_P0523_CODE_ADDR   = 0x02188C   # 2B LE u16 = 0x0523 (ori_300)
+_DTC_P0523_MIRROR_ADDR = 0x021BF2   # 2B LE u16 mirror (ori_300)
+
+_DTC_P0523_ENABLE_DEF = MapDef(
+    name        = "DTC P0523 — Enable flags",
+    description = "Bajti koji kontroliraju nadzor senzora tlaka ulja (P0523). "
+                  "0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno. "
+                  "TODO: adresa ovisna o SW verziji — provjeriti za svaki fajl.",
+    category    = "dtc",
+    rows        = 1,
+    cols        = 11,
+    byte_order  = "LE",
+    dtype       = "u8",
+    scale       = 1.0,
+    unit        = "",
+    notes       = f"code @ 0x{_DTC_P0523_CODE_ADDR:06X}, mirror @ 0x{_DTC_P0523_MIRROR_ADDR:06X}",
+)
+
+
 # ─── Scanner ──────────────────────────────────────────────────────────────────
 
 class MapFinder:
@@ -309,6 +365,7 @@ class MapFinder:
         self._scan_injection(progress_cb)
         self._scan_torque(progress_cb)
         self._scan_lambda(progress_cb)
+        self._scan_dtc(progress_cb)
         return self.results
 
     # ── RPM Axis scan ─────────────────────────────────────────────────────────
@@ -556,6 +613,45 @@ class MapFinder:
         disp_max = max(vals) / 32768.0
         if cb: cb(f"  Lambda @ 0x{addr:06X}  12x18  lam=[{disp_min:.3f}-{disp_max:.3f}]"
                   f"  mirror @ 0x{LAM_MIRROR:06X}")
+
+    # ── DTC scanner ──────────────────────────────────────────────────────────
+
+    def _scan_dtc(self, cb=None):
+        """
+        Čita DTC enable bajte i kodove iz poznatih adresa.
+        TODO (Faza 6): adrese ovise o SW verziji — trenutno kalibrirano za ori_300.
+        """
+        if cb: cb("Tražim DTC enable tablice...")
+        data = self.eng.get_bytes()
+
+        # P1550 — senzor tlaka punjenja
+        enable_vals = [data[_DTC_P1550_ENABLE_ADDR + i] for i in range(10)]
+        code_le = data[_DTC_P1550_CODE_ADDR] | (data[_DTC_P1550_CODE_ADDR + 1] << 8)
+        mirror_le = data[_DTC_P1550_MIRROR_ADDR] | (data[_DTC_P1550_MIRROR_ADDR + 1] << 8)
+        active = any(b in (0x04, 0x05, 0x06) for b in enable_vals) or code_le == 0x1550
+        if active:
+            self.results.append(FoundMap(
+                defn    = _DTC_P1550_ENABLE_DEF,
+                address = _DTC_P1550_ENABLE_ADDR,
+                sw_id   = self._sw(),
+                data    = enable_vals,
+            ))
+            if cb: cb(f"  DTC P1550 @ 0x{_DTC_P1550_ENABLE_ADDR:06X}  code=0x{code_le:04X}  "
+                      f"mirror=0x{mirror_le:04X}  enable={[hex(b) for b in enable_vals]}")
+
+        # P0523 — senzor tlaka ulja
+        enable_vals_0523 = [data[0x02108E + i] for i in range(11)]
+        code_le_0523 = data[_DTC_P0523_CODE_ADDR] | (data[_DTC_P0523_CODE_ADDR + 1] << 8)
+        active_0523 = any(b in (0x04, 0x05, 0x06) for b in enable_vals_0523) or code_le_0523 == 0x0523
+        if active_0523:
+            self.results.append(FoundMap(
+                defn    = _DTC_P0523_ENABLE_DEF,
+                address = 0x02108E,
+                sw_id   = self._sw(),
+                data    = enable_vals_0523,
+            ))
+            if cb: cb(f"  DTC P0523 @ 0x{0x02108E:06X}  code=0x{code_le_0523:04X}  "
+                      f"enable={[hex(b) for b in enable_vals_0523]}")
 
     # ── Diff-guided scanner ───────────────────────────────────────────────────
 

@@ -21,7 +21,8 @@
       "Bash(done)",
       "Bash(ls:*)",
       "Bash(grep:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(find:*)"
     ]
   }
 }

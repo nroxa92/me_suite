@@ -1,5 +1,10 @@
 # ME17Suite — ECU Tuning Tool
 
+## Jezik
+- **ISKLJUČIVO HRVATSKI** — ne srpski, ne bosanski!
+- Pisati "pronađen" ne "pronašao se", "nije" ne "nema", "uključuje" ne "sadrži" (srpski oblici)
+- Cijeli program (kod, komentari, UI) može biti engleski, ali komunikacija s korisnikom = SAMO HRVATSKI
+
 ## O Projektu
 - Bosch ME17.8.5 ECU tuning software za Rotax ACE 1630 (Sea-Doo 300)
 - MCU: Infineon TC1762 (TriCore, Little Endian)
