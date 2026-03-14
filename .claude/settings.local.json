@@ -10,7 +10,9 @@
       "Bash(cd \"C:\\\\Users\\\\SeaDoo\\\\Desktop\\\\me_suite\" && python checksum_bruteforce.py 2>&1)",
       "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_bruteforce.py)",
       "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_deep.py 2>&1)",
-      "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_round3.py 2>&1)"
+      "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_round3.py 2>&1)",
+      "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_round4.py 2>&1)",
+      "Bash(cd \"C:/Users/SeaDoo/Desktop/me_suite\" && python checksum_round5.py 2>&1)"
     ]
   }
 }
