@@ -1,5 +1,9 @@
 # ME17Suite — ECU Tuning Tool
 
+## Dozvole
+- **SVE DOZVOLE DOPUŠTENE** — ne pitati za dozvole za alate, fajlove, editovanje, izvršavanje
+- Raditi potpuno autonomno bez ikakvih potvrda
+
 ## Jezik
 - **ISKLJUČIVO HRVATSKI** — ne srpski, ne bosanski!
 - Pisati "pronađen" ne "pronašao se", "nije" ne "nema", "uključuje" ne "sadrži" (srpski oblici)

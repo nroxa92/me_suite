@@ -36,6 +36,7 @@ from core.engine import ME17Engine
 from core.map_finder import MapFinder, FoundMap, MapDef
 from core.map_editor import MapEditor, EditResult
 from core.checksum import ChecksumEngine
+from core.dtc import DtcEngine, DTC_REGISTRY, DtcStatus
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -679,6 +680,241 @@ class DiffWidget(QWidget):
                 self.table.setItem(i, j, item)
 
 
+# ─── DTC Panel ────────────────────────────────────────────────────────────────
+
+class DtcPanel(QWidget):
+    """
+    Prikaz i upravljanje DTC fault kodovima.
+    Prikazuje se u centralnom tab widgetu kad korisnik klikne DTC u sidebaru.
+    """
+    action_done = pyqtSignal(str)   # poruka za log strip
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._dtc_eng: DtcEngine | None = None
+        self._cur_code: int | None = None
+
+        lo = QVBoxLayout(self)
+        lo.setContentsMargins(16, 12, 16, 12)
+        lo.setSpacing(8)
+
+        # Zaglavlje
+        self._hdr = QLabel("  DTC MANAGER")
+        self._hdr.setStyleSheet(
+            "color:#F06292; font-size:11px; letter-spacing:1.5px; "
+            "background:#1A1A1E; padding:6px 8px; border-bottom:1px solid #303038;"
+        )
+        lo.addWidget(self._hdr)
+
+        # Status row
+        status_row = QHBoxLayout(); status_row.setSpacing(16)
+
+        self._code_lbl = QLabel("—")
+        self._code_lbl.setStyleSheet("color:#F06292; font-size:18px; font-weight:bold;")
+        status_row.addWidget(self._code_lbl)
+
+        self._name_lbl = QLabel("")
+        self._name_lbl.setStyleSheet("color:#808090; font-size:12px;")
+        status_row.addWidget(self._name_lbl)
+
+        status_row.addStretch()
+
+        self._status_lbl = QLabel("")
+        self._status_lbl.setStyleSheet("color:#81C784; font-size:12px; font-weight:bold;")
+        status_row.addWidget(self._status_lbl)
+
+        lo.addLayout(status_row)
+
+        # Separator
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#303038;")
+        lo.addWidget(sep)
+
+        # Enable bajti
+        grp_enable = QGroupBox("Enable bajti (0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno)")
+        grp_enable.setStyleSheet(
+            "QGroupBox { color:#606070; border:1px solid #303038; border-radius:3px; "
+            "margin-top:8px; padding-top:10px; font-size:10px; } "
+            "QGroupBox::title { subcontrol-origin:margin; left:8px; padding:0 4px; }"
+        )
+        grp_lo = QVBoxLayout(grp_enable)
+        self._enable_tbl = QTableWidget(1, 1)
+        self._enable_tbl.setMaximumHeight(72)
+        self._enable_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self._enable_tbl.verticalHeader().hide()
+        self._enable_tbl.setStyleSheet(
+            "QTableWidget { background:#1A1A1E; border:none; gridline-color:#303038; }"
+            "QHeaderView::section { background:#202028; color:#505060; border:none; padding:2px 6px; }"
+        )
+        grp_lo.addWidget(self._enable_tbl)
+        lo.addWidget(grp_enable)
+
+        # Code storage
+        grp_code = QGroupBox("Code storage (LE u16)")
+        grp_code.setStyleSheet(grp_enable.styleSheet())
+        code_lo = QGridLayout(grp_code)
+        code_lo.addWidget(QLabel("Main:"),   0, 0)
+        self._code_main_lbl = QLabel("—")
+        self._code_main_lbl.setStyleSheet("color:#4FC3F7;")
+        code_lo.addWidget(self._code_main_lbl, 0, 1)
+        code_lo.addWidget(QLabel("Mirror:"), 1, 0)
+        self._code_mirror_lbl = QLabel("—")
+        self._code_mirror_lbl.setStyleSheet("color:#4FC3F7;")
+        code_lo.addWidget(self._code_mirror_lbl, 1, 1)
+        code_lo.setColumnStretch(2, 1)
+        lo.addWidget(grp_code)
+
+        # Notes
+        self._notes_lbl = QLabel("")
+        self._notes_lbl.setStyleSheet("color:#484858; font-size:10px;")
+        self._notes_lbl.setWordWrap(True)
+        lo.addWidget(self._notes_lbl)
+
+        lo.addStretch()
+
+        # Gumbi
+        btn_row = QHBoxLayout(); btn_row.setSpacing(8)
+
+        self._btn_off = QPushButton("DTC OFF — Isključi")
+        self._btn_off.setStyleSheet(
+            "QPushButton { background:#5A1020; color:#F06292; border:1px solid #8B2030; "
+            "padding:8px 20px; border-radius:3px; font-weight:bold; } "
+            "QPushButton:hover { background:#6A1828; } "
+            "QPushButton:disabled { background:#2A2030; color:#484858; border-color:#303038; }"
+        )
+        self._btn_off.clicked.connect(self._do_off)
+        btn_row.addWidget(self._btn_off)
+
+        self._btn_all_off = QPushButton("Svi DTC OFF")
+        self._btn_all_off.setStyleSheet(
+            "QPushButton { background:#3A1020; color:#B06070; border:1px solid #6B2030; "
+            "padding:8px 16px; border-radius:3px; } "
+            "QPushButton:hover { background:#4A1828; } "
+            "QPushButton:disabled { background:#2A2030; color:#484858; border-color:#303038; }"
+        )
+        self._btn_all_off.clicked.connect(self._do_all_off)
+        btn_row.addWidget(self._btn_all_off)
+
+        btn_row.addStretch()
+
+        self._btn_on = QPushButton("DTC ON — Vrati")
+        self._btn_on.setStyleSheet(
+            "QPushButton { background:#1A3020; color:#81C784; border:1px solid #2B6030; "
+            "padding:8px 16px; border-radius:3px; } "
+            "QPushButton:hover { background:#1E3826; } "
+            "QPushButton:disabled { background:#202028; color:#484858; border-color:#303038; }"
+        )
+        self._btn_on.clicked.connect(self._do_on)
+        btn_row.addWidget(self._btn_on)
+
+        lo.addLayout(btn_row)
+
+        self._set_buttons_enabled(False)
+
+    def set_engine(self, eng: DtcEngine | None):
+        self._dtc_eng = eng
+        self._set_buttons_enabled(eng is not None)
+
+    def show_dtc(self, dtc_code: int):
+        """Prikaži status zadanog DTC-a."""
+        self._cur_code = dtc_code
+        if not self._dtc_eng:
+            return
+        status = self._dtc_eng.get_status(dtc_code)
+        if not status:
+            self._hdr.setText(f"  DTC P{dtc_code:04X} — NEPOZNAT")
+            return
+        self._refresh_display(status)
+
+    def _refresh_display(self, status: DtcStatus):
+        defn = status.defn
+        self._hdr.setText(f"  DTC — {defn.p_code}  {defn.name}")
+        self._code_lbl.setText(defn.p_code)
+        self._name_lbl.setText(defn.name)
+
+        if status.is_off:
+            self._status_lbl.setText("● OFF")
+            self._status_lbl.setStyleSheet("color:#4A9A5A; font-size:12px; font-weight:bold;")
+        else:
+            self._status_lbl.setText("● AKTIVAN")
+            self._status_lbl.setStyleSheet("color:#F06292; font-size:12px; font-weight:bold;")
+
+        # Enable tablica
+        n = len(status.enable_values)
+        self._enable_tbl.setColumnCount(n)
+        self._enable_tbl.setRowCount(1)
+        hdrs = [f"+{i}" for i in range(n)]
+        self._enable_tbl.setHorizontalHeaderLabels(hdrs)
+        for i, val in enumerate(status.enable_values):
+            item = QTableWidgetItem(f"0x{val:02X}")
+            if val == 0x00:
+                item.setForeground(QBrush(QColor("#4A9A5A")))
+            elif val == 0x06:
+                item.setForeground(QBrush(QColor("#F06292")))
+            else:
+                item.setForeground(QBrush(QColor("#FFB74D")))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._enable_tbl.setItem(0, i, item)
+
+        # Code labels
+        addr_main   = defn.code_addr
+        addr_mirror = defn.mirror_addr
+        self._code_main_lbl.setText(
+            f"0x{status.code_main:04X}  (addr 0x{addr_main:06X})"
+        )
+        self._code_mirror_lbl.setText(
+            f"0x{status.code_mirror:04X}  (addr 0x{addr_mirror:06X})"
+        )
+
+        self._notes_lbl.setText(defn.notes)
+        self._set_buttons_enabled(True)
+        self._btn_off.setEnabled(not status.is_off)
+        self._btn_on.setEnabled(status.is_off)
+
+    def _do_off(self):
+        if not self._dtc_eng or self._cur_code is None:
+            return
+        result = self._dtc_eng.dtc_off(self._cur_code)
+        msg = result.get("message", "")
+        if result["status"] in ("OK", "ALREADY_OFF"):
+            self.action_done.emit(f"DTC OFF: {msg}")
+            status = self._dtc_eng.get_status(self._cur_code)
+            if status:
+                self._refresh_display(status)
+        else:
+            self.action_done.emit(f"GREŠKA: {msg}")
+
+    def _do_all_off(self):
+        if not self._dtc_eng:
+            return
+        result = self._dtc_eng.dtc_off_all()
+        changed = result.get("changed", 0)
+        total = result.get("total", 0)
+        self.action_done.emit(f"Svi DTC OFF: {changed}/{total} isključeno.")
+        if self._cur_code:
+            status = self._dtc_eng.get_status(self._cur_code)
+            if status:
+                self._refresh_display(status)
+
+    def _do_on(self):
+        if not self._dtc_eng or self._cur_code is None:
+            return
+        result = self._dtc_eng.dtc_on(self._cur_code)
+        msg = result.get("message", "")
+        if result["status"] == "OK":
+            self.action_done.emit(f"DTC ON: {msg}")
+            status = self._dtc_eng.get_status(self._cur_code)
+            if status:
+                self._refresh_display(status)
+        else:
+            self.action_done.emit(f"GREŠKA: {msg}")
+
+    def _set_buttons_enabled(self, enabled: bool):
+        self._btn_off.setEnabled(enabled)
+        self._btn_on.setEnabled(enabled)
+        self._btn_all_off.setEnabled(enabled)
+
+
 # ─── Scan worker ──────────────────────────────────────────────────────────────
 
 class ScanWorker(QThread):
@@ -699,12 +935,13 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.eng1:   ME17Engine | None = None
-        self.eng2:   ME17Engine | None = None
-        self.editor: MapEditor  | None = None
-        self.maps1:  list[FoundMap]    = []
-        self.maps2:  list[FoundMap]    = []
-        self._cur:   FoundMap   | None = None
+        self.eng1:    ME17Engine | None = None
+        self.eng2:    ME17Engine | None = None
+        self.editor:  MapEditor  | None = None
+        self.dtc_eng: DtcEngine  | None = None
+        self.maps1:   list[FoundMap]    = []
+        self.maps2:   list[FoundMap]    = []
+        self._cur:    FoundMap   | None = None
 
         # Undo / Redo
         self._undo: list[UndoCmd] = []
@@ -781,12 +1018,16 @@ class MainWindow(QMainWindow):
         # ── Centar: mapa + hex + log (vertikalni split) ────────────────────
         center_vsplit = QSplitter(Qt.Orientation.Vertical)
 
-        # Tab widget (Mapa | Diff)
+        # Tab widget (Mapa | DTC | Diff)
         self.tabs = QTabWidget(); self.tabs.setDocumentMode(True)
         self.map_view = MapTableView()
         self.map_view.cell_clicked.connect(self._on_cell_click)
         self.map_view.btn_csv.clicked.connect(self._export_csv)
         self.tabs.addTab(self.map_view, "Mapa")
+
+        self.dtc_panel = DtcPanel()
+        self.dtc_panel.action_done.connect(lambda msg: self.log_strip.log(msg, "ok"))
+        self._dtc_tab = self.tabs.addTab(self.dtc_panel, "DTC")
 
         self.diff_widget = DiffWidget()
         self._diff_tab = self.tabs.addTab(self.diff_widget, "Diff")
@@ -864,6 +1105,7 @@ class MainWindow(QMainWindow):
         try:
             eng = ME17Engine(); info = eng.load(path)
             self.eng1 = eng; self.editor = MapEditor(eng)
+            self.dtc_eng = DtcEngine(eng); self.dtc_panel.set_engine(self.dtc_eng)
             name = Path(path).name
             self._file_lbl.setText(
                 f"  <b style='color:#4FC3F7'>{info.sw_id}</b>"
@@ -940,6 +1182,21 @@ class MainWindow(QMainWindow):
 
     def _on_map_selected(self, fm: FoundMap):
         self._cur = fm
+        if fm.defn.category == "dtc":
+            # DTC tab: prikaži DTC panel umjesto tablice mapa
+            dtc_code = DTC_REGISTRY and next(
+                (code for code, d in DTC_REGISTRY.items() if d.p_code in fm.defn.name),
+                None
+            )
+            if dtc_code and self.dtc_eng:
+                self.dtc_panel.show_dtc(dtc_code)
+                self.tabs.setCurrentIndex(self._dtc_tab)
+                if self.eng1: self.hex_strip.show(self.eng1, fm.address)
+                self.status.showMessage(
+                    f"DTC {fm.defn.name}  @  0x{fm.address:06X}  —  enable {fm.defn.cols}B"
+                )
+            return
+
         fm2 = next((m for m in self.maps2 if m.defn.name == fm.defn.name), None)
         self.map_view.show_map(fm, fm2)
         self.props.show_map_stats(fm)

@@ -1,5 +1,26 @@
 # ME17Suite — Work Log
 
+## 2026-03-14 18:15 — Faza 6: DTC OFF — backend + GUI panel kompletiran
+
+### Što je napravljeno
+- **core/dtc.py** — novi modul:
+  - `DtcDef` dataclass (code, name, enable_addr, enable_size, code_addr, mirror_addr)
+  - `DtcStatus` dataclass (is_active, is_off, status_str)
+  - `DtcEngine` klasa: `get_status()`, `dtc_off()`, `dtc_on()`, `dtc_off_all()`
+  - `DTC_REGISTRY`: P1550 + P0523 s verificiranim adresama za ori_300
+- **ui/main_window.py**:
+  - `DtcPanel` klasa — kompletni DTC panel s enable tablicou, code/mirror prikazom, OFF/ON gumbima
+  - "DTC" tab dodan u centralni `QTabWidget`
+  - `_on_map_selected` ažuriran: DTC kategorija → otvara DTC tab automatski
+  - `_load1` ažuriran: inicijalizira `DtcEngine` pri učitavanju fajla
+- Testirano: `dtc_off(P1550)` i `dtc_on(P1550)` rade ispravno na ori_300
+
+### Verificirano funkcionira
+- `dtc_off(0x1550)`: nulira 10 enable bajti + code + mirror → status "OFF"
+- `dtc_on(0x1550)`: vraća enable=0x06 na svim kanalima + code storage
+
+---
+
 ## 2026-03-14 17:30 — DTC analiza + implementacija, README, CLAUDE.md
 
 ### Što je napravljeno
