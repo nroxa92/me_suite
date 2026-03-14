@@ -244,4 +244,49 @@ Vrijednost @ 0x30 je Bosch proprietary algoritam iz BOOT koda.
 - `checksum_deep.py` — Round 3 (Adler, chained, hex dump)
 - `checksum_round3-6.py` — Round 3-6 (napredni testovi)
 
-*Azurirano: 2026-03-14*
+*Azurirano: 2026-03-14 09:10*
+
+---
+
+## 2026-03-14 10:xx — Faza 4: CHECKSUM PRONADEN + DTC OFF analiza
+
+### 10:00 — Checksum algoritam pronađen!
+
+**Metoda proboja**: Analiza 4 ECU fajla iz `_materijali/unknow/` (rxtx_260_524060.bin, rxt_514362) u kombinaciji s closed-form CRC tehnikom (CS uključen u izračun, ne nuliran).
+
+**Algoritam**: CRC32-HDLC (ISO-HDLC / standardni zlib CRC32)
+| Parametar | Vrijednost |
+|---|---|
+| Poly | 0xEDB88320 (reflected) |
+| Init / XorOut | 0xFFFFFFFF / 0xFFFFFFFF |
+| Regija | BOOT [0x0000, 0x7F00) = 0x7F00 bajta |
+| Tip | Closed-form — CS @ 0x30 uključen u izračun |
+| Residua | 0x6E23044F (fiksna, verificirano na 4 fajla) |
+
+**Ključna implikacija**: Promjena CODE mapa (0x10000-0x5FFFF) **ne zahtijeva** promjenu CS! CS se mijenja samo ako se mijenja BOOT (SW verzija, BOOT kod ili RSA potpis).
+
+**Implementirano** u `core/checksum.py`:
+- `verify_boot_crc()` — provjera residue
+- `compute_new_cs()` — meet-in-the-middle inverzni CRC za novi CS
+- Testirano: ori_300 CS točno reproduciran (0xE505BC0B ✓)
+
+### 13:xx — DTC OFF analiza
+
+Korisnik dodao `_materijali/DTC OFF/` s primjerima:
+- P0523 (Wake Pro 230): oil pressure sensor off
+- P1550 (RXP-X 300 17, SW 10SW004672): oil pressure DTC off
+
+**Potvrđeno**: Profesionalni DTC OFF alati NE mijenjaju CS (samo CODE → CS nepromijenjen).
+
+**DTC struktura** (pronađena za P1550 = naš motor):
+| Lokacija | Promjena | Opis |
+|---|---|---|
+| 0x02108A–0x021093 | 0x04–0x06 → 0x00 | DTC enable bits (10 bajtova) |
+| 0x02187E–0x02187F | 0x5015 → 0x0000 | DTC kod P1550 (LE u16 = 0x1550) |
+| 0x021BE0–0x021BE1 | 0x5015 → 0x0000 | Mirror DTC koda |
+
+**DTC enable tablica @ 0x021080**: svaki bajt = jedan DTC senzor; 0x06=aktivan, 0x05=djelomično, 0x04=warning-only, 0x00=ugašen.
+
+**U tijeku**: Analiza svih DTC lokacija u ori_300 za full DTC OFF implementaciju.
+
+*Azurirano: 2026-03-14 13:30*

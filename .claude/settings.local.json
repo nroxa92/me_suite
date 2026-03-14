@@ -18,7 +18,10 @@
       "Bash(do)",
       "Bash(echo \"=== $dir ===\")",
       "Read(//c/Users/SeaDoo/Desktop/me_suite/_materijal/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(python3:*)"
     ]
   }
 }

@@ -31,6 +31,12 @@
 - Pokretati testove iz me_suite root foldera
 - CAL regija je read-only — ne pisati tamo!
 - **GitHub je backup — NIKADA ne commitati niti pushati na GitHub. To radi isključivo korisnik.**
+
+## Work Log — OBAVEZNO
+- **UVIJEK ažurirati `work_log.md` nakon svake bitne promjene ili otkrića!**
+- Format unosa: `## YYYY-MM-DD HH:MM — Kratki opis`
+- Uključiti: što je napravljeno, koji fajlovi promijenjeni, ključni rezultati
+- Ažurirati i na početku sesije (što se nastavlja) i na kraju (što je dovršeno)
 ```
 
 Sa ovim fajlom, Claude zna SVE o projektu od prve poruke — nema potrebe da svaki put objašnjavaš kontekst.

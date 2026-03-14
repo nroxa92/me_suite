@@ -2,60 +2,45 @@
 ME17Suite — Checksum Engine
 Bosch ME17.8.5 / TC1762
 
-=== STATUS ISTRAGE (2026-03-14) — BRUTE-FORCE ZAKLJUCAK ===
+=== ALGORITAM PRONADEN (2026-03-14) ===
 
-Istrazivanim algoritmima (6 rundi, 100+ kombinacija):
-  - CRC32 Bosch (poly 0x04C11DB7) — sve varijante init/xorout/refin/refout
-  - zlib CRC32 — sve varijante
-  - Adler-32, Fletcher-32
-  - Additive sum u8/u16/u32 BE+LE, komplement, XOR-sum
-  - Byte-swapped (u32/u16) CRC varijante
-  - Word-by-word CRC (BE i LE rijeci)
-  - Chained CRC (BOOT -> CODE, CODE -> BOOT)
-  - MD5, SHA-1, SHA-256 (truncated)
-  Regije: CODE, BOOT, BOOT+CODE, CODE+CAL, sve kombinacije s/bez CS nuliranim
-  REZULTAT: 0 pogodaka. Algoritam je nestandardan/proprietaran.
+Algoritam: CRC32-HDLC (ISO-HDLC / zlib / "standard CRC32")
+  Poly:    0xEDB88320 (reflected 0x04C11DB7)
+  Init:    0xFFFFFFFF
+  XorOut:  0xFFFFFFFF
+  Regija:  0x0000-0x7EFF (0x7F00 bajta = BOOT region)
+  Tip:     CLOSED-FORM -- CS @ 0x30 je UKLJUCEN u izracun (ne nulirati)
+  Residua: 0x6E23044F (fiksna, verificirano na 4 razlicita ECU fajla)
+
+  Verificirani fajlovi:
+    ori_300     CS=0xE505BC0B  CRC(BOOT)=0x6E23044F OK
+    stg2_300    CS=0x9FC76FAD  CRC(BOOT)=0x6E23044F OK
+    rxtx_260    CS=0x53532E7D  CRC(BOOT)=0x6E23044F OK
+    rxt_514362  CS=0xE5D7955F  CRC(BOOT)=0x6E23044F OK
+
+  KLJUCNO: Promjena CODE mapa (0x10000-0x5FFFF) NE zahtijeva promjenu CS!
+  CS se mijenja samo ako se mijenja BOOT region (0x0000-0x7EFF):
+    - SW verzija (0x1C-0x23)
+    - Sam CS (0x30-0x33)
+    - RSA potpis (0x7E7C-0x7EFF, 132B) -- treba Bosch privatni kljuc
+
+  Za novi CS (ako BOOT promjene ne ukljucuju RSA potpis):
+    compute_new_cs() koristi meet-in-the-middle inverzni CRC.
 
 === ARHITEKTURA (potvrdjeno analizom) ===
 
-  Prava velicina BOOT segmenta = 0x0000-0x7EFF (32,512 B), NE 0xFFFF!
-    Header 0x38 STADD = 0x80000000 -> file 0x0000
-    Header 0x3C ENDADD = 0x80007EFF -> file 0x7EFF
+  BOOT:   0x0000-0x7EFF (32 511 B)
+    Header:     0x0000-0x003F
+    CS @ 0x30:  4 bajta (BE u32), closed-form CRC32-HDLC
+    BOOT kod:   0x0040-0x7E7B
+    RSA potpis: 0x7E7C-0x7EFF (132 B, Bosch privatni kljuc)
 
-  Gap 0x7F00-0xFFFF (33,024 B):
-    0x7F00-0x7F03: DEADBEEF terminator
-    0x7F04-0xFEFF: uglavnom nule (BOOT end padding)
-    0xFF00-0xFFFF: TC1762 bootloader kod (RAZLICIT od 0x0000-0x7EFF dijela)
-    IDENTICAN u ORI i STG2 — ne mijenja se s tuningom
+  Gap:    0x7F00-0xFFFF
+    0x7F00: DEADBEEF terminator
+    0xFF00: TC1762 BROM startup kod
 
-  Blok @ 0x7E7C (132B = 128B potpis + 4B DEADBEEF):
-    Sadrzi kriptografski potpis (vjerovatno RSA-1024 ili proprietarni hash)
-    RAZLICIT izmedju ORI i STG2 — generira se iz tuning podataka
-    NIJE moguće replicirati bez Bosch privatnog ključa / internog algoritma
-
-  FADEFACE/CAFEFAFE segment deskriptor @ 0x40:
-    0x48: 0x80012C78 -> file 0x12C78 (u CODE regiji)
-    0x4C: 0x80007E74 -> file 0x7E74 (tik ispred bloka @ 0x7E7C)
-
-=== HIPOTEZE ZA NASTAVAK ===
-
-  Vjerojatniji algoritmi:
-    H1: Proprietary Bosch algoritam u BOOT kodu (0x50-0x7E7B)
-        -> Treba: Ghidra + TriCore v1.3 plugin + disassembly
-    H2: Vrijednost na 0x30 nije integrity CRC nego security seed/konstanta
-        -> Mozda se ne mijenja pri tuning-u ORI-baziranih fajlova
-    H3: Flasher alat (KTAG/Flex) automatski racuna i upisuje
-        -> Ne trebamo implementirati u softveru
-
-  PRAKTICNI STATUS:
-    Empirijski podaci sugeriraju da ECU prihvaca fajlove bez ispravnog
-    checksuma (Source: work_log.md 2026-03-13).
-    Flash alati (KTAG, Flex, CMD Flash) automatski korigiraju checksum.
-
-=== DIFF BOOT ORI vs STG2 (140B u 3 bloka) ===
-    0x00001F  5B  -- SW ID: "66726" -> "40039"  [POTVRDJENO]
-    0x000030  4B  -- E505BC0B -> 9FC76FAD        [LOKACIJA, ALGORITAM NEPOZNAT]
-    0x007E7C  132B -- kriptografski potpis       [NEISTRAZIVO bez priv. kljuca]
+  CODE:   0x10000-0x5FFFF  (tuning mape)
+  CAL:    0x60000-0x177FFF (TriCore bytekod -- READ-ONLY)
 """
 
 from __future__ import annotations
@@ -63,96 +48,224 @@ import struct
 from .engine import ME17Engine, BOOT_START, BOOT_END, CODE_START, CODE_END
 
 
-# ─── CRC32 Bosch ──────────────────────────────────────────────────────────────
+# ─── CRC32-HDLC (ISO-HDLC / zlib standard) ────────────────────────────────────
 
-CRC32_POLY = 0x04C11DB7
-CRC32_INIT = 0xFFFFFFFF
-CRC32_XOR  = 0xFFFFFFFF
+_HDLC_POLY = 0xEDB88320
+_HDLC_INIT = 0xFFFFFFFF
+_HDLC_XOR  = 0xFFFFFFFF
+
+# Pozicija CS u fajlu
+CS_OFFSET = 0x30
+CS_SIZE   = 4
+
+# BOOT region za checksum
+BOOT_CS_START = 0x0000
+BOOT_CS_END   = 0x7F00   # ekskluzivno (0x0000-0x7EFF ukljucivo = 0x7F00 bajta)
+
+# Ocekivana CRC residua (closed-form)
+BOOT_CRC_RESIDUE = 0x6E23044F
 
 
-def _crc32_table() -> list[int]:
+def _build_hdlc_table() -> list[int]:
+    t = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = (c >> 1) ^ (_HDLC_POLY if c & 1 else 0)
+        t.append(c)
+    return t
+
+
+_HDLC_TABLE = _build_hdlc_table()
+
+
+def crc32_hdlc(data: bytes, init: int = _HDLC_INIT, xorout: int = _HDLC_XOR) -> int:
+    """CRC32-HDLC (standardni zlib CRC32). Poly=0xEDB88320, reflected."""
+    c = init & 0xFFFFFFFF
+    for b in data:
+        c = (c >> 8) ^ _HDLC_TABLE[(c ^ b) & 0xFF]
+    return (c ^ xorout) & 0xFFFFFFFF
+
+
+def _crc_step_no_xor(state: int, b: int) -> int:
+    """Jedan CRC32-HDLC korak bez finalnog XOR-a."""
+    return (state >> 8) ^ _HDLC_TABLE[(state ^ b) & 0xFF]
+
+
+def _crc_inverse_step(state_new: int, b: int) -> int:
+    """
+    Inverzni CRC32-HDLC korak.
+
+    Za reflected CRC32: state_new = (state >> 8) ^ T[(state ^ b) & 0xFF]
+    Inverzno: pronaci state takav da forward(state, b) = state_new.
+
+    Matematika:
+      Neka k = (state & 0xFF) ^ b (indeks tablice).
+      state_new >> 24 = T[k] >> 24  (jer (state>>8) ima gornji bajt = 0)
+      => k je odreden gornjim bajtom state_new.
+      state = ((state_new ^ T[k]) << 8) | (k ^ b)
+    """
+    target_hi = state_new >> 24
+    for k in range(256):
+        if (_HDLC_TABLE[k] >> 24) == target_hi:
+            state = (((state_new ^ _HDLC_TABLE[k]) << 8) & 0xFFFFFFFF) | (k ^ b)
+            # Verifikacija
+            if _crc_step_no_xor(state, b) == state_new:
+                return state
+    raise ValueError(f"Inverzni CRC: nema rjesenja za state_new=0x{state_new:08X}, b=0x{b:02X}")
+
+
+def verify_boot_crc(data: bytes | bytearray) -> tuple[bool, int]:
+    """
+    Provjeri BOOT CRC (closed-form).
+
+    Uzima 0x7F00 bajta od 0x0000, racuna CRC32-HDLC
+    (CS @ 0x30 je UKLJUCEN, ne nulirati).
+    Ispravan fajl daje residuu 0x6E23044F.
+
+    Returns:
+        (ok: bool, actual_crc: int)
+    """
+    region = bytes(data[BOOT_CS_START:BOOT_CS_END])
+    crc = crc32_hdlc(region)
+    return crc == BOOT_CRC_RESIDUE, crc
+
+
+def read_stored_cs(data: bytes | bytearray) -> int:
+    """Citaj pohranjeni CS @ 0x30 kao BE u32."""
+    return struct.unpack_from(">I", data, CS_OFFSET)[0]
+
+
+def compute_new_cs(data: bytes | bytearray) -> int:
+    """
+    Izracunaj ispravni CS za modificirani BOOT (bez promjene RSA potpisa).
+
+    Princip closed-form CRC:
+      CRC32-HDLC(head || X || tail) = RESIDUE
+    gdje X = 4 bajta CS @ 0x30.
+
+    Algoritam (meet-in-the-middle):
+      1. Naprijed: CRC stanje nakon head [0x0000, 0x0030)
+      2. Unatrag: invertirati CRC od RESIDUE kroz tail [0x0034, 0x7F00)
+      3. Pronaci 4 bajta X koji premostuju state1 -> state2
+
+    Note: Ako RSA potpis (0x7E7C-0x7EFF) ostaje nepromijenjen, X je
+    jedinstven i ECU ce prihvatiti novi fajl.
+
+    Returns:
+        Novi CS (u32) koji treba pohraniti na 0x30 kao BE.
+    """
+    data = bytes(data)
+
+    # Korak 1: CRC stanje (bez finalnog XOR) nakon head [0x0000, 0x0030)
+    head = data[BOOT_CS_START:CS_OFFSET]
+    state_after_head = _HDLC_INIT
+    for b in head:
+        state_after_head = _crc_step_no_xor(state_after_head, b)
+
+    # Korak 2: Invertirati od ciljnog finalnog stanja kroz tail [0x0034, 0x7F00)
+    # Ciljno finalno stanje: RESIDUE = final_state ^ XOR => final_state = RESIDUE ^ XOR
+    target_state = BOOT_CRC_RESIDUE ^ _HDLC_XOR
+    tail = data[CS_OFFSET + CS_SIZE:BOOT_CS_END]
+    state_before_tail = target_state
+    for b in reversed(tail):
+        state_before_tail = _crc_inverse_step(state_before_tail, b)
+
+    # Korak 3: Pronaci 4 bajta X takva da:
+    #   forward(X, state_after_head) = state_before_tail
+    # Meet-in-the-middle: 2 bajta naprijed + 2 bajta unatrag
+    x_bytes = _solve_4bytes_mitm(state_after_head, state_before_tail)
+
+    # x_bytes su bajtovi koji se "citaju" LE (jer je CRC reflected = LE byte order)
+    # Pohranjuju se na 0x30 u memorijskom redoslijedu (= LE u fajlu = BE citanje)
+    # Provjeri koji je format: spremi kao bajtove i provjeri verify_boot_crc
+    return struct.unpack(">I", x_bytes)[0]
+
+
+def _solve_4bytes_mitm(state_start: int, state_end: int) -> bytes:
+    """
+    Pronadi 4 bajta X takva da forward(X, state_start) = state_end.
+    Koristi meet-in-the-middle: 2 bajta naprijed, 2 bajta unatrag.
+
+    Returns: 4 bajta kao bytes objekt (u redoslijedu kakvom se zapisuju u fajl).
+    """
+    # Naprijed tablica: {state_after_2_bytes: (b0, b1)}
+    fwd = {}
+    for b0 in range(256):
+        s1 = _crc_step_no_xor(state_start, b0)
+        for b1 in range(256):
+            s2 = _crc_step_no_xor(s1, b1)
+            if s2 not in fwd:
+                fwd[s2] = (b0, b1)
+
+    # Unatrag: za svaki par (b3, b2), invertirati od state_end
+    for b3 in range(256):
+        s3 = _crc_inverse_step(state_end, b3)
+        for b2 in range(256):
+            s2_target = _crc_inverse_step(s3, b2)
+            if s2_target in fwd:
+                b0, b1 = fwd[s2_target]
+                return bytes([b0, b1, b2, b3])
+
+    raise ValueError("MITM: nema rjesenja za 4-bajtni CS!")
+
+
+# ─── Legacy Bosch CRC (za referencu) ──────────────────────────────────────────
+
+def crc32_bosch(data: bytes, init: int = 0xFFFFFFFF) -> int:
+    """CRC32 s Bosch polynomom (big-endian bit order). Za referencu."""
+    poly = 0x04C11DB7
     table = []
     for i in range(256):
         crc = i << 24
         for _ in range(8):
-            crc = ((crc << 1) & 0xFFFFFFFF) ^ CRC32_POLY if crc & 0x80000000 else (crc << 1) & 0xFFFFFFFF
+            crc = ((crc << 1) & 0xFFFFFFFF) ^ poly if crc & 0x80000000 else (crc << 1) & 0xFFFFFFFF
         table.append(crc)
-    return table
-
-
-_CRC_TABLE = _crc32_table()
-
-
-def crc32_bosch(data: bytes, init: int = CRC32_INIT) -> int:
-    """CRC32 s Bosch polynomom (big-endian bit order)."""
     crc = init
     for b in data:
         idx = ((crc >> 24) ^ b) & 0xFF
-        crc = ((crc << 8) & 0xFFFFFFFF) ^ _CRC_TABLE[idx]
-    return crc ^ CRC32_XOR
-
-
-def crc32_std(data: bytes) -> int:
-    """Standardni Python CRC32 (za usporedbu)."""
-    import zlib
-    return zlib.crc32(data) & 0xFFFFFFFF
-
-
-def simple_sum16(data: bytes) -> int:
-    """16-bit suma svih u16 BE."""
-    return sum((data[i] << 8) | data[i+1] for i in range(0, len(data)-1, 2)) & 0xFFFF
-
-
-def simple_sum32(data: bytes) -> int:
-    """32-bit suma svih u32 BE."""
-    return sum(struct.unpack_from(">I", data, i)[0] for i in range(0, len(data)-3, 4)) & 0xFFFFFFFF
+        crc = ((crc << 8) & 0xFFFFFFFF) ^ table[idx]
+    return crc ^ 0xFFFFFFFF
 
 
 # ─── ChecksumEngine ───────────────────────────────────────────────────────────
 
 class ChecksumEngine:
     """
-    Checksum analiza i (buduca) korekcija za ME17.8.5 / TC1762.
+    Checksum verifikacija i korekcija za ME17.8.5 / TC1762.
 
-    Trenutno stanje:
-      - verify()              — provjera SW ID + CAL integriteta
-      - analyze_boot_diff()   — usporedba BOOT regija dva fajla (istrazivanje)
-      - find_checksum_candidates() — heuristika za BOOT header kandidate
-      - try_crc_match()       — pokusaj pronalaska CRC32 u BOOT-u
-      - update_all()          — NOT_IMPLEMENTED (cekamo potvrdu lokacija)
+    Algoritam (pronaden 2026-03-14):
+      CRC32-HDLC, closed-form, BOOT region [0x0000, 0x7F00)
+      Residua: 0x6E23044F
+
+    VAZNO: Promjena CODE mapa NE zahtijeva promjenu checksuma!
+    CS se mijenja samo ako se mijenja BOOT (SW verzija, kod, ili potpis).
     """
 
     def __init__(self, engine: ME17Engine):
         self.eng = engine
 
-    # ── Verify ────────────────────────────────────────────────────────────────
-
     def verify(self) -> dict:
+        """Provjeri integritet fajla (CS + struktura)."""
         data = self.eng.get_bytes()
         results = {}
 
-        # BOOT CRC32 (za referencu, lokacija checksuma nepoznata)
-        boot = data[0x0000:0x10000]
-        results["boot_crc32_bosch"] = {
-            "value":  f"0x{crc32_bosch(boot):08X}",
-            "status": "UNKNOWN -- lokacija checksuma u BOOT-u nije identificirana",
+        ok, actual = verify_boot_crc(data)
+        stored = read_stored_cs(data)
+        results["boot_crc"] = {
+            "stored":    f"0x{stored:08X}",
+            "computed":  f"0x{actual:08X}",
+            "residue":   f"0x{BOOT_CRC_RESIDUE:08X}",
+            "status":    "OK" if ok else f"FAIL (got 0x{actual:08X})",
+            "algorithm": "CRC32-HDLC closed-form, BOOT [0x0000-0x7EFF]",
         }
 
-        # CODE CRC32 (ovo je vjerovatno sto se checksum-a)
-        code = data[CODE_START:CODE_END+1]
-        results["code_crc32_bosch"] = {
-            "value":  f"0x{crc32_bosch(code):08X}",
-            "status": "Izracunat -- trazi se gdje je pohranjen u BOOT-u",
-        }
-
-        # SW ID
         sw = data[0x001A:0x0024].rstrip(b"\x00").decode("ascii", errors="replace")
         results["sw_id"] = {
             "value":  sw,
-            "status": "OK" if sw.startswith("10SW") else "WARN",
+            "status": "OK" if (sw.startswith("10SW") or sw.startswith("10375")) else "WARN",
         }
 
-        # CAL integrity
         cal = data[0x060000:0x160000]
         non_zero = sum(1 for b in cal if b != 0)
         results["cal_integrity"] = {
@@ -162,168 +275,47 @@ class ChecksumEngine:
 
         return results
 
-    # ── BOOT diff analiza (Faza 4 istrazivanje) ───────────────────────────────
-
-    def analyze_boot_diff(self, other: "ME17Engine") -> dict:
-        """
-        Usporedi BOOT regije dva fajla (ORI vs STG2).
-        Grupira razlike u blokove -- to su kandidati za checksum lokacije.
-
-        Returns:
-          {
-            total_changed: int,
-            changed_bytes: [(offset, val_self, val_other), ...],
-            blocks: [{"offset", "size", "val_ori", "val_stg2"}, ...],
-            crc_in_boot: {adresa: True/False}  -- je li CODE CRC u BOOT-u?
-          }
-        """
-        d1 = self.eng.get_bytes()
-        d2 = other.get_bytes()
-
-        diffs = [(i, d1[i], d2[i]) for i in range(min(0x10000, len(d1), len(d2))) if d1[i] != d2[i]]
-
-        # Grupisi u blokove (gap <= 2 bajta)
-        blocks = []
-        if diffs:
-            start = prev = diffs[0][0]
-            for off, v1, v2 in diffs[1:]:
-                if off - prev > 2:
-                    if prev - start >= 3:   # blok >= 4 bajta
-                        size = prev - start + 1
-                        chunk1 = d1[start:start+size]
-                        chunk2 = d2[start:start+size]
-                        blocks.append({
-                            "offset":   start,
-                            "size":     size,
-                            "val_ori":  " ".join(f"{b:02X}" for b in chunk1[:8]),
-                            "val_stg2": " ".join(f"{b:02X}" for b in chunk2[:8]),
-                        })
-                    start = off
-                prev = off
-            # Zadnji blok
-            if prev - start >= 3:
-                size = prev - start + 1
-                blocks.append({
-                    "offset":   start,
-                    "size":     size,
-                    "val_ori":  " ".join(f"{b:02X}" for b in d1[start:start+size][:8]),
-                    "val_stg2": " ".join(f"{b:02X}" for b in d2[start:start+size][:8]),
-                })
-
-        # Pokusaj pronaci CODE CRC32 u BOOT-u
-        code_crc1 = crc32_bosch(bytes(d1[CODE_START:CODE_END+1]))
-        code_crc2 = crc32_bosch(bytes(d2[CODE_START:CODE_END+1]))
-        crc_in_boot = self._find_u32_in_boot(d1, code_crc1)
-
-        return {
-            "total_changed": len(diffs),
-            "changed_bytes": diffs[:20],   # prvih 20 za debug
-            "blocks":        blocks,
-            "code_crc_ori":  f"0x{code_crc1:08X}",
-            "code_crc_stg2": f"0x{code_crc2:08X}",
-            "crc_in_boot":   crc_in_boot,
-        }
-
-    def _find_u32_in_boot(self, data: bytes, value: int) -> dict:
-        """Trazi u32 vrijednost (BE i LE) u BOOT regionu."""
-        be = struct.pack(">I", value)
-        le = struct.pack("<I", value)
-        results = {}
-        boot = data[:0x10000]
-        for i in range(0, len(boot)-3):
-            if boot[i:i+4] == be: results[f"0x{i:06X}"] = "BE"
-            if boot[i:i+4] == le: results[f"0x{i:06X}"] = "LE"
-        return results
-
-    # ── CRC match pokusaj ─────────────────────────────────────────────────────
-
-    def try_crc_match(self) -> list[dict]:
-        """
-        Pokusaj naci checksum pokusavanjem raznih regija i algoritama.
-        Trazi rezultat u BOOT-u.
-
-        Returns: lista potencijalnih pogodaka.
-        """
-        data = self.eng.get_bytes()
-        boot = data[:0x10000]
-        hits = []
-
-        # Regije za testiranje
-        regions = [
-            ("CODE full",    CODE_START, CODE_END+1),
-            ("CODE first8K", CODE_START, CODE_START+0x2000),
-            ("CODE last8K",  CODE_END-0x2000, CODE_END+1),
-            ("BOOT+CODE",    0, CODE_END+1),
-        ]
-
-        for name, start, end in regions:
-            chunk = bytes(data[start:end])
-
-            for algo, fn in [
-                ("CRC32_Bosch", crc32_bosch),
-                ("CRC32_std",   crc32_std),
-                ("sum32_BE",    simple_sum32),
-            ]:
-                val = fn(chunk)
-                found = self._find_u32_in_boot(data, val)
-                if found:
-                    hits.append({
-                        "region": name,
-                        "algo":   algo,
-                        "value":  f"0x{val:08X}",
-                        "found_at": found,
-                    })
-
-        return hits
-
-    # ── Kandidati ─────────────────────────────────────────────────────────────
-
-    def find_checksum_candidates(self) -> list[dict]:
-        """Trazi ne-nul u32 vrijednosti u BOOT header-u (0x000-0x200)."""
-        data = self.eng.get_bytes()
-        cands = []
-        for off in range(0, min(0x200, len(data)-3), 4):
-            v = struct.unpack_from(">I", data, off)[0]
-            if v not in (0, 0xFFFFFFFF, 0xC3C3C3C3):
-                cands.append({
-                    "offset": off,
-                    "value":  f"0x{v:08X}",
-                    "type":   "u32 BE candidate",
-                })
-        return cands
-
-    # ── Update all ────────────────────────────────────────────────────────────
-
     def needs_update(self) -> bool:
-        return self.eng.dirty
+        data = self.eng.get_bytes()
+        ok, _ = verify_boot_crc(data)
+        return not ok
 
     def update_all(self) -> dict:
         """
-        Update checksuma. NOT YET IMPLEMENTED.
+        Azuriraj CS @ 0x30 ako je BOOT region promijenjen.
 
-        Sljedeci koraci:
-          1. try_crc_match() na paru ORI+STG2 da pronadjemo lokaciju
-          2. Kada potvrdimo lokaciju, implementirati pisanje
-          3. Testirati na bench ECU-u
+        Za CODE-only promjene: CS ostaje nepromijenjen (nije potrebno).
+        Za BOOT promjene (SW verzija, kod): izracuna novi CS.
+        RSA potpis (0x7E7C-0x7EFF) mora ostati nepromijenjen.
         """
-        if not self.eng.dirty:
-            return {"status": "OK", "message": "Nema izmjena, checksum nije potreban."}
+        data = self.eng.get_bytes()
+        ok, actual = verify_boot_crc(data)
 
-        # Pokusaj auto-detekcije
-        hits = self.try_crc_match()
-        if hits:
+        if ok:
             return {
-                "status": "CANDIDATE_FOUND",
-                "message": f"Potencijalni pogodak: {hits[0]}. Potrebna rucna verifikacija.",
-                "hits": hits,
+                "status": "OK",
+                "message": "Checksum je ispravan.",
+                "crc": f"0x{actual:08X}",
             }
 
-        return {
-            "status": "NOT_IMPLEMENTED",
-            "message": (
-                "Checksum update nije implementiran. "
-                "Lokacije u BOOT-u su u istrazivanju. "
-                "Koristite kompatibilan flash alat (KTAG, Flex, CMD Flash) "
-                "koji automatski racuna checksum."
-            ),
-        }
+        try:
+            new_cs = compute_new_cs(data)
+            data_copy = bytearray(data)
+            data_copy[CS_OFFSET:CS_OFFSET + CS_SIZE] = struct.pack(">I", new_cs)
+            ok2, crc2 = verify_boot_crc(data_copy)
+
+            if ok2:
+                self.eng.write_bytes(CS_OFFSET, struct.pack(">I", new_cs))
+                return {
+                    "status": "UPDATED",
+                    "old_cs": f"0x{read_stored_cs(data):08X}",
+                    "new_cs": f"0x{new_cs:08X}",
+                }
+            else:
+                return {
+                    "status": "ERROR",
+                    "message": f"Izracunati CS nije pravi: CRC=0x{crc2:08X}",
+                    "computed_cs": f"0x{new_cs:08X}",
+                }
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
