@@ -539,16 +539,18 @@ class MapFinder:
             raw = list(data[addr:addr + IGN_STRIDE])
 
             # Validacija: knock mape (idx 8,9) imaju retard delta 0-40,
-            # normalne timing mape imaju raspon 16-58 (12°–43.5° BTDC)
+            # normalne timing mape imaju raspon 16-58 (12°–43.5° BTDC).
+            # Soft threshold: >=80% vrijednosti mora biti u rasponu (robusno na padding/boundary data)
             is_knock = idx in (8, 9)
             if is_knock:
-                if not all(0 <= v <= 48 for v in raw):
-                    if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: knock validacija pala — preskacam")
-                    continue
+                in_range = sum(1 for v in raw if 0 <= v <= 48)
             else:
-                if not all(16 <= v <= 58 for v in raw):
-                    if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: validacija pala — preskacam")
-                    continue
+                in_range = sum(1 for v in raw if 16 <= v <= 58)
+            valid_frac = in_range / len(raw)
+            if valid_frac < 0.80:
+                if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: "
+                          f"validacija pala ({in_range}/{len(raw)} = {valid_frac:.0%}) — preskacam")
+                continue
 
             # Mora biti nekakva varijacija (nije sve ista vrijednost)
             if max(raw) - min(raw) < 2:

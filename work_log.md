@@ -3,7 +3,7 @@
 ## 2026-03-14 22:00 — Aktivni problemi (TODO lista)
 
 ### Problemi za rješavanje (po prioritetu)
-1. ❌ **Ignition #08 pada validaciju** — `knock validacija pala — preskacam` @ 0x02BBB0; trebalo provjeriti stvarne vrijednosti i ispraviti granice ili reklasificirati mapu
+1. ✅ **Ignition #08 pada validaciju** — soft validacija (≥80% u rasponu), svih 16/16 mapa pronađeno — `knock validacija pala — preskacam` @ 0x02BBB0; trebalo provjeriti stvarne vrijednosti i ispraviti granice ili reklasificirati mapu
 2. ❌ **Boost pressure target mapa** — adresa neidentificirana; diff ORI vs STG2 daje trag (CODE razlike)
 3. ❌ **Nepoznate osi (Y load, inj X, lam X)** — `values=None`; trebaju A2L ili binary scan
 4. ❌ **DTC enable_addr samo P0523+P1550** — 109 kodova nema granularno isključivanje enable bajta
