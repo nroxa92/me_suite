@@ -206,3 +206,42 @@ Procitao i analizirao cijeli codebase: sve Python fajlove, test suite, README, C
 - Faza 5: Analiza dumpova u _materijali/
 
 *Azurirano: 2026-03-13*
+
+---
+
+## 2026-03-14 — Faza 4: Checksum brute-force istraga
+
+### Metoda
+6 rundi brute-force analize, 100+ algoritama/regija kombinacija:
+- CRC32 Bosch (sve varijante init/xorout/refin/refout), zlib CRC32
+- Adler-32, Fletcher-32, additive sum u8/u16/u32 BE+LE, XOR-sum
+- Byte-swapped CRC, word-by-word CRC, chained CRC
+- MD5, SHA-1, SHA-256 (truncated na 4B)
+- Regije: CODE, BOOT, BOOT+CODE, CODE+CAL + sve podvarijante
+
+### Rezultat
+**0 pogodaka** — algoritam je definitino nestandardan/proprietaran.
+
+### Novi arhitekturalni nalazi
+
+| Nalaz | Detalji |
+|---|---|
+| BOOT region = 0x0000-**0x7EFF** | NE 0xFFFF! ENDADD u headeru 0x3C = 0x80007EFF |
+| Gap 0x7F00-0xFFFF | 33KB: DEADBEEF terminator + nule + TC1762 kod @ 0xFF00 |
+| Blok @ 0x7E7C (132B) | Kriptografski potpis (RSA-1024?), ne može se replicirati |
+| FADEFACE deskriptor @ 0x40 | 0x48=0x80012C78 (CODE), 0x4C=0x80007E74 (pred sig. blokom) |
+
+### Zaključak
+Vrijednost @ 0x30 je Bosch proprietary algoritam iz BOOT koda.
+
+**Daljnji koraci:**
+1. **Ghidra + TriCore v1.3 plugin** — disassembly BOOT koda 0x0050-0x7E7B
+2. **Praktično**: flash alati (KTAG/Flex) automatski korigiraju checksum
+3. **Alternativa**: tražiti ME17.8.5 checksum u ECU tuning forumima
+
+### Skripte istraživanja
+- `checksum_bruteforce.py` — Round 1-2 (CRC+sum)
+- `checksum_deep.py` — Round 3 (Adler, chained, hex dump)
+- `checksum_round3-6.py` — Round 3-6 (napredni testovi)
+
+*Azurirano: 2026-03-14*

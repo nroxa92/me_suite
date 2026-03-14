@@ -2,24 +2,60 @@
 ME17Suite — Checksum Engine
 Bosch ME17.8.5 / TC1762
 
-Status istrage (2026-03-13):
-  BOOT diff ORI vs STG2 ima 140 bajtova u 3 bloka:
-    0x00001F  5B  -- SW ID promjena ("66726" -> "40039")  [POTVRDJENO]
-    0x000030  4B  -- E505BC0B -> 9FC76FAD                 [CHECKSUM LOKACIJA!]
-    0x007E7C  132B -- veci blok, vjerovatno SW-specifican  [NEISTRAZENO]
+=== STATUS ISTRAGE (2026-03-14) — BRUTE-FORCE ZAKLJUCAK ===
 
-  Checksum @ 0x30 je 4-bajtna vrijednost (u32, big-endian pretpostavka).
-  Algoritam NIJE identifikovan:
-    - Bosch CRC32 (poly 0x04C11DB7) nad CODE: ne poklapa se
-    - Standard zlib CRC32 nad CODE: ne poklapa se
-    - Simple sum32 nad raznim regijama: ne poklapa se
-    - Testirane regije: BOOT, CODE, BOOT+CODE, podnizovi, s/bez 0x30 patchom
+Istrazivanim algoritmima (6 rundi, 100+ kombinacija):
+  - CRC32 Bosch (poly 0x04C11DB7) — sve varijante init/xorout/refin/refout
+  - zlib CRC32 — sve varijante
+  - Adler-32, Fletcher-32
+  - Additive sum u8/u16/u32 BE+LE, komplement, XOR-sum
+  - Byte-swapped (u32/u16) CRC varijante
+  - Word-by-word CRC (BE i LE rijeci)
+  - Chained CRC (BOOT -> CODE, CODE -> BOOT)
+  - MD5, SHA-1, SHA-256 (truncated)
+  Regije: CODE, BOOT, BOOT+CODE, CODE+CAL, sve kombinacije s/bez CS nuliranim
+  REZULTAT: 0 pogodaka. Algoritam je nestandardan/proprietaran.
 
-  TODO: reverse eng checksum rutine iz TC1762 firmware koda @ BOOT
+=== ARHITEKTURA (potvrdjeno analizom) ===
 
-Algoritam (pretpostavka):
-  CRC32(Bosch poly) over CODE region (0x010000-0x05FFFF)
-  Rezultat pohranjen u BOOT header (trazimo tocnu adresu)
+  Prava velicina BOOT segmenta = 0x0000-0x7EFF (32,512 B), NE 0xFFFF!
+    Header 0x38 STADD = 0x80000000 -> file 0x0000
+    Header 0x3C ENDADD = 0x80007EFF -> file 0x7EFF
+
+  Gap 0x7F00-0xFFFF (33,024 B):
+    0x7F00-0x7F03: DEADBEEF terminator
+    0x7F04-0xFEFF: uglavnom nule (BOOT end padding)
+    0xFF00-0xFFFF: TC1762 bootloader kod (RAZLICIT od 0x0000-0x7EFF dijela)
+    IDENTICAN u ORI i STG2 — ne mijenja se s tuningom
+
+  Blok @ 0x7E7C (132B = 128B potpis + 4B DEADBEEF):
+    Sadrzi kriptografski potpis (vjerovatno RSA-1024 ili proprietarni hash)
+    RAZLICIT izmedju ORI i STG2 — generira se iz tuning podataka
+    NIJE moguće replicirati bez Bosch privatnog ključa / internog algoritma
+
+  FADEFACE/CAFEFAFE segment deskriptor @ 0x40:
+    0x48: 0x80012C78 -> file 0x12C78 (u CODE regiji)
+    0x4C: 0x80007E74 -> file 0x7E74 (tik ispred bloka @ 0x7E7C)
+
+=== HIPOTEZE ZA NASTAVAK ===
+
+  Vjerojatniji algoritmi:
+    H1: Proprietary Bosch algoritam u BOOT kodu (0x50-0x7E7B)
+        -> Treba: Ghidra + TriCore v1.3 plugin + disassembly
+    H2: Vrijednost na 0x30 nije integrity CRC nego security seed/konstanta
+        -> Mozda se ne mijenja pri tuning-u ORI-baziranih fajlova
+    H3: Flasher alat (KTAG/Flex) automatski racuna i upisuje
+        -> Ne trebamo implementirati u softveru
+
+  PRAKTICNI STATUS:
+    Empirijski podaci sugeriraju da ECU prihvaca fajlove bez ispravnog
+    checksuma (Source: work_log.md 2026-03-13).
+    Flash alati (KTAG, Flex, CMD Flash) automatski korigiraju checksum.
+
+=== DIFF BOOT ORI vs STG2 (140B u 3 bloka) ===
+    0x00001F  5B  -- SW ID: "66726" -> "40039"  [POTVRDJENO]
+    0x000030  4B  -- E505BC0B -> 9FC76FAD        [LOKACIJA, ALGORITAM NEPOZNAT]
+    0x007E7C  132B -- kriptografski potpis       [NEISTRAZIVO bez priv. kljuca]
 """
 
 from __future__ import annotations
