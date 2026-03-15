@@ -5,6 +5,12 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 ---
 
 **2026-03-15**
+👤 evo sada ce dumpovi 130 170 230 300 2021god — C:\Users\SeaDoo\Desktop\me_suite\_materijali\dumps
+🤖 Analizirano. 130=170 IDENTIČNI (10SW053729), 300_2021=ori_300. Nove mape: SC correction @0x022200 (9×7 Q14, 130/170=flat 16384=NA motor!), lambda bias @0x0265D6, temp correction @0x025E50. Rev limiter: 130/170=4729, 230=5066, 300=5032 soft cut.
+
+---
+
+**2026-03-15**
 👤 kada ucitamo drugi file onda bi namse prozor trebao podijeliti na dva prozora jedaanpored drugoga?? to se ne dogodi...
 🤖 Implementiran QSplitter side-by-side: Fajl 1 lijevo (plavi header), Fajl 2 desno (žuti header). Panel se pojavi automatski kad postoji compare map. Sinkronizirani V+H scroll. Diff boje: Fajl 1 changed = žuta, Fajl 2 changed = crvena.
 

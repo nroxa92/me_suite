@@ -1,5 +1,36 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 20:00 — Analiza 4 ORI dumpova (130/170/230/300hp 2021)
+
+### Što je napravljeno
+
+**Primljeni i analizirani dumpovi:** `_materijali/dumps/` — 130 2021.bin, 170 2021.bin, 230 2021.bin, 300 2021.bin
+
+**Ključni nalazi:**
+- **130 = 170**: Identični (0B razlike), SW=10SW053729 — BRP koristi isti SW za oba
+- **300_2021 = ori_300**: Identični (0B razlike), SW=10SW066726 (nepromijenjeno od 2016.)
+- **Load os** identična za sve: `[0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760]`
+
+**Nove mape identificirane:**
+
+1. **SC load injection correction @ 0x022200** (7-točkasta os + 9×7 tablica u16 LE Q14):
+   - 130/170: SVE 16384 (neutralno) → nema SC korekcije → NA motor ili SC disabled
+   - 230: 16728-30900 (slabiji SC), 300: 5325-35895 (jaki SC, dijagonalni pattern)
+   - X-os: RPM breakpoints × 8 = [1250, 1875, 2500, 3000, 3500, 4000, 4250]
+
+2. **Lambda bias @ 0x0265D6** (141× u16 LE Q15, odmah prije lambda mape):
+   - 300hp: +0.47% lean, 230hp: +2.41% lean, 130/170: -0.07% neutralno
+
+3. **Temperature fuel correction @ 0x025E50** (156× u16 LE Q14):
+   - 300hp: flat 1.208 (+20.8%), 230hp: 0.816 (-18.4% lean), 130/170: ~1.0
+
+**Rev limiter usporedba:** 300=[5032,6412,5936], 230=[5066,6564,6252], 130/170=[4729,5662,5245]
+
+### Fajlovi promijenjeni
+- `_materijali/MAP_RESEARCH.md` — nova sekcija s kompletnom analizom 4 SW varijanti
+
+---
+
 ## 2026-03-15 19:30 — UI: split-view za Fajl 2 (side-by-side usporedba)
 
 ### Što je napravljeno

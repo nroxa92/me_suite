@@ -1,5 +1,103 @@
 # MAP_RESEARCH — ME17Suite ECU Analysis
 
+---
+
+## 2026-03-15 — Analiza 4 SW varijante (130/170/230/300hp 2021)
+
+### Korišteni fajlovi
+| Fajl | SW ID | Checksum | Vs ori_300 |
+|------|-------|----------|------------|
+| `dumps/130 2021.bin` | 10SW053729 | 0x050F5642 | 20,591B razlike |
+| `dumps/170 2021.bin` | 10SW053729 | 0x050F5642 | **IDENTIČAN 130!** (0B) |
+| `dumps/230 2021.bin` | 10SW053727 | 0xFFE95AF2 | 16,033B razlike |
+| `dumps/300 2021.bin` | 10SW066726 | 0x0BBC05E5 | **IDENTIČAN ori_300** (0B) |
+
+### Ključni zaključci
+
+**130hp = 170hp IDENTIČNI** — BRP koristi isti SW 10SW053729 za oba motora.
+Razlika u snazi je vjerojatno mehanička (restrikcija usisa ili ispuha), ne ECU.
+
+**300hp 2021 = ori_300** — Nepromijenjeno od 2016.
+
+**SW grupacije:**
+- 10SW053727 = 230hp (Wake Pro 230)
+- 10SW053729 = 130hp + 170hp (isti SW!)
+- 10SW066726 = 300hp (RXP-X, RXT-X, GTX)
+
+**Load os identična** @ 0x02AFAC za sve varijante:
+`[0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760]`
+
+### Rev limiter (sve 5 adrese, RPM LE u16)
+| Adresa | 300hp | 230hp | 130/170hp |
+|--------|-------|-------|-----------|
+| 0x022096 (soft cut) | 5032 | 5066 | 4729 |
+| 0x0220B6 (hard cut) | 6412 | 6564 | 5662 |
+| 0x0220C0 (mid) | 5936 | 6252 | 5245 |
+| 0x02B72A (overrev) | 8738 | 8993 | 8481 |
+| 0x02B73E (overrev mirror) | 8738 | 8993 | 8481 |
+
+### SC bypass mapa @ 0x020534 (7×7, u8)
+| Motor | [0,0] | [0,6] | [6,6] | Karakter |
+|-------|-------|-------|-------|---------|
+| ori_300 | 38 | 131 | 38 | Dijagonala 255, široki raspon (38-255) |
+| 230hp | 31 | 33 | 38 | Manji raspon (31-79), slabiji SC |
+| 130/170hp | 30 | 38 | 30 | Najmanji raspon (30-82) — NA ili slabi SC |
+
+### NOVA MAPA: SC load injection correction @ 0x022200
+
+**Format:** U16 LE, Q14 (16384 = 1.0 = neutralna korekcija)
+**Struktura:** 7-točkasta X-os + 9×7 tablica korekcije
+
+**X-os @ 0x022200 (7 točaka u16 LE, /8 = RPM):**
+- 230/300hp: [10000, 15000, 20000, 24000, 28000, 32000, 34000] → RPM: [1250, 1875, 2500, 3000, 3500, 4000, 4250]
+- ori_300: [10000, 15000, **18000**, 20000, 24000, 32000, 34000] (točka 2 = 2250 RPM, ne 2500)
+
+**Tablica @ 0x02220E (9×7 u16 LE):**
+| Motor | Min | Max | Pattern |
+|-------|-----|-----|---------|
+| 300hp | 5325 | 35895 | Dijagonalni, veliki raspon (SC boost korekcija) |
+| 230hp | 16728 | 30900 | Dijagonalni, umjeren raspon |
+| 130/170hp | 16384 | 16384 | **SVE NEUTRALNO** — NA motor, nema SC korekcije |
+
+**Fizikalni smisao:** ECU korekcija ubrizgavanja za SC boost.
+130/170 su NEUTRALNI (16384 = nema korekcije) → potvrđuje da je 130/170 bez SC
+ili da je SC senzor odspojen. 300hp ima ekstremni raspon (0.32×-2.19×) = masivna SC kompenzacija.
+
+### NOVA MAPA: Lambda bias/trim @ 0x0265D6
+
+**Format:** 141× u16 LE, Q15 (32768 = lambda 1.0)
+**Pozicija:** Odmah ispred lambda mape @ 0x0266F0
+
+| Motor | Vrijednost | Lambda offset |
+|-------|-----------|---------------|
+| 300hp | ~32922 | +0.47% (blago lean) |
+| 130/170hp | ~32744 | -0.07% (neutralno) |
+| 230hp | ~33558 | +2.41% (lean bias) |
+
+Ova tablica je **lambda korekcija/bias** koji se primjenjuje uz/na lambda target mapu.
+230hp ima veći lean bias (+2.41%) — vjerojatno SC boost/kompresija zahtijeva siromašniju smjesu za hlađenje.
+
+### NOVA MAPA: Temperatura-indexed fuel correction @ 0x025E50
+
+**Format:** U16 LE, Q14 (16384 = 1.0)
+**Lokacija:** 0x025E50-0x025F88 (312B = 156 u16 vrijednosti)
+
+| Motor | Prvih 6 vrijednosti (Q14) | Komentar |
+|-------|--------------------------|---------|
+| 300hp | 1.208, 1.208, 1.208, 1.208, 1.208, 1.208 | Flat +20.8% enrichment (cold boost comp.) |
+| 130/170hp | 1.035, 0.988, 0.988, 0.988, 0.988, 0.988 | Minimalna korekcija |
+| 230hp | 1.036, 0.879, 0.816, 0.816, 0.816, 0.816 | LEAN korekcija -18.4% (decel/CTS temp) |
+
+### Neidentificirani blokovi (za daljnju analizu)
+
+| Adresa | Veličina | Stride | Komentar |
+|--------|----------|--------|---------|
+| 0x02AE5D | 325B × 4 | 0x17C (380B) | 4 ponavljajuća bloka, pred ignition tablicama; moguće injection timing |
+| 0x02C927 | 320B | — | Nepoznato |
+| 0x03FE78 | 136B | — | Kraj CODE regije, moguće kalibracija |
+
+---
+
 ```
 ================================================================================
 ME17Suite — MAP RESEARCH ANALYSIS

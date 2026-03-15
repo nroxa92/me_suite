@@ -481,6 +481,29 @@ class MapTableView(QWidget):
 
         lo.addWidget(self._map_bar)
 
+        # Axis info bar — naziv i jedinica svake osi
+        self._axis_bar = QWidget()
+        self._axis_bar.setStyleSheet(
+            "background:#1e1e1e; border-bottom:1px solid #2a2a2a;"
+        )
+        ab_lo = QHBoxLayout(self._axis_bar)
+        ab_lo.setContentsMargins(50, 3, 8, 3); ab_lo.setSpacing(24)
+        # 50px lijevi margin ≈ širina vertical headera (44px) + malo prostora
+
+        self._lbl_yaxis = QLabel()
+        self._lbl_yaxis.setStyleSheet(
+            "color:#4ec9b0; font-size:11px; font-family:Consolas; font-weight:bold;"
+        )
+        self._lbl_xaxis = QLabel()
+        self._lbl_xaxis.setStyleSheet(
+            "color:#9cdcfe; font-size:11px; font-family:Consolas; font-weight:bold;"
+        )
+        ab_lo.addWidget(self._lbl_yaxis)
+        ab_lo.addWidget(self._lbl_xaxis)
+        ab_lo.addStretch()
+        self._axis_bar.hide()
+        lo.addWidget(self._axis_bar)
+
         # Horizontalni splitter: Fajl 1 (lijevo) | Fajl 2 (desno, skriveno dok nema compare)
         self._tables_split = QSplitter(Qt.Orientation.Horizontal)
 
@@ -608,6 +631,20 @@ class MapTableView(QWidget):
             self.table2.setHorizontalHeaderLabels(x_labels)
             self.table2.setVerticalHeaderLabels(y_labels)
 
+        # Axis info bar
+        if defn.axis_x or defn.axis_y:
+            xd = defn.axis_x
+            yd = defn.axis_y
+            x_txt = (f"→  X:  {xd.unit}  ({xd.count} pt,  {xd.dtype})" if xd and xd.unit
+                     else f"→  X:  {xd.count} stupaca" if xd else "")
+            y_txt = (f"↓  Y:  {yd.unit}  ({yd.count} pt,  {yd.dtype})" if yd and yd.unit
+                     else f"↓  Y:  {yd.count} redova" if yd else "")
+            self._lbl_xaxis.setText(x_txt)
+            self._lbl_yaxis.setText(y_txt)
+            self._axis_bar.show()
+        else:
+            self._axis_bar.hide()
+
         mn  = min(data)  if data  else 0
         mx  = max(data)  if data  else 1
         mn2 = min(data2) if data2 else mn
@@ -669,7 +706,7 @@ class MapTableView(QWidget):
         self._fm = None; self._fm2 = None
         self.table.setRowCount(0); self.table.setColumnCount(0)
         self.table2.setRowCount(0); self.table2.setColumnCount(0)
-        self._lbl_f1.hide(); self._t2_pane.hide()
+        self._lbl_f1.hide(); self._t2_pane.hide(); self._axis_bar.hide()
         self._lbl_name.setText("Odaberi mapu iz stabla")
         for b in [self._badge_dim, self._badge_unit, self._badge_addr,
                   self.btn_copy, self.btn_csv, self.btn_reset]:
