@@ -1,5 +1,56 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 04:00 — DTC bugfix: Spark code TABLE != code storage (korupcija sprijecena)
+
+### Bug pronađen
+`DtcScanner.scan()` na Spark 90hp binarnom fajlu vraćao kod TABLE adrese (P1550@0x021304) kao da su code STORAGE adrese. `dtc_off()` bi pisao 0x0000 na 0x021304 — KORUPCIJA statičke referentne tablice!
+
+### Analiza Spark DTC arhitekture
+- Code TABLE (statička referenca): P1550@0x021304, P0523@0x021308 — ne smije se mijenjati
+- Code STORAGE (fault state): P1550 stanje @ 0x020E5E → 0xFFFF = disabled (nova adresa!)
+- Enable byte: 0x0207A5 (jedan bajt, ne raspon kao u ori_300)
+- Nema mirrora — single-storage arhitektura
+- Checksum fixup @ 0x020080-0x020086 (NPRO CRCË korekcija)
+
+### Promjene (core/dtc.py)
+- `DtcScanResult`: dodan `single_storage: bool` polje
+- `DtcScanner._make_result()`: Spark detekcija po P1550 @ 0x021300-0x0213FF (bilo 0x020F00-0x020FFF — POGREŠNO)
+- `DtcEngine.dtc_off()`: blokira s `UNSUPPORTED` ako `single_storage=True`
+- `DtcEngine.dtc_off_all()`, `disable_all_monitoring()`: isti guard dodan
+- Test: `DtcScanner.scan(spark)` → `spark_90 (666063), single_storage=True` ✓
+- Test: `dtc_off(P1550)` na Spark → `UNSUPPORTED` ✓
+- Test: `dtc_off(P1550)` na ori_300 → `OK, 0x021888` ✓
+
+---
+
+## 2026-03-15 03:00 — Problem 4: DTC enable analiza završena (sve dostupne parove)
+
+### Što je analizirano
+Svi dostupni OE/DTC-OFF parovi binarne datoteke iz `_materijali/`:
+
+| Par | SW | Pronađeni DTC | Enable adresa | Rezultat |
+|-----|----|---------------|---------------|---------|
+| WakePro P0523 | ori_300 kompatibilan | P0523 | 0x02108E-0x021098 (slots 14-24) | ✅ Potvrđeno (već u dtc.py) |
+| RXP-X P1550 | rxpx300_17 | P1550 | 0x02108A-0x021093 (slots 10-19) | ✅ Potvrđeno (već u dtc.py) |
+| NPRo U16A2 OFF | npro_stg2 | U16A2 | 0x021032+0x021037 (2 bajta) | ℹ️ Drugačiji SW, ne odnosi se na ori_300 |
+| Spark P1550 OFF | spark_90 | P1550 | 0x0207A5 (1 bajt) + code 0x020E5E | ℹ️ 90hp SW, potpuno drugačija arhitektura |
+
+### Enable tablica (ori_300, 62 slota @ 0x021080-0x0210BD)
+- Identična na svim 300hp SW varijantama (ori_300, npro_stg2, gti_se_18)
+- Prirodne granice (ZERO slotovi): 0-3, 18, 29, 31-33, 45, 58
+- P1550 OFF zerira slotove 10-19, P0523 OFF zerira 14-17+19-24 (Olas sustained pressure modul)
+- Za preostalih ~109 DTC kodova: bez referentnih DTC-OFF parova, enable_addr ne može biti određen bez TriCore bytekod analize
+
+### Kompletna code tablica pronađena
+- ori_300 code tablica: **111 kodova** u rasponu 0x0217B6–0x0218E6 (mixed sa non-SAE Bosch kodovima)
+- Sve adrese u dtc.py DTC_REGISTRY potvrđene ✅
+- DtcEngine.dtc_off() radi ispravno: zerira enable bytes (gdje poznati) + code_addr + mirror_addr
+
+### Zaključak — Problem 4
+Za preostale DTC kodove: code_addr + mirror_addr zeriranje je jedina dostupna opcija. Enable_addr zahtijeva više OE/OFF referentnih parova ili TriCore dekompilaciju.
+
+---
+
 ## 2026-03-15 01:30 — Problem 5 djelomično: 3 nove ignition mape pronađene!
 
 ### Nalaz — KRITIČNO

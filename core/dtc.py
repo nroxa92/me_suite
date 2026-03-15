@@ -289,10 +289,14 @@ class DtcStatus:
 
 class DtcScanResult:
     """Rezultat dinamickog skeniranja DTC tablice u binarnom fajlu."""
-    def __init__(self, mirror_offset: int, addrs: dict, sw_hint: str = ""):
+    def __init__(self, mirror_offset: int, addrs: dict, sw_hint: str = "",
+                 single_storage: bool = False):
         self.mirror_offset = mirror_offset          # potvrdjeni mirror offset
         self.addrs: dict[int, int] = addrs          # {dtc_code: main_addr}
         self.sw_hint = sw_hint
+        # single_storage = True za SW varijante bez mirrora (rxtx_260, spark_90)
+        # U tim slucajevima code_addr je referentna tablica, NE storage — dtc_off NIJE SIGURAN
+        self.single_storage = single_storage
 
     def __repr__(self):
         return (f"DtcScanResult(offset=0x{self.mirror_offset:04X}, "
@@ -306,7 +310,9 @@ class DtcScanner:
     Radi za sve poznate SW verzije:
       ori_300 (10SW066726) — offset 0x0366, baza ~0x021700
       rxpx300_17           — offset 0x0362, baza ~0x021700
-      spark_90 (666063)    — offset 0x0368, baza ~0x020F00
+      spark_90 (666063)    — code TABLE ~0x021258 (P1550@0x021304), NO mirror
+                             NAPOMENA: code TABLE != code STORAGE za Spark!
+                             DTC OFF nije siguran za Spark — blokiran u dtc_off()
     """
 
     # Skup kodova za detekciju — svi bi trebali biti u tablici
@@ -418,14 +424,18 @@ class DtcScanner:
             sw_hint = "rxpx300_17 (SW ~17)"
         elif p1550 == 0x021888:
             sw_hint = "ori_300 (10SW066726)"
-        elif 0x020F00 <= p1550 <= 0x020FFF:
+        elif 0x021300 <= p1550 <= 0x0213FF:
+            # Spark_90: P1550 je u code TABLE (0x021304), ne u code storage.
+            # Code storage za Spark je na potpuno drugoj adresi (0x020E00 regija).
+            # dtc_off NIJE implementiran za Spark — potrebna posebna arhitektura.
             sw_hint = "spark_90 (666063)"
+            single_storage = True
         elif single_storage:
             p106 = found_addrs.get(0x0106, 0)
             sw_hint = f"single-storage (P0106@0x{p106:06X})"
         else:
             sw_hint = f"unknown-pair (P1550@0x{p1550:06X})"
-        return DtcScanResult(offset, found_addrs, sw_hint)
+        return DtcScanResult(offset, found_addrs, sw_hint, single_storage=single_storage)
 
 
 # ─── DTC Engine ───────────────────────────────────────────────────────────────
@@ -501,7 +511,21 @@ class DtcEngine:
           1. Zero enable bajti (ako su poznati)
           2. Zero main code storage
           3. Zero mirror code storage
+
+        NAPOMENA: Za Spark 90hp i rxtx_260 260hp SW varijante ova operacija nije
+        podrZana jer te SW varijante koriste drugaCiju arhitekturu code storagea.
         """
+        # Blokirati na single-storage SW varijantama (Spark, 260hp)
+        if self._scan and self._scan.single_storage:
+            return {
+                "status": "UNSUPPORTED",
+                "message": (
+                    f"DTC OFF nije podrzan za {self._scan.sw_hint}. "
+                    "Ta SW varijanta koristi drugaCiju arhitekturu (code TABLE != code storage). "
+                    "Direktno pisanje 0x0000 u code adresu bi ostecilo binarni fajl."
+                ),
+            }
+
         defn = DTC_REGISTRY.get(dtc_code)
         if not defn:
             return {"status": "ERROR", "message": f"Nepoznati DTC: P{dtc_code:04X}"}
@@ -559,7 +583,12 @@ class DtcEngine:
                 "message": f"{defn.p_code} ({defn.name}) — ukljucen (en=0x{enable_value:02X})."}
 
     def dtc_off_all(self) -> dict:
-        """Isklj?uci sve poznate ECM DTC-ove."""
+        """Isklju?i sve poznate ECM DTC-ove."""
+        if self._scan and self._scan.single_storage:
+            return {
+                "status": "UNSUPPORTED",
+                "message": f"DTC OFF nije podrzan za {self._scan.sw_hint}.",
+            }
         results = {}
         for code in DTC_REGISTRY:
             r = self.dtc_off(code)
@@ -577,7 +606,13 @@ class DtcEngine:
         Iskljuci cijelu enable tablicu (0x021080-0x0210BD).
         Najjaca opcija — ECU nece detektirati niti jedan fault.
         Koristiti oprezno: neke greske stite motor (misfire, oil pressure).
+        Nije podrZano za Spark/260hp varijante.
         """
+        if self._scan and self._scan.single_storage:
+            return {
+                "status": "UNSUPPORTED",
+                "message": f"Nije podrZano za {self._scan.sw_hint}.",
+            }
         count = 0
         for addr in range(ENABLE_TABLE_START, ENABLE_TABLE_END):
             if self.eng.get_bytes()[addr] in ENABLE_ACTIVE_VALS:
