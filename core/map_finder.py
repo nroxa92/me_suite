@@ -90,27 +90,48 @@ class FoundMap:
 
 
 # ─── Poznate RPM ose ──────────────────────────────────────────────────────────
+# Verificirano direktnim citanjem iz binarnog fajla @ 0x024F46 (BE u16, 16 tocaka)
+# Prethodne vrijednosti u kodu bile su pogresne za tocke 10-15!
 
 # Prvih 12 od 16 tocaka RPM ose — koristimo za ignition (12×12)
-_RPM_12 = [512, 1024, 1536, 2048, 2560, 3072, 3584, 4096, 4608, 5120, 6144, 8448]
+_RPM_12 = [512, 1024, 1536, 2048, 2560, 3072, 3584, 4096, 4608, 5120, 5632, 6400]
 
 # Svih 16 tocaka — za torque (16×16)
 _RPM_16 = [512, 1024, 1536, 2048, 2560, 3072, 3584, 4096,
-           4608, 5120, 5632, 6144, 6656, 7168, 7680, 8448]
+           4608, 5120, 5632, 6400, 6912, 7424, 7936, 8448]
 
 _RPM_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
                         scale=1.0, unit="rpm", values=_RPM_12)
 _RPM_AXIS_16 = AxisDef(count=16, byte_order="BE", dtype="u16",
                         scale=1.0, unit="rpm", values=_RPM_16)
 
-# Osa opterecenja — pretpostavlja se MAP% ili mg/stroke (nepoznate vrijednosti bez A2L)
-# Za Rotax ACE 1630 s superchargerom: MAP > 100% je moguc (boost)
-_LOAD_AXIS_12 = AxisDef(count=12, byte_order="BE", dtype="u16",
-                         scale=1.0, unit="%MAP", values=None)  # vrijednosti nepoznate
+# ─── Osa relativnog punjenja (rl — relative air charge) ───────────────────────
+# Y osa za ignition, injection, lambda, torque mape.
+# Izvor: analiza binarnog fajla @ 0x02AFAC (LE u16, 12 tocaka), 0x02AE30 (16 tocaka)
+# Potvrdeno prisutnoscu istog niza u vise mjesta uz ignition i torque mape.
+# WinOLS opis: "relative air charge" (rl, %)
+#
+# Skaliranje: raw ÷ 64 = postotak relativnog punjenja (procjena bez A2L):
+#   0 = 0%, 100 = 1.56%, 1280 = 20%, 5760 = 90%, 6400 = 100%, 8320 = 130% (boost)
+# Za Rotax ACE 1630 s komprimirajucim punjenjem: >100% je normalno pri punom gasu.
 
-# Y osa za torque (16×16) — 16 tocaka opterecenja
-_LOAD_AXIS_16 = AxisDef(count=16, byte_order="BE", dtype="u16",
-                         scale=1.0, unit="%MAP", values=None)  # vrijednosti nepoznate
+_LOAD_12 = [0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760]
+_LOAD_16 = [0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760,
+            6400, 7040, 7680, 8320]
+
+_LOAD_AXIS_12 = AxisDef(count=12, byte_order="LE", dtype="u16",
+                         scale=1.0/64.0, unit="rl [%]", values=_LOAD_12)
+_LOAD_AXIS_16 = AxisDef(count=16, byte_order="LE", dtype="u16",
+                         scale=1.0/64.0, unit="rl [%]", values=_LOAD_16)
+
+# X osa za lambda mapu (18 stupaca) — Load (rl)
+# Verificirano prisutnošću identičnog niza tocno 0x16A bajta ispred lambda mape
+# i njezinog mirrora (@0x026586 i @0x026A9E — isti offset za obje kopije)
+# Raspon: ~13% do 100% relativnog punjenja (lambda se prati samo pri redu opterecenja)
+_LAMBDA_X_18 = [853, 1067, 1280, 1493, 1707, 1920, 2133, 2347,
+                2560, 2773, 2987, 3200, 3413, 3840, 4267, 4693, 5547, 6400]
+_LAMBDA_LOAD_AXIS_18 = AxisDef(count=18, byte_order="LE", dtype="u16",
+                                scale=1.0/64.0, unit="rl [%]", values=_LAMBDA_X_18)
 
 
 # ─── RPM osa definicija ───────────────────────────────────────────────────────
@@ -238,7 +259,8 @@ def _make_ign_def(idx: int) -> MapDef:
                "POTVRDJENO NPRo STG2 mapa. ORI: 25.5–30°, STG2: vise. " if is_extended else
                "UVJETNA: aktivna samo u odredjenim uvjetima. " if is_partial else
                "ORI: 24–33.75° BTDC, STG2: do 36.75° BTDC. ")
-            + "Os Y: pretpostavljeno MAP/opterecenje, nije verificirano bez A2L."
+            + "Os Y: relativno punjenje rl [%] — kandidat @ 0x02AFAC (LE u16, ÷64). "
+            + "Skaliranje procijenjeno bez A2L; A2L potvrda: WinOLS string 'relative air charge'."
         ),
     )
 
@@ -255,18 +277,20 @@ _INJ_DEF = MapDef(
     name          = "Ubrizgavanje — pulsna sirina",
     description   = (
         "Trajanje ubrizgavanja (pulsna sirina injektora) — 12×32 tablica. "
-        "Vece vrijednosti = vise goriva. "
-        "Osi: pretpostavljeno RPM (stupci) × opterecenje/MAP (redovi). "
-        "ORI max ~49151, STG2 saturiran na 65535 (agresivan tune)."
+        "Vece vrijednosti = vise goriva (duze ubrizgavanje). "
+        "Osi: Y (redovi) = relativno punjenje rl [%], X (stupci) = nepoznata os. "
+        "Napomena: 32-kolumnska struktura nije klasicna RPM os — "
+        "vrijednosti se mjenjaju po grupama od 12 (moguce: 3 cilindra × 4 uvjeta). "
+        "ORI max ~49151 (~75% max), STG2 saturiran na 65535 (puni kapacitet injektora)."
     ),
     category      = "injection",
     rows=12, cols=32,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0,
     offset_val    = 0.0,
-    unit          = "raw [µs?]",   # fizikalna jedinica nepoznata bez A2L
-    axis_x        = None,          # 32 stupca — nepoznata os (vjerojatno RPM prosireniji)
-    axis_y        = _LOAD_AXIS_12, # 12 redova — opterecenje/MAP
+    unit          = "raw (u16)",   # fizikalna jedinica nepoznata bez A2L
+    axis_x        = None,          # 32 stupca — struktura nepoznata (nije RPM)
+    axis_y        = _LOAD_AXIS_12, # Y = relativno punjenje rl, 12 tocaka
     raw_min       = 0,
     raw_max       = 0xFFFF,
     mirror_offset = INJ_MIRROR_OFFSET,
@@ -274,7 +298,8 @@ _INJ_DEF = MapDef(
         f"Main @ 0x{INJ_MAIN:06X}, mirror @ 0x{INJ_MIRROR:06X} (+0x{INJ_MIRROR_OFFSET:X}). "
         "ORI max ~49151, STG2 max 65535. "
         "Fizikalna jedinica nepoznata bez A2L (vjerojatno µs ili 0.1µs). "
-        "32 stupca = sirniji RPM raspon od ignition (12 stupaca)."
+        "X os (32 stupca) nije RPM — vrijednosti grupiraju po 12 po redu. "
+        "Y os: relativno punjenje rl [%], 12 tocaka @ 0x02AFAC."
     ),
 )
 
@@ -325,24 +350,25 @@ _LAMBDA_DEF = MapDef(
         "preracunat iz mape (ne iz mjerenja). "
         "lambda < 1.0 = bogata smjesa (vise goriva, hladjenje klipa, puni gas). "
         "lambda > 1.0 = siromasna smjesa (stednja, parcijalno opterecenje). "
-        "Osi: RPM (x) × opterecenje/MAP (y)."
+        "Osi: X = relativno punjenje/rl (18 tocaka, ~13-100%), Y = RPM (12 tocaka)."
     ),
     category      = "lambda",
     rows=12, cols=18,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0 / 32768.0,   # Q15: 32768 = 1.0
     offset_val    = 0.0,
-    unit          = "λ",
-    axis_x        = None,    # 18 stupaca — nepoznata os (vise od 12 RPM tocaka)
-    axis_y        = _LOAD_AXIS_12,
-    raw_min       = 16384,   # λ = 0.50 (max bogato)
-    raw_max       = 65535,   # λ = 2.00 (max siromasno)
+    unit          = "lambda",
+    axis_x        = _LAMBDA_LOAD_AXIS_18,   # rl load os, 18 tocaka @ 0x026586
+    axis_y        = _RPM_AXIS_12,           # RPM os, 12 tocaka (redovi = RPM)
+    raw_min       = 16384,   # lambda = 0.50 (max bogato)
+    raw_max       = 65535,   # lambda = 2.00 (max siromasno)
     mirror_offset = LAM_MIRROR_OFFSET,
     notes         = (
         f"Main @ 0x{LAM_MAIN:06X}, mirror @ 0x{LAM_MIRROR:06X} (+0x{LAM_MIRROR_OFFSET:X}). "
-        "Q15 format: raw / 32768 = lambda. 32768 = λ1.0 (stehiometrijsko). "
+        "Q15 format: raw / 32768 = lambda. 32768 = lambda 1.0 (stehiometrijsko). "
         "Tipicni raspon: 0.80 (bogato, puni gas) do 1.05 (malo siromasno, stednja). "
-        "NEMA feedback loop — promjena ove mape direktno mijenja AFR."
+        "NEMA feedback loop — promjena ove mape direktno mijenja AFR. "
+        "X os (load) @ 0x026586 LE u16, Y os (RPM) = globalna RPM os @ 0x024F46."
     ),
 )
 

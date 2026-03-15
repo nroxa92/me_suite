@@ -1,5 +1,28 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 06:30 — Osi mapa definirane: RPM korekcija + load osa + lambda X osa
+
+### Što je napravljeno
+Analiza binarnog fajla i WinOLS stringa donijela je kompletne definicije osi za sve mape.
+
+### Rezultati
+- **RPM osa ispravljena**: prethodne vrijednosti u kodu bile pogrešne za točke 10-15:
+  - `_RPM_12`: zadnje 2 točke `6144,8448` → `5632,6400` (direktno iz binarnog @ 0x024F46)
+  - `_RPM_16`: zadnje 5 točaka `6144,6656,7168,7680,8448` → `6400,6912,7424,7936,8448`
+- **Load osa (Y os)**: WinOLS potvrđuje "relative air charge" (rl, %)
+  - Kandidat @ 0x02AFAC (LE u16): `[0,100,200,400,800,1280,2560,3200,3840,4480,5120,5760]`
+  - Skaliranje: raw ÷ 64 = %, raspon 0–90% (12pt) ili 0–130% (16pt, boost >100% normalan za ACE 1630)
+  - Vrijedi za: ignition (12pt), torque (16pt), injection (12pt)
+- **Lambda X osa (18 točaka)**: @ 0x026586 (LE u16) — isti offset 0x16A bajta ispred lambda main I mirror
+  - Vrijednosti: `[853,1067,1280,...,6400]`, raspon ~13–100% rl
+  - Lambda mapa: X = load (18pt), Y = RPM (12pt) — orijentacija korigirana
+- **Injection**: struktura pojašnjena — 32 stupca NISU RPM os; vrijednosti grupiraju po 12 po redu (možda 3 cilindra × 4 uvjeta). X os ostaje None.
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — RPM osi, load osi (_LOAD_12, _LOAD_16, _LAMBDA_X_18), AxisDef/MapDef za sve mape
+
+---
+
 ## 2026-03-15 05:00 — DTC enable_addr kompletno: 88/111 kodova ažurirani iz mapping tablice
 
 ### Što je napravljeno
