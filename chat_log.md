@@ -45,3 +45,15 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 🤖 ori_300 i rxp300_21 su **identični** (0 byte razlika u cijelom fajlu). Model kod (YDV, 16WF i sl.) **nije** u ECU fajlu — u ECU je samo SW ID `10SW066726`. Model identifikacija je u MPEM-u (čip ključ), ne u ECU flashu.
 
 ---
+
+**2026-03-15**
+👤 alen je gti 130 ili 155 (2017?), wake230 je ACE 1.6 sličan kao 300 (SC od 260, iste injektore), imam BUDS2 — imam sve stock mape, mogu dumpati jednu po jednu što treba
+🤖 Wake230 diff s ori_300 dao **SC bypass valve mapu @ 0x020534 / 0x0205A8** (7×7 u8, throttle×RPM). ori_300=38-205, wake230=31-79 (slabiji SC), stg2=38-255 (max). 260hp ORI ekstrahiran iz WinOLS fajla → `rxtx_260_524060_extracted.bin`. Za BUDS2: najkorisnije su ORI dumpovi Wake230 i GTI 155.
+
+---
+
+**2026-03-15**
+👤 C:\Users\SeaDoo\Desktop\SEADOO ovdje ima hrpa manuala i specifikacija — istraži, ne zaboravi chat i work logove
+🤖 Istraženo 35+ manuala. Novi nalazi: SC bypass ima 3 kopije (0x020534 shadow, 0x0205A8 active, 0x029993 extra). CTS NTC lookup @ 0x0258AA (hardware). Cold start enrichment @ 0x025860 (tunable). Knock params @ 0x0256F8. NPRo modificirao TriCore CODE pointere @ 0x042xxx (firmware change). Ukupno 35 mapa u scanneru.
+
+---

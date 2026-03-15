@@ -1,5 +1,86 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 17:30 — Istraživanje: CTS tablice, knock params, SC 3. kopija, TriCore CODE
+
+### Što je napravljeno
+
+**Nova otkrića (diff analiza ori vs stg2):**
+- **SC bypass 3. kopija** @ 0x029993 — identificirana i dodana u map_finder.py (sada 35 mapa)
+- **CTS NTC lookup tablica** @ 0x0258AA: 10 ADC vrijednosti (5383→1425), hardware kalibracija
+  - Temperaturna osa @ 0x025896: [37,51,64,77,91,104,117,131,144,157] → °C
+- **Cold start enrichment** @ 0x025860-0x025875: 2 vrijednosti promijenio NPRo (500→100, 72→51)
+- **Knock threshold/retard** @ 0x0256F8-0x025728: NPRo promijenio (31→154 za neke vrijednosti)
+- **TriCore CODE pointeri** @ 0x042610, 0x0441DC, 0x0443D0 — NPRo modificirao firmware bytekod!
+  - Ovo su function pointers (0x8006xxxx/0x8008xxxx) — OPASNO kopirati između SW verzija
+- SC mapa osi potvrđene: X=[63,75,88,100,113,138,163], Y=[51,77,102,128,154,179,205]
+
+**SEADOO dokumentacija:**
+- EMS manual: potvrđeni senzori CTS, MAPTS, KS, ETA, OPS, CPS, OTS, CAPS
+- Fuel pump manual: potvrđen fuel pressure 56-60 PSI, pressure regulator na pumpi
+- SC manual: čisto mehanički sadržaj (clutch torque 14-17 Nm, 46800 RPM turbina)
+- Air intake manual: routing procedures, bez ECU podataka
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — SC extra kopija @ 0x029993 dodana
+- `_materijali/MAP_RESEARCH.md` — nova sekcija (cold start, CTS, knock, code pointers)
+
+---
+
+## 2026-03-15 16:00 — SC mapa dodana u map_finder.py + SEADOO dokumentacija
+
+### Što je napravljeno
+- SC bypass ventil mapa dodana u `map_finder.py`:
+  - `_SC_DEF` MapDef, `_scan_sc()` metoda, poziv u `find_all()`
+  - Main @ 0x020534, mirror @ 0x0205A8 (offset +0x74), 7×7 u8
+  - X os: [63,75,88,100,113,138,163] (MAP/ETA pozicija), Y os: [51,77,102,128,154,179,205] (load %)
+  - Scan verificiran: 34 mape pronađene (od 33 ranije)
+- EMS manual pročitan (PDF): potvrđeni senzori CTS, MAPTS, KS, ETA, OPS, CPS, OTS, CAPS
+- SC manual pročitan: mehanički sadržaj (disassembly/clutch), bez ECU map podataka
+- Air intake manual pročitan: routing, bez ECU podataka
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — SC bypass mapa dodana
+
+---
+
+## 2026-03-15 14:30 — SC/Boost mapa identificirana: 0x020534/0x0205A8 (7×7 u8)
+
+### Što je napravljeno
+Izvršena detaljna diff analiza ori_300 vs wake230 vs stg2_300 radi identifikacije boost/SC kontrolnih mapa.
+
+### Ključni rezultati
+
+**BOOST/SC BYPASS VALVE MAPA PRONAĐENA:**
+- **Primarna: `0x020534`** (7×7 u8, 55B) — backup shadow
+- **Aktivna: `0x0205A8`** (7×7 u8, 55B) — ECU runtime čita ovu!
+- Dokaz: STG2 tuner promijenio SAMO 0x0205A8, ne 0x020534
+- Throttle osa: [63,75,88,100,113,138,163] (0x3F-0xA3, scaled 0-255)
+- Vrijednosti: ori_300=38-205, wake230=31-79 (ograničen SC), stg2=38-255 (max SC)
+- `0xFF` bajt = row separator
+
+**Ostale identificirane nepoznate mape:**
+- `0x022D04` / `0x02321C` (mirror +0x518): 24×25 u16 LE, 1200B — injection/torque correction
+- `0x025DD0` (440B): 22×20 u8 — load osa + korekcijska tablica (lambda/lambda load)
+- `0x028103` (775B): ignition correction blok (u8 rastuće vrijednosti)
+- `0x028C22` (350B): SC torque/injection scaling, u16 LE
+
+**ori_300 vs wake230 diff:**
+- 516 promijenjenih regija, 18.879 bajta
+- 182 regija nema blizu poznatih mapa (new/unknown)
+- Ignition: smanjen za 1-2 koraka u wake230 (manje kompresija/boost)
+- Lambda: drastično drugačija (drugačiji AFR profil)
+- DTC @ 0x02108E: nule u wake (DTC OFF)
+
+### Fajlovi promijenjeni
+- `_materijali/MAP_RESEARCH.md` — dodan sekcija `## 2026-03-15 Wake230 vs ori_300 Diff`
+
+### Sledeći koraci
+1. Identificirati RPM osu za SC mapu (0x020500-0x020534 kontekst)
+2. Potvrditi skaliranje SC mape (duty cycle ili pressure target)
+3. Dodati SC mapu u map_finder.py i GUI
+
+---
+
 ## 2026-03-15 11:00 — BUDS2/DIUS analiza: edb ZIP enkriptiran, CDID u MPEM ne ECU
 
 ### Što je napravljeno

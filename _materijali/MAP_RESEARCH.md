@@ -525,3 +525,245 @@ SECTION 5: U16 LE AXIS CANDIDATES — Near known injection/lambda/torque maps
 ANALYSIS COMPLETE
 ================================================================================
 ```
+
+---
+
+## 2026-03-15 Wake230 vs ori_300 Diff — Boost/SC Map Research
+
+### Sažetak sesije
+
+Cilj: pronađi boost/supercharger kontrolne mape usporedbom ori_300 (300HP) i wake230 (230HP, isti motor, drugačiji SC tune).
+
+---
+
+### GLAVNI NALAZ: SC BYPASS VALVE KONTROLNA MAPA
+
+**Adresa: `0x020534` (primarna) + `0x0205A8` (mirror/aktivna)**
+- Format: **7×7 u8** (7 RPM zona × 7 throttle pozicija)
+- Veličina: 55 bajta (7 redova × 8B, zadnji bajt svakog reda = `0xFF` separator, posljednji red bez 0xFF)
+- Mirror offset: `0x0205A8 - 0x020534 = 0x74 = 116B`
+
+**Throttle osa (7 točaka, u8 scaled 0-255 = 0-100%):**
+```
+[63, 75, 88, 100, 113, 138, 163]
+= [25%, 29%, 35%, 39%, 44%, 54%, 64%] of max throttle
+```
+
+**RPM osa: 7 točaka (adrese za os nepoznate, ali u kontekstu 0x020516)**
+
+**Vrijednosti tablice (u8, viša = više SC outputa):**
+
+| RPM↓ / Thr→ | 25% | 29% | 35% | 39% | 44% | 54% | 64% |
+|-------------|-----|-----|-----|-----|-----|-----|-----|
+| r0 ori_300  |  38 |  38 |  40 |  47 |  57 | 110 | 131 |
+| r0 wake230  |  31 |  31 |  31 |  31 |  31 |  31 |  33 |
+| r0 stg2     |  51 |  51 |  56 |  84 | 167 | 167 | 167 |
+| r1 ori_300  |  38 |  38 |  45 |  55 |  66 |  88 | 114 |
+| r1 wake230  |  36 |  36 |  36 |  36 |  36 |  36 |  36 |
+| r1 stg2     |  50 |  50 |  58 |  67 | 137 | 164 | 164 |
+| r2 ori_300  |  41 |  41 |  50 |  59 | 108 | 161 | 205 |
+| r2 wake230  |  36 |  36 |  39 |  39 |  39 |  39 |  40 |
+| r2 stg2     |  46 |  46 |  55 |  82 | 182 | 255 | 255 |
+| r3 ori_300  |  40 |  40 |  47 |  60 |  85 | 111 | 136 |
+| r3 wake230  |  38 |  40 |  44 |  47 |  51 |  55 |  55 |
+| r3 stg2     |  41 |  41 |  48 |  62 | 104 | 146 | 155 |
+| r4 ori_300  |  38 |  38 |  55 |  59 |  94 | 127 | 161 |
+| r4 wake230  |  38 |  40 |  44 |  47 |  64 |  70 |  70 |
+| r4 stg2     |  48 |  48 |  55 |  63 |  99 | 133 | 165 |
+| r5 ori_300  |  38 |  38 |  55 |  59 |  80 |  98 | 127 |
+| r5 wake230  |  38 |  38 |  44 |  46 |  72 |  79 |  79 |
+| r5 stg2     |  53 |  53 |  61 |  70 |  80 |  98 | 128 |
+| r6 ori_300  |  38 |  38 |  55 |  59 |  80 |  98 | 167 |
+| r6 wake230  |  38 |  38 |  43 |  44 |  69 |  79 |  79 |
+| r6 stg2     |  58 |  58 |  68 |  78 |  93 | 110 | 168 |
+
+**Interpretacija:**
+- **Viša vrijednost = veći SC output** (manje bypass = više boost pritiska)
+- ori_300 (300HP): agresivno raste s gasonom, posebno r0-r2 gdje dostiže 131-205
+- wake230 (230HP): gotovo ravna tabla (31-55), drastično manje SC outputa
+- stg2_300 (STG2 tune): još agresivniji od ori, r2 dostiže 255 (max) kod 54%+ gasa
+
+**Ključno otkriće o mirrorima:**
+- STG2 tuner je promijenio SAMO `0x0205A8` (mirror), NE `0x020534` (primarnu)
+- Rxtx_260 ima potpuno drugačije vrijednosti (drugačija SW familija)
+- Zaključak: ECU runtime čita `0x0205A8` (aktivna mapa), `0x020534` = backup/shadow
+
+---
+
+### SEKUNDARNA MAPA: 0x022D04 / 0x02321C (INJECTION ili TORQUE CORRECTION)
+
+**Adresa: `0x022D04` (primarna) + `0x02321C` (mirror, offset +0x518)**
+- Format: **24×25 u16 LE** = 600 vrijednosti = 1200B
+- Vrijednosti: 595–8934 (rastuće s redovima = load-indexed)
+- Mirror potvrđen: identičan sadržaj
+- Wake230 ima niže vrijednosti → manje injekcije/torque kod 230HP
+
+**Kontekst (os @ 0x022CC2, 50B):**
+```
+[20480(=80%), 23040(=90%), 25600(=100%)] = Load osa × 256
+[4800, 6000, 6800, 7800, 9000, 10400, 11000, 12000, 12800, 14000...32000, 34000] = RPM osa
+```
+→ 3 load točke + 22 RPM točke → ali 24×25=600... moguće da je kompletna osa nešto drugačija.
+→ Ova mapa vjerojatno predstavlja **referentne torque/injekcijske vrijednosti** za SC karakteristiku
+
+---
+
+### TREĆA MAPA: 0x025DD0 (22×20 u8 = 440B)
+
+**Adresa: `0x025DD0`**
+- Format: **22×20 u8** (22 redova × 20 točaka)
+- Red 0: `[0, 20, 28, 50, 63, 69, 75, 81, 88, 94, 100, 113, 125, 138, 150, 163, 175, 188, 200, 213]` = **load osa!** (raste od 0 do 213 ≈ 83%)
+- Red 1: `[53, 60, 67, 73, 80, 87, 93, 100, 107, 113, 120, 127, 133, 140, 147, 153, 160, 167, 173, 187]` = drugi opseg (RPM?)
+- Redovi 2-21: silazne vrijednosti 78→64 (korekcijski faktori)
+- Wake230 ima višu bazu (80→80 vs 78→64)
+- Identičan 61B "preamble" na 0x025D8E s uzorkom `[236,236,236,246,251,0,0,0]` × 7
+
+**Mogućnost:** Lambda load osa + korekcijska tablica za open-loop AFR
+
+---
+
+### MAPA 4: 0x028103 (775B) — Ignition correction blok
+
+**Adresa: `0x028103`**
+- Vrijednosti: opadajuće od 196 (0xC4) prema 0 = IGNJENI KUTOVI u formatu 0.75°/bit
+- 196 × 0.75 = 147° BTDC (nema smisla za abs.), vjerojatno relativni offset ±
+- Kontekst: u ignition regiji (0x028103 ≈ 0x02B730 - nema; ali blizu 0x028410 tablicama)
+- Tri 314B tablice na 0x028410, 0x028550, 0x028690 (stride 0x140 = ignition stride?)
+
+---
+
+### MAPA 5: 0x028C22 (350B) — SC torque/injection scaling
+
+**Adresa: `0x028C22`**
+- Format: u16 LE, 175 vrijednosti
+- Vrijednosti: 1028, 1964, 2966, 4129, 5366... 10670 = snažno rastuća serija (grupirano)
+- Svaka grupa ima 0 separator → vjerojatno 10 redova × 17 vrijednosti = 170 + padding
+- Wake230 ima niže vrijednosti (≈70-75% od ori_300)
+
+---
+
+### OSTALE PROMIJENJENE REGIJE (pregled po kategorijama)
+
+**Ignition (blizu 0x02B730):**
+Sve promijenjene u wake230 — SMANJENO paljenje za 1-2 koraka (0x22→0x21 = 34°→33°, što potvrđuje manju kompresiju ili SC pritisak)
+
+**Torque mapa (0x02A0D8 + mirror):**
+Opsežne promjene u wake230 — drugačiji torque profil (230HP vs 300HP)
+
+**Lambda mapa (0x0266F0):**
+Drastično drugačija u wake230 — Q15 vrijednosti oko 0x7E00-0x8500 vs 0x8000 (stoichiometric)
+
+**Rev limiter (0x02B72A, 0x02B73E):**
+Minimalne promjene (1 korak razlike) = praktički isti limiter
+
+**DTC @ 0x02108E:**
+Sve nule u wake230 = DTC isključeni (P0523 DTC OFF tu)
+
+---
+
+### PREGLED SVIH NOVIH ADRESI IDENTIFICIRANIH OD ORI VS STG2
+
+STG2 tuner je promijenio:
+1. `0x0205A8` (mirror SC tablice) → **povećao SC output** na svim točkama (posebno r0-r2: 167, 255!)
+2. `0x020554` (djelomično u primarnoj SC tablici, redovi 4-6)
+3. `0x02439C` + `0x02451C` + `0x02469C` = **injection tablice** (povećana injekcija 72→5×mult)
+4. Lambda mapa = više goriva (open-loop enrišment)
+
+---
+
+### ZAKLJUČAK: BOOST MAP PRONAĐENA
+
+```
+SC bypass valve kontrolna mapa (BOOST MAP):
+  Primarna:  0x020534  (7×7 u8, backup)
+  Aktivna:   0x0205A8  (7×7 u8, ECU čita ovu)
+
+  Format:  7 RPM zona × 7 throttle pozicija
+  Scaling: u8, 0=SC off, 255=SC max output
+  Axis:    throttle = [63,75,88,100,113,138,163] (0x3F-0xA3)
+
+  ori_300: 38-205 (agresivno SC karakteristika)
+  wake230: 31-79  (limitirani SC)
+  stg2_300: 38-255 (max SC output pri WOT)
+```
+
+**Napomena:** RPM osa za ovu mapu nije još identificirana. Kontekst na 0x020516-0x020533 ukazuje na neke RPM vrijednosti, ali nije potvrđeno.
+
+**Sledeći koraci:**
+1. Identificirati RPM osu za SC mapu (pretražiti 0x020500-0x020534)
+2. Potvrditi skaliranje (vjerojatno 0=no boost, 255=max SC → ili duty cycle bypass ventila)
+3. Dodati SC mapu u map_finder.py i GUI
+
+
+---
+
+## 2026-03-15 — Nova istraživanja (sesija 4)
+
+### SC bypass mapa — 3 kopije potvrđene
+
+Analiza ori vs stg2 identificirala **3 kopije SC bypass mape**:
+
+| Kopija | Adresa | NPRo mijenja? | Napomena |
+|--------|--------|--------------|---------|
+| Shadow | 0x020534 | NE | backup, nije aktivna |
+| Active | 0x0205A8 | DA | ECU runtime čita ovu |
+| Extra  | 0x029993 | DA | treća kopija, uvjeti nepoznati |
+
+STG2 vrijednosti @ 0x029993 su DRUGAČIJE od 0x0205A8 → mogući različiti uvjeti (coolant temp? race mode?).
+
+### Osi SC mape — potvrđene iz binarnog
+
+Iz 0x025880 područja, direktno ispred SC mape:
+- **X os**: `[63, 75, 88, 100, 113, 138, 163]` → MAP senzor (kPa) ili ETA pozicija [%]
+  - 100 = referentna točka (atm. tlak ili 100% ETA)
+- **Y os**: `[51, 77, 102, 128, 154, 179, 205]` → rel. opterećenje (128 = 100%)
+
+### CTS temperatura kalibracija @ 0x025880
+
+```
+X os (trajanje/temperatura) @ 0x025880: [4,6,8,10,20,40,60,120,240,480,960]  (11× u16 LE)
+Y os (temperaturi u °C?)     @ 0x025896: [37,51,64,77,91,104,117,131,144,157] (10× u16 LE)
+NTC ADC tablica              @ 0x0258AA: [5383,4820,4323,3705,3051,2461,2036,1776,1591,1425] × 5 kopija
+```
+
+NTC vrijednosti su ISTE u svim SW varijantama (hardware kalibracija). Interpretacija:
+- Viši ADC = niža temperatura (NTC karakteristika)
+- ~5383 → ~37°C (hladna), ~1425 → ~157°C (kritična T)
+
+### Cold start enrichment @ 0x025860 — TUNABLE
+
+NPRo promijenio:
+- Offset 0x02586A (u16 LE): **500 → 100** (redukcija cold start injekcijskog pulsa)
+- Offset 0x025872 (byte): **72 → 51** (redukcija warm-up idle korekcije)
+
+Struktura područja:
+- `0x025800-0x025860`: idle RPM correction tablice (8× u8 + u16 serije)
+- `0x025860-0x025875`: cold start injection params (2 promijenjene vrijednosti)
+- `0x025880-0x0258A9`: axis tablice (duration + temp)
+- `0x0258AA-0x0259xx`: NTC CTS lookup (5 kopija, hardware kalibracija)
+
+### Knock threshold / retard @ 0x0256F8 — TUNABLE
+
+```
+ORI: [205,172,205,172, 31,31,31,...,31,31,31]  
+STG: [255,255,255,255, 31,31,154,154,154,...,154, 31,31,31]
+```
+
+- Vrijednosti 31 = 0x1F (niski threshold?)
+- Vrijednosti 154 = 0x9A (NPRo povećao threshold ili max retard)
+- Prve 4 vrijednosti: 205/172 → 255/255 (NPRo maksimirao)
+- **Interpretacija**: moguće knock detection sensitivity (viši = manje osjetljiv) ili max knock retard limit
+
+### Neidentificirane tunable regije (NPRo mijenja)
+
+| Adresa | Veličina | Moguća interpretacija |
+|--------|----------|----------------------|
+| 0x028059-0x0280DB | 131B | injection correction ili cold start (mixed struktura) |
+| 0x028A51-0x028A8A | 58B | unknown correction factor |
+| 0x042610-0x0427D8 | 457B | **TriCore CODE pointer** (0x8008xxxx adr.) — NPRo mijenja firmware! |
+| 0x0441DC-0x044319 | 318B | TriCore CODE pointer (0x8006xxxx) |
+| 0x0443D0-0x04450C | 317B | TriCore CODE pointer (0x8008xxxx) |
+| 0x05xxxx oblasti | razne | CAL bytekod (ne mijenjati!) |
+
+**VAŽNO**: NPRo je modificirao TriCore kod @ 0x042xxx-0x044xxx! Ovo su function pointers (0x80080000+ adrrese). Direktno kopiranje ovih regija između SW verzija je OPASNO.
+

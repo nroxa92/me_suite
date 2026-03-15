@@ -373,6 +373,76 @@ _LAMBDA_DEF = MapDef(
 )
 
 
+# ─── SC bypass / ETA control mapa ────────────────────────────────────────────
+#
+# Identificirana diff analizom ori_300 vs wake230 (isti motor ACE 1630, ali razlicit SC).
+# wake230 ima slabiji SC (260hp SC geometrija), ORI vrijednosti mu su znatno nize.
+# npro_stg2 ima max vrijednosti (bypass minimiziran = max boost).
+#
+# Fizikalni smisao: ECU kontrolira bypass ventil SC-a.
+#   Vise raw vrijednosti = bypass ventil OTVOREN = SC bypassed = manji boost
+#   Manje raw vrijednosti (38) = bypass ZATVOREN = puni boost
+#   255 = bypass potpuno otvoren (dijagonala mape = prijelazna tocka)
+#
+# X os @ 0x020509: [63, 75, 88, 100, 113, 138, 163]
+#   Moguce: MAP senzor (kPa) ili ETA pozicija (%)
+#   100 = referencna tocka (atmosferski tlak ili 100% ETA)
+#   Ispod 100 = vakuum/parcijalni gas, iznad 100 = boost/puni gas
+#
+# Y os @ 0x020524: [51, 77, 102, 128, 154, 179, 205]
+#   Moguce: relativno opterecenje ili ETA pozicija (%) x 128 = 100%
+#   Evenly spaced ~25 koraka → linearna os
+#
+# Napomena: tocno skaliranje potrebuje A2L potvrdu.
+
+SC_MAIN   = 0x020534
+SC_MIRROR = 0x0205A8
+SC_MIRROR_OFFSET = SC_MIRROR - SC_MAIN   # 0x74
+
+# Treća kopija SC mape (0x029993) — identificirana diff analizom ori vs stg2
+# NPRo mijenja i ovu kopiju (drugačije vrijednosti od 0x0205A8), mogući drugi uvjeti
+SC_EXTRA  = 0x029993
+
+_SC_X_AXIS_VALS = [63, 75, 88, 100, 113, 138, 163]
+_SC_Y_AXIS_VALS = [51, 77, 102, 128, 154, 179, 205]
+
+_SC_X_AXIS = AxisDef(count=7, byte_order="BE", dtype="u8",
+                      scale=1.0, unit="MAP/ETA [raw]", values=_SC_X_AXIS_VALS)
+_SC_Y_AXIS = AxisDef(count=7, byte_order="BE", dtype="u8",
+                      scale=1.0/128.0*100.0, unit="load [%]", values=_SC_Y_AXIS_VALS)
+
+_SC_DEF = MapDef(
+    name          = "SC bypass ventil — kontrola",
+    description   = (
+        "Kontrola bypass ventila kompresora (supercharger) — 7×7 tablica. "
+        "Manja vrijednost = bypass ZATVOREN = veci boost. "
+        "255 = bypass potpuno otvoren = SC bypassed. "
+        "X os: MAP senzor ili ETA pozicija (100=referenca). "
+        "Y os: relativno opterecenje ili ETA (128=100%). "
+        "ori_300=38–205, wake230=31–79 (slabiji SC), stg2=38–255 (max boost)."
+    ),
+    category      = "misc",
+    rows=7, cols=7,
+    byte_order    = "BE",
+    dtype         = "u8",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "raw (u8)",
+    axis_x        = _SC_X_AXIS,
+    axis_y        = _SC_Y_AXIS,
+    raw_min       = 0,
+    raw_max       = 255,
+    mirror_offset = SC_MIRROR_OFFSET,
+    notes         = (
+        f"Main @ 0x{SC_MAIN:06X}, mirror @ 0x{SC_MIRROR:06X} (+0x{SC_MIRROR_OFFSET:X}). "
+        "Identificirano diff analizom ori_300 vs wake230 (isti blok, razlicit SC). "
+        "X os @ 0x020509: [63,75,88,100,113,138,163]. "
+        "Y os @ 0x020524: [51,77,102,128,154,179,205]. "
+        "Tocno skaliranje osi treba A2L potvrdu."
+    ),
+)
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -454,6 +524,7 @@ class MapFinder:
         self._scan_injection(progress_cb)
         self._scan_torque(progress_cb)
         self._scan_lambda(progress_cb)
+        self._scan_sc(progress_cb)
         self._scan_dtc(progress_cb)
         return self.results
 
@@ -715,6 +786,61 @@ class MapFinder:
         disp_max = max(vals) / 32768.0
         if cb: cb(f"  Lambda @ 0x{addr:06X}  12x18  lam=[{disp_min:.3f}-{disp_max:.3f}]"
                   f"  mirror @ 0x{LAM_MIRROR:06X}")
+
+    # ── SC bypass scan ────────────────────────────────────────────────────────
+
+    def _scan_sc(self, cb=None):
+        if cb: cb("Trazim SC bypass mapu...")
+        data = self.eng.get_bytes()
+
+        addr = SC_MAIN
+        n    = _SC_DEF.rows * _SC_DEF.cols  # 7 × 7 = 49
+        if addr + n > len(data):
+            if cb: cb("  SC: adresa van granica fajla")
+            return
+
+        vals = list(data[addr:addr + n])
+
+        # Validacija: mora imati mijesane vrijednosti (nije sve nula ili sve 255)
+        non_trivial = sum(1 for v in vals if 0 < v < 255)
+        if non_trivial < n // 4:
+            if cb: cb(f"  SC @ 0x{addr:06X}: nedovoljno raznolikih vrijednosti — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _SC_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  SC bypass @ 0x{addr:06X}  7x7  raw=[{min(vals)}-{max(vals)}]"
+                  f"  mirror @ 0x{SC_MIRROR:06X}")
+
+        # Treća kopija @ SC_EXTRA
+        if SC_EXTRA + n <= len(data):
+            vals2 = list(data[SC_EXTRA:SC_EXTRA + n])
+            non_trivial2 = sum(1 for v in vals2 if 0 < v < 255)
+            if non_trivial2 >= n // 4:
+                extra_def = MapDef(
+                    name          = "SC bypass ventil — extra kopija",
+                    description   = _SC_DEF.description + " (3. kopija @ 0x029993, mogući alternativni uvjeti)",
+                    category      = "misc",
+                    rows=7, cols=7,
+                    byte_order    = "BE", dtype = "u8",
+                    scale         = 1.0, unit = "raw (u8)",
+                    axis_x        = _SC_X_AXIS,
+                    axis_y        = _SC_Y_AXIS,
+                    raw_min       = 0, raw_max = 255,
+                    mirror_offset = 0,
+                    notes         = f"Extra kopija @ 0x{SC_EXTRA:06X}. NPRo mijenja i ovu kopiju s razlicitim vrijednostima.",
+                )
+                self.results.append(FoundMap(
+                    defn    = extra_def,
+                    address = SC_EXTRA,
+                    sw_id   = self._sw(),
+                    data    = vals2,
+                ))
+                if cb: cb(f"  SC extra  @ 0x{SC_EXTRA:06X}  7x7  raw=[{min(vals2)}-{max(vals2)}]")
 
     # ── DTC scanner ──────────────────────────────────────────────────────────
 
