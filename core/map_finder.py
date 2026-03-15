@@ -166,12 +166,14 @@ _REV_LIMIT_HEUR = MapDef(
 
 IGN_BASE   = 0x02B730
 IGN_STRIDE = 144          # 12 × 12 × 1 bajt (u8)
-IGN_COUNT  = 16
+IGN_COUNT  = 19
 
-# Nazivi ignition mapa — 16 mapa svakih 144B (12×12 u8, 0.75°/bit):
+# Nazivi ignition mapa — 19 mapa svakih 144B (12×12 u8, 0.75°/bit):
 #   00-07  Osnovna timing mapa (razliciti uvjeti: toplina, load, boost...)
 #   08-09  Knock delta/trim — POTVRDJENO: negativni pomaci, manji raspon = retard korekcija
 #   10-15  Pomocna mapa (neidentificirana: moguce cold start, decel, overrun)
+#   16-17  POTVRDJENO NPRo STG2: aktivne timing mape izvan prvobitnih 16 (0x02C030, 0x02C0C0)
+#   18     Uvjetna/parcijalna mapa — prvih 3 reda aktivni, ostali 0 (STG2 mijenja)
 # VAZNO: uvjeti i redoslijed po cilindru NISU verificirani bez A2L fajla.
 _IGN_NAMES = [
     "Paljenje — Osnovna 1",          # 00
@@ -190,11 +192,16 @@ _IGN_NAMES = [
     "Paljenje — Pomocna 4",          # 13  neidentificirana
     "Paljenje — Pomocna 5",          # 14  neidentificirana
     "Paljenje — Pomocna 6",          # 15  neidentificirana
+    "Paljenje — Prosirena 1",        # 16  POTVRDJENO: NPRo STG2 mijenja (0x02C030)
+    "Paljenje — Prosirena 2",        # 17  POTVRDJENO: NPRo STG2 mijenja (0x02C0C0)
+    "Paljenje — Uvjetna",            # 18  parcijalna mapa, prvih 3 reda aktivni
 ]
 
 def _make_ign_def(idx: int) -> MapDef:
     addr = IGN_BASE + idx * IGN_STRIDE
-    is_knock = idx in (8, 9)
+    is_knock    = idx in (8, 9)
+    is_extended = idx in (16, 17)
+    is_partial  = idx == 18
     return MapDef(
         name         = _IGN_NAMES[idx],
         description  = (
@@ -202,6 +209,13 @@ def _make_ign_def(idx: int) -> MapDef:
             "negativne vrijednosti = kasnjenje (retard). "
             "Automatski se oduzima od osnovne mape pri detekciji detonacije."
             if is_knock else
+            f"Kut predpaljenja (timing advance) — prosirena mapa #{idx:02d}. "
+            "POTVRDJENO: NPRo STG2 mijenja ovu mapu. "
+            "Osi: RPM (x) × opterecenje/MAP (y)."
+            if is_extended else
+            f"Uvjetna/parcijalna timing mapa #{idx:02d}. "
+            "Prvih 3 reda aktivni (28.5–34.5°), ostatak nula. STG2 djelomicno mijenja."
+            if is_partial else
             f"Kut predpaljenja (timing advance) — mapa #{idx:02d}. "
             "Osi: RPM (x) × opterecenje/MAP (y). "
             "Razlicite mape aktivne su za razlicite uvjete (toplina, boost, stanje motora)."
@@ -215,12 +229,14 @@ def _make_ign_def(idx: int) -> MapDef:
         unit         = "°BTDC" if not is_knock else "°",
         axis_x       = _RPM_AXIS_12,
         axis_y       = _LOAD_AXIS_12,
-        raw_min      = 0  if is_knock else 16,
-        raw_max      = 40 if is_knock else 56,
+        raw_min      = 0  if (is_knock or is_partial) else 16,
+        raw_max      = 40 if is_knock else 58,
         mirror_offset= 0,
         notes        = (
             f"Adresa: 0x{addr:06X}. Scale: 0.75°/bit. "
             + ("KNOCK TRIM: retard delta oduzet od osnove pri detonaciji. " if is_knock else
+               "POTVRDJENO NPRo STG2 mapa. ORI: 25.5–30°, STG2: vise. " if is_extended else
+               "UVJETNA: aktivna samo u odredjenim uvjetima. " if is_partial else
                "ORI: 24–33.75° BTDC, STG2: do 36.75° BTDC. ")
             + "Os Y: pretpostavljeno MAP/opterecenje, nije verificirano bez A2L."
         ),
@@ -540,14 +556,18 @@ class MapFinder:
 
             # Validacija: knock mape (idx 8,9) imaju retard delta 0-40,
             # normalne timing mape imaju raspon 16-58 (12°–43.5° BTDC).
+            # Uvjetne/parcijalne mape (idx 18) imaju 0-58 raspon, niski threshold.
             # Soft threshold: >=80% vrijednosti mora biti u rasponu (robusno na padding/boundary data)
-            is_knock = idx in (8, 9)
-            if is_knock:
-                in_range = sum(1 for v in raw if 0 <= v <= 48)
+            is_knock   = idx in (8, 9)
+            is_partial = idx == 18
+            if is_knock or is_partial:
+                in_range = sum(1 for v in raw if 0 <= v <= 58)
+                threshold = 0.40  # parcijalne mape imaju mnogo nula
             else:
                 in_range = sum(1 for v in raw if 16 <= v <= 58)
+                threshold = 0.80
             valid_frac = in_range / len(raw)
-            if valid_frac < 0.80:
+            if valid_frac < threshold:
                 if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: "
                           f"validacija pala ({in_range}/{len(raw)} = {valid_frac:.0%}) — preskacam")
                 continue

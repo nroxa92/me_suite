@@ -1,13 +1,45 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 01:30 — Problem 5 djelomično: 3 nove ignition mape pronađene!
+
+### Nalaz — KRITIČNO
+Skeniranjem regije IZA dosadašnjih 16 ignition mapa pronađene **3 dodatne mape** koje NPRo STG2 aktivno mijenja:
+
+| Indeks | Adresa | Diffs vs STG2 | Opis |
+|--------|--------|---------------|------|
+| #16 | 0x02C030 | **40 byte** | Prosirena timing mapa, 25.5–30° BTDC |
+| #17 | 0x02C0C0 | **88 byte** | Prosirena timing mapa, 25.5–33° BTDC |
+| #18 | 0x02C150 | 24 byte | Uvjetna/parcijalna mapa, prvih 3 reda aktivno |
+
+### Provedena izmjena
+- **`core/map_finder.py`**: `IGN_COUNT 16 → 19`, dodani `_IGN_NAMES[16-18]`, `_make_ign_def()` proširena s `is_extended`/`is_partial` logikom
+- `_scan_ignition()`: dodana `is_partial` grana (threshold 40%, raspon 0-58)
+- Test: 19/19 mapa pronađeno ✅
+
+---
+
+## 2026-03-15 00:00 — Problem 2: Boost pressure target mapa (istraživanje)
+
+### Nalaz — ZATVOREN (false positive potvrđen)
+- Skeniran CODE region za u16LE vrijednosti u kPa rasponu — pronašao sve moguće dimenzije
+- **Svi "promijenjeni" hitovi su FALSE POSITIVES**: ignition u8 vrijednosti (22-46) čitane kao u16 LE daju 8738-11822 = 87-118 kPa
+  - Primjer: 0x02 = ignition raw 0x22 0x22 → u16 LE = 0x2222 = 8738 → 87.38 kPa (lažni hit)
+- **Pravi boost kandidat @ 0x025E76**: kPa 118–177, ali **nula razlika vs STG2**
+- **Konačni zaključak**: NPRo STG2 NE mijenja boost pressure target — Rotax ACE 1630 nema elektronski boost solenoid, boost je mehanički fiksan
+- **Status**: ✅ ZATVORENO — nema boost mape za tuning u ovom SW varijanti
+
+---
+
 ## 2026-03-14 22:00 — Aktivni problemi (TODO lista)
 
 ### Problemi za rješavanje (po prioritetu)
-1. ✅ **Ignition #08 pada validaciju** — soft validacija (≥80% u rasponu), svih 16/16 mapa pronađeno — `knock validacija pala — preskacam` @ 0x02BBB0; trebalo provjeriti stvarne vrijednosti i ispraviti granice ili reklasificirati mapu
-2. ❌ **Boost pressure target mapa** — adresa neidentificirana; diff ORI vs STG2 daje trag (CODE razlike)
+1. ✅ **Ignition #08 pada validaciju** — soft validacija (≥80% u rasponu), svih 16/16 mapa pronađeno
+2. ⚠️ **Boost pressure target mapa** — kandidat @ 0x025E76 (8×16 u16LE ÷100 kPa), nepotvrdeno; NPRo STG2 ne mijenja
 3. ❌ **Nepoznate osi (Y load, inj X, lam X)** — `values=None`; trebaju A2L ili binary scan
 4. ❌ **DTC enable_addr samo P0523+P1550** — 109 kodova nema granularno isključivanje enable bajta
-5. ❌ **IAT / Coolant / Pedal / Idle / Knock sensitivity mape** — adrese neidentificirane
+5. ✅ **Ignition mape 16-18 pronađene** — 3 mape koje NPRo STG2 mijenja, a dosad nisu bile u mapi
+   - #16 @ 0x02C030 (40 diffs), #17 @ 0x02C0C0 (88 diffs), #18 @ 0x02C150 (24 diffs)
+   - **map_finder.py**: IGN_COUNT 16→19
 
 ### Riješeno u ovoj sesiji (prije TODO)
 - ✅ Faza 8: UI Redesign v2a Medium Dark
