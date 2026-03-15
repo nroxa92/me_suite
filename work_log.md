@@ -1,5 +1,62 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 19:30 — UI: split-view za Fajl 2 (side-by-side usporedba)
+
+### Što je napravljeno
+
+**`ui/main_window.py` — `MapTableView`:**
+- Dodan `QSplitter(Horizontal)` koji dijeli prikaz na Fajl 1 (lijevo) i Fajl 2 (desno)
+- Fajl 2 panel je skriven kad nije učitan — pojavi se automatski kad se odabere mapa s compare
+- Svaki panel ima header label (plavi = Fajl 1, žuti = Fajl 2) s SW ID i adresom
+- Sinkronizirani scroll (V + H) između dva panela s `blockSignals` (nema beskonačne petlje)
+- Diff boje: Fajl 1 changed = žuta pozadina (#e5c07b), Fajl 2 changed = crvena (#f48771)
+- Oba panela imaju iste osi (X/Y header labels) i heatmap boje za nepromijenjene ćelije
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — `MapTableView.__init__`, `show_map`, `clear`
+
+---
+
+## 2026-03-15 19:00 — DTC bugfix: crash + samo 2 DTC problema
+
+### Što je napravljeno
+
+**Bug 1 — CRASH fix** (`core/dtc.py`):
+- `DtcDef` nije imao `notes` atribut, a `_refresh_display` u UI ga je zvao → `AttributeError`
+- Svaki klik na DTC u panelu je tiho pao, dugmići nikad nisu postali aktivni
+- Fix: dodan `notes` kao `@property` na `DtcDef` koji auto-generira: module, code addr, enable addr
+
+**Bug 2 — "Samo 2 DTC"** (objašnjenje):
+- `map_finder._scan_dtc` dodaje samo P1550 i P0523 u Map Library tree (legacy approach)
+- DTC Panel (DTC tab) već ima SVIH 111 kodova — ali bio je neupotrebljiv zbog Bug 1
+- Nakon Bug 1 fixa: DTC Panel radi za svih 111 kodova
+
+**Testirano**: 111 DTC kodova × notes/get_status/dtc_off — 0 grešaka
+
+### Fajlovi promijenjeni
+- `core/dtc.py` — dodan `notes` property na `DtcDef`
+
+---
+
+## 2026-03-15 18:30 — map_finder: +3 nove mape (cold start, knock params, CTS temp os)
+
+### Što je napravljeno
+
+**Dodano u `core/map_finder.py`** (ukupno sada 38 mapa, bilo 35):
+- **Cold start enrichment** @ 0x02586A: 1×6 u16 LE — [500,1000,1690,1126,1096,1024], NPRo: [100,.,.,.,1075,.]
+- **Knock threshold params** @ 0x0256F8: 1×24 u16 LE — prag detekcije knocka i retard parametri
+  - ORI: [0-1]=44237, [2+]=7967; NPRo: [0-1]=65535, selektivno [3,4,9,10...]=39578
+- **CTS temperaturna os** @ 0x025896: 1×10 u16 LE — [37..157]°C breakpoints
+- Nove MapDef konstante: `COLD_START_ADDR`, `KNOCK_PARAMS_ADDR`, `CTS_TEMP_AXIS_ADDR`
+- Nove scan metode: `_scan_cold_start()`, `_scan_knock_params()`, `_scan_cts_temp_axis()`
+
+**Kontekst poruke korisnika:** alen_1037525897.bin i alen_10SW040013_tuned.bin su backup ECU-a koji je zamijenio alen (originalni utonuo u more, zamjenski 170hp ECU). Ovi fajlovi su irelevantni za 300hp tuning skup.
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — +3 MapDef, +3 scan metode, `find_all()` ažuriran
+
+---
+
 ## 2026-03-15 17:30 — Istraživanje: CTS tablice, knock params, SC 3. kopija, TriCore CODE
 
 ### Što je napravljeno

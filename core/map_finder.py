@@ -443,6 +443,116 @@ _SC_DEF = MapDef(
 )
 
 
+# ─── Cold start enrichment ───────────────────────────────────────────────────
+#
+# Parametri bogaćenja pri hladnom startu — 1D tablica 6 vrijednosti @ 0x02586A.
+# ECU dodaje ovu količinu goriva (raw jedinice) u prvih N sekundi nakon hladnog starta.
+# NPRo STG2 smanjio prvu vrijednost 500 → 100 (manje bogaćenja pri -30°C i sl.)
+# i neznatno smanjio 1096 → 1075.
+#
+# Kontekst: ispred i iza tablice nalazi se temperaturna os (CTS) i NTC lookup:
+#   @ 0x025880 (1×11 u16 LE): timing/decay parametri (4, 6, 8, 10, 20, 40, 60, 120, 240, 480, 960)
+#   @ 0x025896 (1×10 u16 LE): CTS temperaturna os u °C = [37..157]
+#   @ 0x0258AA (1×10 u16 LE): NTC ADC lookup [5383..1425] — hardware kalibracija (ne editirati!)
+
+COLD_START_ADDR = 0x02586A
+
+_COLD_START_DEF = MapDef(
+    name          = "Cold start — bogaćenje gorivom",
+    description   = (
+        "Faktor bogaćenja gorivom pri hladnom startu — 6 vrijednosti (1D tablica). "
+        "Veće = više goriva pri hladnom startu. "
+        "ori_300: [500, 1000, 1690, 1126, 1096, 1024]. "
+        "NPRo STG2: [100, 1000, 1690, 1126, 1075, 1024] — smanjeno za 80%. "
+        "Raspon: od najhladnijeg do toplog pokretanja."
+    ),
+    category      = "misc",
+    rows=1, cols=6,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "raw (u16)",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 0,
+    raw_max       = 5000,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{COLD_START_ADDR:06X}. "
+        "NPRo STG2: [0]=500→100, [4]=1096→1075. "
+        "Susjedne tablice @ 0x025880 (decay timing), 0x025896 (CTS temp os °C), "
+        "0x0258AA (NTC ADC lookup — hardware, ne editirati!)."
+    ),
+)
+
+# CTS temperaturna os @ 0x025896 — 10 točaka [37..157] u °C
+CTS_TEMP_AXIS_ADDR = 0x025896
+_CTS_TEMP_AXIS_VALS = [37, 51, 64, 77, 91, 104, 117, 131, 144, 157]
+
+_CTS_TEMP_AXIS_DEF = MapDef(
+    name          = "CTS — temperaturna os (°C)",
+    description   = (
+        "Temperaturna os senzora rashladne tekućine (CTS) za cold start i korekcijske tablice. "
+        "10 točaka od 37°C do 157°C (u16 LE, raw = °C). "
+        "Raspon pokriven: hladni motor (37°C) do pregrijanja (157°C)."
+    ),
+    category      = "axis",
+    rows=1, cols=10,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0, unit = "°C",
+    raw_min       = 0, raw_max = 200,
+    axis_x        = None, axis_y = None,
+    notes         = (
+        f"@ 0x{CTS_TEMP_AXIS_ADDR:06X}. "
+        "Odmah slijedi NTC ADC lookup @ 0x0258AA (hardware kalibracija)."
+    ),
+)
+
+
+# ─── Knock threshold parametri ────────────────────────────────────────────────
+#
+# Blok od 24× u16 LE vrijednosti @ 0x0256F8 koji kontrolira knock detekciju.
+# Format u8 parova: svake 2 bajta = 2 parametra (vjerojatno po cilindru).
+#
+# Poznate vrijednosti:
+#   [00-01] = 44237 (0xACCD) — prag detekcije knocka (threshold high) → NPRo: 65535
+#   [02+]   = 7967  (0x1F1F) = [31,31] u8 — nominalni prag knocka per-cyl → NPRo: [154,154]
+#
+# NPRo STG2 promjene:
+#   [00-01]: 44237 → 65535 (povišen threshold = teže aktivirati smanjenje timinga)
+#   [03,04,09,10,15,16,17,20,21]: 7967 → 39578 (31→154 u8 — agresivniji knock limit)
+#   [05,11,22]: 7967 → 8090 (31→154 samo low byte)
+#
+# NAPOMENA: točna 2D struktura nepoznata bez A2L — iskazano kao flat 1D.
+
+KNOCK_PARAMS_ADDR = 0x0256F8
+
+_KNOCK_PARAMS_DEF = MapDef(
+    name          = "Knock — parametri praga detekcije",
+    description   = (
+        "Parametri praga detekcije detonacije (knock threshold) — 24 vrijednosti (1D). "
+        "Veće = viši prag = ECU teže detektira knock = manje retard korekcija. "
+        "Format: u8 parovi (svaka u16 = 2 bajta = 2 param). "
+        "ori_300: [0-1]=44237, [2+]=7967. "
+        "NPRo STG2: [0-1]=65535, selektivno [3,4,9,10...]=39578 (agresivnija tuning mapa)."
+    ),
+    category      = "misc",
+    rows=1, cols=24,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "raw (u16)",
+    axis_x        = None, axis_y = None,
+    raw_min       = 0, raw_max = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{KNOCK_PARAMS_ADDR:06X}. "
+        "Kao u8 parovi: 0x1F=31 nominalni, 0x9A=154 NPRo agresivni, 0xFF=255 max. "
+        "Točna 2D struktura zahtijeva A2L potvrdu."
+    ),
+)
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -525,6 +635,9 @@ class MapFinder:
         self._scan_torque(progress_cb)
         self._scan_lambda(progress_cb)
         self._scan_sc(progress_cb)
+        self._scan_cold_start(progress_cb)
+        self._scan_knock_params(progress_cb)
+        self._scan_cts_temp_axis(progress_cb)
         self._scan_dtc(progress_cb)
         return self.results
 
@@ -841,6 +954,86 @@ class MapFinder:
                     data    = vals2,
                 ))
                 if cb: cb(f"  SC extra  @ 0x{SC_EXTRA:06X}  7x7  raw=[{min(vals2)}-{max(vals2)}]")
+
+    # ── Cold start enrichment scan ────────────────────────────────────────────
+
+    def _scan_cold_start(self, cb=None):
+        if cb: cb("Tražim cold start enrichment tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = COLD_START_ADDR
+        n = 6
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: mora imati raznolike vrijednosti (nije sve nule)
+        if max(vals) == 0 or len(set(vals)) < 2:
+            if cb: cb(f"  Cold start @ 0x{addr:06X}: nema valjanog sadržaja — preskačem")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _COLD_START_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Cold start @ 0x{addr:06X}  1×6  vals={vals}")
+
+    # ── Knock parameters scan ─────────────────────────────────────────────────
+
+    def _scan_knock_params(self, cb=None):
+        if cb: cb("Tražim knock threshold parametre...")
+        data = self.eng.get_bytes()
+
+        addr = KNOCK_PARAMS_ADDR
+        n = 24
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: tipični ORI sadržaj — barem jedan u rasponu 7000-50000
+        valid = any(7000 <= v <= 50000 for v in vals)
+        if not valid:
+            if cb: cb(f"  Knock @ 0x{addr:06X}: nema valjanog sadržaja — preskačem")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _KNOCK_PARAMS_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Knock params @ 0x{addr:06X}  1×24  "
+                  f"[0]={vals[0]}  [2]={vals[2]}  [3]={vals[3]}")
+
+    # ── CTS temperature axis scan ─────────────────────────────────────────────
+
+    def _scan_cts_temp_axis(self, cb=None):
+        if cb: cb("Tražim CTS temperaturnu os...")
+        data = self.eng.get_bytes()
+
+        addr = CTS_TEMP_AXIS_ADDR
+        n = 10
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: mora biti rastuća os u °C rasponu [20..200]
+        if not (all(20 <= v <= 200 for v in vals) and self._monotone(vals)):
+            if cb: cb(f"  CTS temp os @ 0x{addr:06X}: validacija pala — preskačem")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _CTS_TEMP_AXIS_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  CTS temp os @ 0x{addr:06X}  1×10  [{vals[0]}..{vals[-1]}]°C")
 
     # ── DTC scanner ──────────────────────────────────────────────────────────
 

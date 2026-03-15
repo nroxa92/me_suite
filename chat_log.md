@@ -4,6 +4,24 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 
+**2026-03-15**
+👤 kada ucitamo drugi file onda bi namse prozor trebao podijeliti na dva prozora jedaanpored drugoga?? to se ne dogodi...
+🤖 Implementiran QSplitter side-by-side: Fajl 1 lijevo (plavi header), Fajl 2 desno (žuti header). Panel se pojavi automatski kad postoji compare map. Sinkronizirani V+H scroll. Diff boje: Fajl 1 changed = žuta, Fajl 2 changed = crvena.
+
+---
+
+**2026-03-15**
+👤 daj vidimaloza dtczasto se app crasha? zasto imamo mogucnost ugastiti samo dva dtc?
+🤖 Bug 1: `DtcDef` nema `notes` atribut → `_refresh_display` pada svaki klik → dugmići ne rade. Fix: dodan `notes` @property. Bug 2: Map Library tree ima samo P1550+P0523 (map_finder legacy) ali DTC Panel ima svih 111 — sad sve radi.
+
+---
+
+**2026-03-15 (nastavak sesije 2)**
+👤 zanemari alen folder — to je samo backup ECU-a prije upisa, orig ECU je utonuo u more, pitaj boga što je to. Dok čekamo nove dumpove.
+🤖 Jasno, alen fajlovi su backup 170hp ECU-a zamjenskog (originalni utonuo u more) — irelevantni za 300hp tuning. Dodana 3 nove mape u map_finder.py: cold start enrichment @ 0x02586A, knock params @ 0x0256F8, CTS temp os @ 0x025896. Ukupno 38 mapa.
+
+---
+
 **2026-03-15 (nastavak sesije)**
 👤 Kreiraj i održavaj fajl `chat_log.md` u root folderu projekta. PRAVILA: Nakon SVAKE moje poruke dodaj novi unos. Format: datum, moja poruka doslovno, tvoj odgovor max 2-3 rečenice. Ne brišite stare unose. Dodaj i uputu u claude.md.
 🤖 Kreiran `chat_log.md` i ažuriran `CLAUDE.md` s uputom za održavanje chatloga. Paralelno dovršeno ažuriranje `core/dtc.py` — 88/111 DTC kodova sada ima `en_addr` (en_size=1) iz mapping tablice @ 0x0239B4; P1550 i P0523 en_size smanjen s 10/11 na 1.

@@ -481,6 +481,20 @@ class MapTableView(QWidget):
 
         lo.addWidget(self._map_bar)
 
+        # Horizontalni splitter: Fajl 1 (lijevo) | Fajl 2 (desno, skriveno dok nema compare)
+        self._tables_split = QSplitter(Qt.Orientation.Horizontal)
+
+        # ── Fajl 1 pane ───────────────────────────────────────────────────────
+        t1_pane = QWidget()
+        t1_lo = QVBoxLayout(t1_pane); t1_lo.setContentsMargins(0,0,0,0); t1_lo.setSpacing(0)
+        self._lbl_f1 = QLabel()
+        self._lbl_f1.setStyleSheet(
+            "background:#252526;color:#9cdcfe;font-size:11px;font-weight:bold;"
+            "padding:3px 8px;border-bottom:1px solid #333333;"
+        )
+        self._lbl_f1.hide()
+        t1_lo.addWidget(self._lbl_f1)
+
         self.table = QTableWidget()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self.table.horizontalHeader().setDefaultSectionSize(54)
@@ -492,7 +506,44 @@ class MapTableView(QWidget):
         self.table.setFont(QFont("Consolas", 10))
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.cellClicked.connect(lambda r,c: self._fm and self.cell_clicked.emit(r,c,self._fm))
-        lo.addWidget(self.table, 1)
+        t1_lo.addWidget(self.table, 1)
+        self._tables_split.addWidget(t1_pane)
+
+        # ── Fajl 2 pane (compare, read-only) ──────────────────────────────────
+        self._t2_pane = QWidget()
+        t2_lo = QVBoxLayout(self._t2_pane); t2_lo.setContentsMargins(0,0,0,0); t2_lo.setSpacing(0)
+        self._lbl_f2 = QLabel()
+        self._lbl_f2.setStyleSheet(
+            "background:#252526;color:#e5c07b;font-size:11px;font-weight:bold;"
+            "padding:3px 8px;border-bottom:1px solid #333333;"
+        )
+        t2_lo.addWidget(self._lbl_f2)
+
+        self.table2 = QTableWidget()
+        self.table2.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.table2.horizontalHeader().setDefaultSectionSize(54)
+        self.table2.horizontalHeader().setFont(QFont("Consolas", 9))
+        self.table2.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.table2.verticalHeader().setDefaultSectionSize(32)
+        self.table2.verticalHeader().setFont(QFont("Consolas", 9))
+        self.table2.verticalHeader().setFixedWidth(44)
+        self.table2.setFont(QFont("Consolas", 10))
+        self.table2.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        t2_lo.addWidget(self.table2, 1)
+        self._t2_pane.hide()
+        self._tables_split.addWidget(self._t2_pane)
+
+        # Sinkronizirani scroll (blockSignals sprječava beskonačnu petlju)
+        def _sync(src, dst):
+            def _do(v):
+                dst.blockSignals(True); dst.setValue(v); dst.blockSignals(False)
+            src.valueChanged.connect(_do)
+        _sync(self.table.verticalScrollBar(),   self.table2.verticalScrollBar())
+        _sync(self.table2.verticalScrollBar(),  self.table.verticalScrollBar())
+        _sync(self.table.horizontalScrollBar(), self.table2.horizontalScrollBar())
+        _sync(self.table2.horizontalScrollBar(),self.table.horizontalScrollBar())
+
+        lo.addWidget(self._tables_split, 1)
 
         self._fm:  FoundMap | None = None
         self._fm2: FoundMap | None = None
@@ -529,11 +580,23 @@ class MapTableView(QWidget):
                   self.btn_copy, self.btn_csv, self.btn_reset]:
             b.show()
 
+        # Prikaži/sakrij drugi panel
+        if compare:
+            self._lbl_f1.setText(f"  Fajl 1  —  {fm.sw_id}")
+            self._lbl_f1.show()
+            self._lbl_f2.setText(f"  Fajl 2  —  {compare.sw_id}  @ 0x{compare.address:06X}")
+            self._t2_pane.show()
+        else:
+            self._lbl_f1.hide()
+            self._t2_pane.hide()
+
         rows, cols = defn.rows, defn.cols
         data  = fm.data
         data2 = compare.data if compare else None
 
         self.table.setRowCount(rows); self.table.setColumnCount(cols)
+        if compare:
+            self.table2.setRowCount(rows); self.table2.setColumnCount(cols)
 
         x_labels = ([str(v) for v in defn.axis_x.values[:cols]]
                     if defn.axis_x and defn.axis_x.values else [str(c) for c in range(cols)])
@@ -541,22 +604,31 @@ class MapTableView(QWidget):
                     if defn.axis_y and defn.axis_y.values else [f"r{r}" for r in range(rows)])
         self.table.setHorizontalHeaderLabels(x_labels)
         self.table.setVerticalHeaderLabels(y_labels)
+        if compare:
+            self.table2.setHorizontalHeaderLabels(x_labels)
+            self.table2.setVerticalHeaderLabels(y_labels)
 
-        mn = min(data) if data else 0
-        mx = max(data) if data else 1
+        mn  = min(data)  if data  else 0
+        mx  = max(data)  if data  else 1
+        mn2 = min(data2) if data2 else mn
+        mx2 = max(data2) if data2 else mx
+
+        def _fmt(raw, d):
+            return (f"{raw * d.scale:.1f}" if d.dtype == "u8"
+                    else f"{raw * d.scale:.3f}" if d.scale != 0
+                    else f"0x{raw:04X}")
 
         for r in range(rows):
             for c in range(cols):
                 idx = r * cols + c
                 if idx >= len(data): break
                 raw = data[idx]
-                txt = (f"{raw * defn.scale:.1f}" if defn.dtype == "u8"
-                       else f"{raw * defn.scale:.3f}" if defn.scale != 0
-                       else f"0x{raw:04X}")
-                item = QTableWidgetItem(txt)
+                is_diff = data2 and idx < len(data2) and data2[idx] != raw
+
+                item = QTableWidgetItem(_fmt(raw, defn))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 item.setData(Qt.ItemDataRole.UserRole, raw)
-                if data2 and idx < len(data2) and data2[idx] != raw:
+                if is_diff:
                     item.setBackground(QBrush(QColor("#3a3010")))
                     item.setForeground(QBrush(QColor("#e5c07b")))
                 else:
@@ -564,6 +636,21 @@ class MapTableView(QWidget):
                     item.setBackground(QBrush(bg))
                     item.setForeground(QBrush(fg))
                 self.table.setItem(r, c, item)
+
+                # Drugi panel (Fajl 2)
+                if data2 and idx < len(data2):
+                    raw2 = data2[idx]
+                    item2 = QTableWidgetItem(_fmt(raw2, defn))
+                    item2.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    item2.setData(Qt.ItemDataRole.UserRole, raw2)
+                    if is_diff:
+                        item2.setBackground(QBrush(QColor("#3a1000")))
+                        item2.setForeground(QBrush(QColor("#f48771")))
+                    else:
+                        bg2, fg2 = _cell_colors(raw2, mn2, mx2)
+                        item2.setBackground(QBrush(bg2))
+                        item2.setForeground(QBrush(fg2))
+                    self.table2.setItem(r, c, item2)
 
     def refresh_cell(self, row: int, col: int, new_raw: int):
         defn = self._fm.defn
@@ -579,7 +666,10 @@ class MapTableView(QWidget):
         item.setForeground(QBrush(fg))
 
     def clear(self):
-        self._fm = None; self.table.setRowCount(0); self.table.setColumnCount(0)
+        self._fm = None; self._fm2 = None
+        self.table.setRowCount(0); self.table.setColumnCount(0)
+        self.table2.setRowCount(0); self.table2.setColumnCount(0)
+        self._lbl_f1.hide(); self._t2_pane.hide()
         self._lbl_name.setText("Odaberi mapu iz stabla")
         for b in [self._badge_dim, self._badge_unit, self._badge_addr,
                   self.btn_copy, self.btn_csv, self.btn_reset]:

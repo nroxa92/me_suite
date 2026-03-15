@@ -78,6 +78,16 @@ class DtcDef:
     def mirror_addr(self) -> int:
         return self.code_addr + MIRROR_OFFSET
 
+    @property
+    def notes(self) -> str:
+        parts = [f"Module: {self.module}"]
+        parts.append(f"Code addr: 0x{self.code_addr:06X}  |  Mirror: 0x{self.mirror_addr:06X}")
+        if self.enable_addr:
+            parts.append(f"Enable addr: 0x{self.enable_addr:06X}  ({self.enable_size}B)")
+        else:
+            parts.append("Enable addr: nepoznat — samo code storage nuliran pri DTC OFF")
+        return "\n".join(parts)
+
 
 # ─── DTC Registry (111 ECM kodova, ori_300 SW 10SW066726) ────────────────────
 # en_addr = adresa enable bajta iz mapping tablice @ 0x0239B4
