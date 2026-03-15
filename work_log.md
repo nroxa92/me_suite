@@ -1,5 +1,25 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 05:00 — DTC enable_addr kompletno: 88/111 kodova ažurirani iz mapping tablice
+
+### Što je napravljeno
+Mapping tablica @ 0x0239B4 iskorištena za ekstrakciju `en_addr` svih 111 DTC kodova u `ori_300`.
+
+### Rezultati
+- **88 kodova** dobilo `en_addr` + `en_size=1` (iz mapping tablice)
+- **23 kodova** bez `en_addr` (enable bajt u 0xFF regiji — van aktivne enable tablice)
+- P1550 `en_size` smanjen 10 → 1, P0523 `en_size` smanjen 11 → 1 (NPRO konzervativni pristup bio pogrešan)
+- Enable slot grupe: slot1(0x00/7 kodova), slot2(0x00/12), slot3(0x00/22), slot4(0x06/7), slot5(0x06/7), slot7(0x06/1), slot8(0x06/1), slot10(0x06/2), slot13(0x06/1), slot14(0x06/2), slot32(0x00/1), slot36(0x05/2), slot43(0x06/1), slot49(0x06/1), slot57(0x06/1), slot60(0x06/1), slot70(0x00/7), slot247(0x00/8) + ostali
+
+### Fajlovi promijenjeni
+- `core/dtc.py` — DTC_REGISTRY: svi `_d()` pozivi ažurirani s en_addr/en_size
+
+### Kreirani fajlovi
+- `chat_log.md` — novi history razgovora (svaka korisnikova poruka + sažetak odgovora)
+- `CLAUDE.md` — dodana uputa za održavanje chat_log.md
+
+---
+
 ## 2026-03-15 04:00 — DTC bugfix: Spark code TABLE != code storage (korupcija sprijecena)
 
 ### Bug pronađen

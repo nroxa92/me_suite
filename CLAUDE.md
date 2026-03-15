@@ -46,6 +46,20 @@
 - Format unosa: `## YYYY-MM-DD HH:MM — Kratki opis`
 - Uključiti: što je napravljeno, koji fajlovi promijenjeni, ključni rezultati
 - Ažurirati i na početku sesije (što se nastavlja) i na kraju (što je dovršeno)
+
+## Chat Log — OBAVEZNO
+- **UVIJEK dodati unos u `chat_log.md` nakon SVAKE korisnikove poruke!**
+- Format unosa:
+```
+---
+**[datum i vrijeme]**
+👤 [korisnikova poruka — doslovno, cijela]
+🤖 [odgovor — MAKSIMALNO 2-3 rečenice, samo suština]
+
+---
+```
+- Ne brisati stare unose, samo dodavati na kraj
+- work_log = tehnički detalji promjena; chat_log = history razgovora i odluka
 ```
 
 Sa ovim fajlom, Claude zna SVE o projektu od prve poruke — nema potrebe da svaki put objašnjavaš kontekst.

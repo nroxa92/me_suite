@@ -11,23 +11,25 @@ Upravljanje DTC (Diagnostic Trouble Code) fault kodovima.
     Raspon mirror: 0x021A66-0x021C65  (LE u16)
     Mirror offset: UVIJEK main + 0x0366  (verificirano na 111 kodova u ori_300)
 
-  Enable tablica @ 0x021080-0x0210BD (52 bajta):
+  Enable tablica @ 0x021080+ (minimalno 253 bajta, slot 0-252):
     Svaki bajt = enable flag jednog DTC senzorskog kanala:
       0x06 = aktivno pracenje (fault se pali)
       0x05 = djelomicno pracenje
       0x04 = samo upozorenje (nema limp mode)
       0x00 = iskljuceno
+    Mapping tablica @ 0x0239B4: index = (code_addr - 0x021700) / 2 → enable_slot
 
   DTC OFF (kompletno):
-    1. Zero code storage main (LE u16 = 0x0000)
-    2. Zero code storage mirror (main + 0x0366)
-    3. Zero enable bajte za taj DTC kanal
+    1. Zero enable bajt za taj DTC kanal (en_addr, 1 bajt)
+    2. Zero main code storage (LE u16 = 0x0000)
+    3. Zero mirror code storage (main + 0x0366)
 
   Vazno: Checksum se NE mijenja za DTC OFF (samo CODE regija)
 
 === ADRESE (ori_300, SW 10SW066726) ===
   Verificirano skeniranjem svih 111 ECM P-kodova.
   Mirror offset 0x0366 potvrden za sve.
+  Enable adreses izvucene iz mapping tablice @ 0x0239B4.
 
 === PODRSKA MOTORA ===
   Rotax ACE 1630 300hp  — RXP-X 300, RXT-X 300, GTX 300, Wake Pro 230 (2016+)
@@ -52,7 +54,7 @@ MIRROR_OFFSET = 0x0366
 # ─── Enable tablica ───────────────────────────────────────────────────────────
 
 ENABLE_TABLE_START = 0x021080   # pocetak enable tablice
-ENABLE_TABLE_END   = 0x0210BE   # kraj (ekskluzivno) — 62 bajta
+ENABLE_TABLE_END   = 0x0210BE   # kraj glavnog bloka (ekskluzivno) — slot 0-61
 ENABLE_ACTIVE_VALS = (0x04, 0x05, 0x06)
 
 
@@ -64,7 +66,7 @@ class DtcDef:
     module:       str    # "ECM", "IS", "CLUSTER", "IBR"
     name:         str
     code_addr:    int    # main code storage (LE u16) u ori_300
-    # enable_addr / enable_size: None = koristiti globalnu tablicu
+    # enable_addr / enable_size: None = enable bajt nepoznat ili izvan glavne tablice
     enable_addr:  Optional[int] = None
     enable_size:  int = 0
 
@@ -78,6 +80,9 @@ class DtcDef:
 
 
 # ─── DTC Registry (111 ECM kodova, ori_300 SW 10SW066726) ────────────────────
+# en_addr = adresa enable bajta iz mapping tablice @ 0x0239B4
+# en_size = 1 (jedan bajt po DTC monitorinskom kanalu)
+# Kodovi bez en_addr: enable bajt je u regiji 0xFF (van aktivne enable tablice)
 
 def _d(code, module, name, addr, en_addr=None, en_size=0):
     return DtcDef(code=code, module=module, name=name,
@@ -86,173 +91,199 @@ def _d(code, module, name, addr, en_addr=None, en_size=0):
 DTC_REGISTRY: dict[int, DtcDef] = {d.code: d for d in [
 
     # ── MAP senzor (pritisak usisnog kolektora) ───────────────────────────────
-    _d(0x0106, "ECM", "MAP Sensor Out of Range",           0x0217EE),
+    # Slot 2 (0x00=off), slot 80 (0xFF=no ctrl)
+    _d(0x0106, "ECM", "MAP Sensor Out of Range",           0x0217EE, 0x021082, 1),
     _d(0x0107, "ECM", "MAP Sensor Short to Ground",        0x0217EC),
-    _d(0x0108, "ECM", "MAP Sensor Open/Short to Battery",  0x0217EA),
+    _d(0x0108, "ECM", "MAP Sensor Open/Short to Battery",  0x0217EA, 0x021082, 1),
 
     # ── IAT senzor (temperatura usisnog zraka) ────────────────────────────────
-    _d(0x0112, "ECM", "IAT Sensor Short to Ground",        0x0218BA),
-    _d(0x0113, "ECM", "IAT Sensor Open/Short to Battery",  0x0218BC),
+    # Slot 5 (0x06=aktiv), slot 70 (0x00=off u ori_300)
+    _d(0x0112, "ECM", "IAT Sensor Short to Ground",        0x0218BA, 0x021085, 1),
+    _d(0x0113, "ECM", "IAT Sensor Open/Short to Battery",  0x0218BC, 0x0210C6, 1),
 
     # ── Coolant temperatura ───────────────────────────────────────────────────
-    _d(0x0116, "ECM", "Coolant Temp Signal Not Plausible", 0x0218C6),
-    _d(0x0117, "ECM", "Coolant Temp Short to Ground",      0x0218C2),
-    _d(0x0118, "ECM", "Coolant Temp Open/Disconnected",    0x0218C4),
-    _d(0x0217, "ECM", "Coolant Temp High Detected",        0x0218C0),
+    # Slot 5 (0x06), slot 70 (0x00 u ori_300)
+    _d(0x0116, "ECM", "Coolant Temp Signal Not Plausible", 0x0218C6, 0x021085, 1),
+    _d(0x0117, "ECM", "Coolant Temp Short to Ground",      0x0218C2, 0x021085, 1),
+    _d(0x0118, "ECM", "Coolant Temp Open/Disconnected",    0x0218C4, 0x0210C6, 1),
+    _d(0x0217, "ECM", "Coolant Temp High Detected",        0x0218C0, 0x0210C6, 1),
 
     # ── TPS (polozaj leptira) ─────────────────────────────────────────────────
-    _d(0x0122, "ECM", "TPS1 Short Circuit to GND",         0x021894),
-    _d(0x0123, "ECM", "TPS1 Short Circuit to Battery",     0x021890),
-    _d(0x0222, "ECM", "TPS2 Short Circuit to GND",         0x021896),
-    _d(0x0223, "ECM", "TPS2 Short Circuit to Battery",     0x021892),
-    _d(0x212C, "ECM", "TPS2 Electrical Lower-Range",       0x0217E4),
-    _d(0x212D, "ECM", "TPS2 Electrical Upper-Range",       0x0217E2),
-    _d(0x2620, "ECM", "TPS Value Not Plausible",           0x0217E6),
+    # Slot 36 (0x05), slot 14 (0x06), slot 4 (0x06), slot 1 (0x00), slot 164/110 (0xFF)
+    _d(0x0122, "ECM", "TPS1 Short Circuit to GND",         0x021894, 0x0210A4, 1),
+    _d(0x0123, "ECM", "TPS1 Short Circuit to Battery",     0x021890, 0x02108E, 1),
+    _d(0x0222, "ECM", "TPS2 Short Circuit to GND",         0x021896, 0x021084, 1),
+    _d(0x0223, "ECM", "TPS2 Short Circuit to Battery",     0x021892, 0x021084, 1),
+    _d(0x212C, "ECM", "TPS2 Electrical Lower-Range",       0x0217E4, 0x02116A, 1),
+    _d(0x212D, "ECM", "TPS2 Electrical Upper-Range",       0x0217E2, 0x021081, 1),
+    _d(0x2620, "ECM", "TPS Value Not Plausible",           0x0217E6, 0x021081, 1),
     _d(0x2621, "ECM", "TPS Electrical Lower-Range",        0x0217E0),
-    _d(0x2622, "ECM", "TPS Electrical Upper-Range",        0x0217DE),
+    _d(0x2622, "ECM", "TPS Electrical Upper-Range",        0x0217DE, 0x021081, 1),
     _d(0x2159, "ECM", "TAS Synchronization Error",         0x021828),
     _d(0x1120, "ECM", "TOPS Violation TPS2",               0x0217DC),
 
     # ── Intake air temp / pressure ────────────────────────────────────────────
-    _d(0x0127, "ECM", "Intake Air Temp Sensor Fault",      0x0218B8),
-    _d(0x2279, "ECM", "Air Intake Manifold Leak",          0x0217E8),
-    _d(0x1106, "ECM", "Altitude Correction Not Plausible", 0x0218E6),
+    # Slot 70 (0x00), slot 10 (0x06), slot 3 (0x00)
+    _d(0x0127, "ECM", "Intake Air Temp Sensor Fault",      0x0218B8, 0x0210C6, 1),
+    _d(0x2279, "ECM", "Air Intake Manifold Leak",          0x0217E8, 0x02108A, 1),
+    _d(0x1106, "ECM", "Altitude Correction Not Plausible", 0x0218E6, 0x021083, 1),
 
     # ── Lambda / O2 senzor ────────────────────────────────────────────────────
     # NAPOMENA: Rotax ACE 1630 i 900 HO ne koriste fizicku lambda sondu.
     # Lambda mapa u kalibraciji je open-loop AFR korekcija (bez feedbacka).
     # P003x (heater PS) kodovi su prisutni u binarnom fajlu ali nikad ne okidaju.
-    _d(0x0130, "ECM", "O2 Sensor Downstream",              0x021858),
-    _d(0x0131, "ECM", "O2 Sensor Signal Low",              0x021856),
+    # Slot 188 (0x03), slot 1 (0x00), slot 135 (0xFF), slot 3 (0x00), slot 232 (0x2E)
+    _d(0x0130, "ECM", "O2 Sensor Downstream",              0x021858, 0x02113C, 1),
+    _d(0x0131, "ECM", "O2 Sensor Signal Low",              0x021856, 0x021081, 1),
     _d(0x0132, "ECM", "O2 Sensor Signal High",             0x021854),
-    _d(0x0133, "ECM", "O2 Sensor Slow Response",           0x02184E),
-    _d(0x0135, "ECM", "O2 Sensor Heater Fault",            0x02182C),
-    _d(0x1030, "ECM", "Lambda Heater Power Stage",         0x021834),
-    _d(0x1130, "ECM", "Lambda Sensor Upstream Catalyst",   0x02185A),
+    _d(0x0133, "ECM", "O2 Sensor Slow Response",           0x02184E, 0x021083, 1),
+    _d(0x0135, "ECM", "O2 Sensor Heater Fault",            0x02182C, 0x021168, 1),
+    _d(0x1030, "ECM", "Lambda Heater Power Stage",         0x021834, 0x021177, 1),
+    _d(0x1130, "ECM", "Lambda Sensor Upstream Catalyst",   0x02185A, 0x021081, 1),
 
     # ── Mixture adaptation (lambda korekcija) ─────────────────────────────────
-    _d(0x0171, "ECM", "Mixture Adaptation Lean (upper)",   0x021844),
-    _d(0x0172, "ECM", "Mixture Adaptation Rich (lower)",   0x021846),
-    _d(0x1171, "ECM", "Additive Mixture Trim Lean",        0x021848),
-    _d(0x1172, "ECM", "Additive Mixture Trim Rich",        0x02184A),
+    # Slot 247 (0x00 u ori_300), slot 3 (0x00)
+    _d(0x0171, "ECM", "Mixture Adaptation Lean (upper)",   0x021844, 0x021177, 1),
+    _d(0x0172, "ECM", "Mixture Adaptation Rich (lower)",   0x021846, 0x021083, 1),
+    _d(0x1171, "ECM", "Additive Mixture Trim Lean",        0x021848, 0x021177, 1),
+    _d(0x1172, "ECM", "Additive Mixture Trim Rich",        0x02184A, 0x021083, 1),
 
     # ── Temperatura ulja ──────────────────────────────────────────────────────
-    _d(0x0197, "ECM", "Oil Temp Sensor Low",               0x0218CA),
-    _d(0x0198, "ECM", "Oil Temp Sensor High",              0x0218C8),
+    # Slot 5 (0x06), slot 70 (0x00)
+    _d(0x0197, "ECM", "Oil Temp Sensor Low",               0x0218CA, 0x021085, 1),
+    _d(0x0198, "ECM", "Oil Temp Sensor High",              0x0218C8, 0x0210C6, 1),
 
     # ── Injektori power stage ─────────────────────────────────────────────────
-    _d(0x0201, "ECM", "Injector 1 Power Stage Open",       0x021826),
-    _d(0x0202, "ECM", "Injector 2 Power Stage Open",       0x02181A),
+    # Slot 3 (0x00), slot 172 (0xFF)
+    _d(0x0201, "ECM", "Injector 1 Power Stage Open",       0x021826, 0x021083, 1),
+    _d(0x0202, "ECM", "Injector 2 Power Stage Open",       0x02181A, 0x021083, 1),
     _d(0x0203, "ECM", "Injector 3 Power Stage Open",       0x021820),
 
     # ── Injektori (direktni) ──────────────────────────────────────────────────
+    # Slot 3 (0x00), slot 192/109/152 (0xFF)
     _d(0x0261, "ECM", "Injector 1 Open/Short to GND",      0x021824),
-    _d(0x0262, "ECM", "Injector 1 Short to Battery",       0x021822),
+    _d(0x0262, "ECM", "Injector 1 Short to Battery",       0x021822, 0x021083, 1),
     _d(0x0264, "ECM", "Injector 2 Open/Short to GND",      0x021818),
-    _d(0x0265, "ECM", "Injector 2 Short to Battery",       0x021816),
-    _d(0x0267, "ECM", "Injector 3 Open/Short to GND",      0x02181E),
+    _d(0x0265, "ECM", "Injector 2 Short to Battery",       0x021816, 0x021083, 1),
+    _d(0x0267, "ECM", "Injector 3 Open/Short to GND",      0x02181E, 0x021083, 1),
     _d(0x0268, "ECM", "Injector 3 Short to Battery",       0x02181C),
 
     # ── Fuel pump ─────────────────────────────────────────────────────────────
-    _d(0x0231, "ECM", "Fuel Pump Open/Short to Ground",    0x0217BC),
-    _d(0x0232, "ECM", "Fuel Pump Short to Battery",        0x0217BE),
+    # Slot 57 (0x06), slot 3 (0x00)
+    _d(0x0231, "ECM", "Fuel Pump Open/Short to Ground",    0x0217BC, 0x0210B9, 1),
+    _d(0x0232, "ECM", "Fuel Pump Short to Battery",        0x0217BE, 0x021083, 1),
 
     # ── Misfire ───────────────────────────────────────────────────────────────
-    _d(0x0300, "ECM", "Multiple Misfire Detected",         0x02185C),
-    _d(0x0301, "ECM", "Misfire Cylinder 1",                0x021862),
-    _d(0x0302, "ECM", "Misfire Cylinder 2",                0x02185E),
-    _d(0x0303, "ECM", "Misfire Cylinder 3",                0x021860),
+    # Slot 8 (0x06), slot 2 (0x00), slot 43 (0x06)
+    _d(0x0300, "ECM", "Multiple Misfire Detected",         0x02185C, 0x021088, 1),
+    _d(0x0301, "ECM", "Misfire Cylinder 1",                0x021862, 0x021082, 1),
+    _d(0x0302, "ECM", "Misfire Cylinder 2",                0x02185E, 0x021082, 1),
+    _d(0x0303, "ECM", "Misfire Cylinder 3",                0x021860, 0x0210AB, 1),
 
     # ── Knock senzor ─────────────────────────────────────────────────────────
-    _d(0x0325, "ECM", "Knock Sensor Fault",                0x021842),
+    # Slot 3 (0x00)
+    _d(0x0325, "ECM", "Knock Sensor Fault",                0x021842, 0x021083, 1),
 
     # ── Crank / Cam senzori ───────────────────────────────────────────────────
+    # Slot 3 (0x00), slot 110 (0xFF)
     _d(0x0335, "ECM", "Crankshaft Signal Error",           0x021814),
-    _d(0x0340, "ECM", "Camshaft Signal Error",             0x021812),
+    _d(0x0340, "ECM", "Camshaft Signal Error",             0x021812, 0x021083, 1),
 
     # ── Ignition coil / Power Stage ───────────────────────────────────────────
-    _d(0x0357, "ECM", "Ignition Coil 1 Short to Y+",       0x02183A),
-    _d(0x0358, "ECM", "Ignition Coil 2 Short to Y+",       0x021836),
-    _d(0x0359, "ECM", "Ignition Coil 3 Short to Y+",       0x021838),
-    _d(0x0360, "ECM", "Ignition PS Max Error Cyl3",        0x021840),
-    _d(0x0361, "ECM", "Ignition PS Max Error Cyl1",        0x02183C),
-    _d(0x0362, "ECM", "Ignition PS Max Error Cyl2",        0x02183E),
+    # Slot 3 (0x00): P0357, P0358, P0362
+    # Slot 247 (0x00): P0359, P0360, P0361
+    _d(0x0357, "ECM", "Ignition Coil 1 Short to Y+",       0x02183A, 0x021083, 1),
+    _d(0x0358, "ECM", "Ignition Coil 2 Short to Y+",       0x021836, 0x021083, 1),
+    _d(0x0359, "ECM", "Ignition Coil 3 Short to Y+",       0x021838, 0x021177, 1),
+    _d(0x0360, "ECM", "Ignition PS Max Error Cyl3",        0x021840, 0x021177, 1),
+    _d(0x0361, "ECM", "Ignition PS Max Error Cyl1",        0x02183C, 0x021177, 1),
+    _d(0x0362, "ECM", "Ignition PS Max Error Cyl2",        0x02183E, 0x021083, 1),
 
     # ── Speed senzor ──────────────────────────────────────────────────────────
-    _d(0x0500, "ECM", "Vehicle Speed Sensor Open",         0x0218E2),
-    _d(0x0501, "ECM", "Vehicle Speed Sensor Fault",        0x0218E0),
+    # Slot 3 (0x00), slot 13 (0x06)
+    _d(0x0500, "ECM", "Vehicle Speed Sensor Open",         0x0218E2, 0x021083, 1),
+    _d(0x0501, "ECM", "Vehicle Speed Sensor Fault",        0x0218E0, 0x02108D, 1),
 
     # ── Starter / DESS ────────────────────────────────────────────────────────
-    _d(0x0512, "ECM", "Starter Motor Stage Fault",         0x0218A0),
-    _d(0x0513, "ECM", "Invalid DESS Key",                  0x021882),
+    # Slot 49 (0x06), slot 3 (0x00)
+    _d(0x0512, "ECM", "Starter Motor Stage Fault",         0x0218A0, 0x0210B1, 1),
+    _d(0x0513, "ECM", "Invalid DESS Key",                  0x021882, 0x021083, 1),
 
     # ── Oil pressure (Olas senzor) ────────────────────────────────────────────
-    _d(0x0520, "ECM", "Oil Pressure Switch Functional Problem", 0x02188E),
-    _d(0x0523, "ECM", "Oil Pressure Sensor Fault",         0x02188C,
-       en_addr=0x02108E, en_size=11),
-    _d(0x0524, "ECM", "Low Oil Pressure Condition",        0x02188A),
-    _d(0x0298, "ECM", "Oil Pressure Derived Fault",        0x0218D6),
+    # Slot 4 (0x06), slot 14 (0x06), slot 2 (0x00)
+    _d(0x0520, "ECM", "Oil Pressure Switch Functional Problem", 0x02188E, 0x021084, 1),
+    _d(0x0523, "ECM", "Oil Pressure Sensor Fault",         0x02188C, 0x02108E, 1),
+    _d(0x0524, "ECM", "Low Oil Pressure Condition",        0x02188A, 0x021084, 1),
+    _d(0x0298, "ECM", "Oil Pressure Derived Fault",        0x0218D6, 0x021082, 1),
 
     # ── EGT (temperatura ispusnih plinova) ────────────────────────────────────
-    _d(0x0544, "ECM", "EGT Sensor Open/Short to Battery",  0x0218B6),
-    _d(0x0545, "ECM", "EGT Sensor Short to Ground",        0x0218B2),
-    _d(0x0546, "ECM", "EGT Sensor Short to Battery",       0x0218B4),
-    _d(0x2080, "ECM", "EGT Sensor B Low",                  0x0218B0),
-    _d(0x2081, "ECM", "EGT Sensor B High",                 0x0218AE),
-    _d(0x2428, "ECM", "High EGT Detected",                 0x0218AC),
+    # Slot 5 (0x06), slot 70 (0x00), slot 7 (0x06)
+    _d(0x0544, "ECM", "EGT Sensor Open/Short to Battery",  0x0218B6, 0x021085, 1),
+    _d(0x0545, "ECM", "EGT Sensor Short to Ground",        0x0218B2, 0x021085, 1),
+    _d(0x0546, "ECM", "EGT Sensor Short to Battery",       0x0218B4, 0x0210C6, 1),
+    _d(0x2080, "ECM", "EGT Sensor B Low",                  0x0218B0, 0x0210C6, 1),
+    _d(0x2081, "ECM", "EGT Sensor B High",                 0x0218AE, 0x021085, 1),
+    _d(0x2428, "ECM", "High EGT Detected",                 0x0218AC, 0x021087, 1),
 
     # ── Battery napon ─────────────────────────────────────────────────────────
-    _d(0x0560, "ECM", "Battery Voltage Not Plausible",     0x0218DE),
+    # Slot 2 (0x00), slot 178 (0xFF)
+    _d(0x0560, "ECM", "Battery Voltage Not Plausible",     0x0218DE, 0x021082, 1),
     _d(0x0562, "ECM", "Battery Voltage Too Low",           0x0218DC),
-    _d(0x0563, "ECM", "Battery Voltage Too High",          0x0218DA),
+    _d(0x0563, "ECM", "Battery Voltage Too High",          0x0218DA, 0x021082, 1),
 
     # ── ECM self-diagnostics ──────────────────────────────────────────────────
-    _d(0x0606, "ECM", "ECM ADC Fault",                     0x0217B6),
+    # Slot 3 (0x00), slot 129/207 (0xFF), slot 2 (0x00)
+    _d(0x0606, "ECM", "ECM ADC Fault",                     0x0217B6, 0x021083, 1),
     _d(0x0610, "ECM", "ECM Variant Coding Fault",          0x0218E4),
-    _d(0x062F, "ECM", "ECM EEPROM Fault",                  0x0217DA),
+    _d(0x062F, "ECM", "ECM EEPROM Fault",                  0x0217DA, 0x021083, 1),
     _d(0x0650, "ECM", "ECM Field ADC Fault",               0x021868),
-    _d(0x2610, "ECM", "ECM RTC Fault",                     0x02186A),
+    _d(0x2610, "ECM", "ECM RTC Fault",                     0x02186A, 0x021082, 1),
 
     # ── TOPS (Throttle Override Protection System) ────────────────────────────
-    _d(0x1502, "ECM", "TOPS Switch Short to GND",          0x0218D2),
+    # Slot 1 (0x00), slot 161/212/85 (0xFF), slot 36 (0x05)
+    _d(0x1502, "ECM", "TOPS Switch Short to GND",          0x0218D2, 0x021081, 1),
     _d(0x1503, "ECM", "TOPS Switch Short to 12V",          0x0218CC),
-    _d(0x1504, "ECM", "TOPS Switch Open Circuit",          0x0218CE),
+    _d(0x1504, "ECM", "TOPS Switch Open Circuit",          0x0218CE, 0x021081, 1),
     _d(0x1505, "ECM", "TOPS Switch Active",                0x0218D0),
-    _d(0x1506, "ECM", "TOPS Switch Fault Non-Plausible",   0x0218D4),
+    _d(0x1506, "ECM", "TOPS Switch Fault Non-Plausible",   0x0218D4, 0x0210A4, 1),
     _d(0x1509, "ECM", "TOPS Functional Fault",             0x0218D8),
 
     # ── Boost / Olas senzor ───────────────────────────────────────────────────
-    _d(0x1550, "ECM", "Boost/Olas Pressure Sensor Fault",  0x021888,
-       en_addr=0x02108A, en_size=10),
+    # Slot 10 (0x06) — isti modul kao P2279 (Air Intake Manifold Leak)
+    _d(0x1550, "ECM", "Boost/Olas Pressure Sensor Fault",  0x021888, 0x02108A, 1),
 
     # ── Throttle actuator (DBW motor) ─────────────────────────────────────────
+    # Slot 151/194/223 (0xFF), slot 2 (0x00), slot 252 (0x8D), slot 3 (0x00), slot 32 (0x00), slot 60 (0x06)
     _d(0x1610, "ECM", "Throttle Actuator Power Stage A",   0x0217F0),
-    _d(0x1611, "ECM", "Throttle Actuator Power Stage B",   0x0217F2),
+    _d(0x1611, "ECM", "Throttle Actuator Power Stage B",   0x0217F2, 0x021082, 1),
     _d(0x1612, "ECM", "Throttle Actuator Return Spring",   0x0217F4),
-    _d(0x1613, "ECM", "Throttle Actuator Default Position",0x0217F6),
+    _d(0x1613, "ECM", "Throttle Actuator Default Position",0x0217F6, 0x021082, 1),
     _d(0x1614, "ECM", "Throttle Actuator Pos Monitoring",  0x0217F8),
-    _d(0x1615, "ECM", "Throttle Actuator Default Check",   0x0217FA),
-    _d(0x1616, "ECM", "Throttle Actuator Learning Fault",  0x0217FC),
-    _d(0x1619, "ECM", "Throttle Actuator Upper Limit",     0x021802),
-    _d(0x1620, "ECM", "Throttle Actuator Lower Limit",     0x021804),
-    _d(0x1621, "ECM", "Throttle Actuator Abort Adapt",     0x021808),
-    _d(0x1622, "ECM", "Throttle Actuator Repeated Abort",  0x021806),
+    _d(0x1615, "ECM", "Throttle Actuator Default Check",   0x0217FA, 0x021082, 1),
+    _d(0x1616, "ECM", "Throttle Actuator Learning Fault",  0x0217FC, 0x02117C, 1),
+    _d(0x1619, "ECM", "Throttle Actuator Upper Limit",     0x021802, 0x021083, 1),
+    _d(0x1620, "ECM", "Throttle Actuator Lower Limit",     0x021804, 0x0210A0, 1),
+    _d(0x1621, "ECM", "Throttle Actuator Abort Adapt",     0x021808, 0x0210BC, 1),
+    _d(0x1622, "ECM", "Throttle Actuator Repeated Abort",  0x021806, 0x021083, 1),
 
     # ── DESS key ──────────────────────────────────────────────────────────────
-    _d(0x1647, "ECM", "DESS Key Communication A",          0x0218A6),
+    # Slot 4 (0x06), slot 170/130 (0xFF), slot 2 (0x00), slot 3 (0x00), slot 247 (0x00)
+    _d(0x1647, "ECM", "DESS Key Communication A",          0x0218A6, 0x021084, 1),
     _d(0x1648, "ECM", "DESS Key Communication B",          0x0218A4),
-    _d(0x1649, "ECM", "DESS Key Communication C",          0x0218A2),
-    _d(0x1651, "ECM", "DESS Key Voltage Low",              0x021866),
+    _d(0x1649, "ECM", "DESS Key Communication C",          0x0218A2, 0x021084, 1),
+    _d(0x1651, "ECM", "DESS Key Voltage Low",              0x021866, 0x021082, 1),
     _d(0x1652, "ECM", "DESS Key Voltage High",             0x021864),
-    _d(0x1654, "ECM", "DESS Key Out of Range",             0x02184C),
-    _d(0x1657, "ECM", "DESS Key Signal A",                 0x021852),
-    _d(0x1658, "ECM", "DESS Key Signal B",                 0x021850),
+    _d(0x1654, "ECM", "DESS Key Out of Range",             0x02184C, 0x021177, 1),
+    _d(0x1657, "ECM", "DESS Key Signal A",                 0x021852, 0x021083, 1),
+    _d(0x1658, "ECM", "DESS Key Signal B",                 0x021850, 0x021177, 1),
 
     # ── iBR (Intelligent Brake and Reverse) ───────────────────────────────────
-    _d(0x1661, "IS",  "iBR Malfunction",                   0x02189A),
+    # Slot 4 (0x06), slot 115 (0xFF)
+    _d(0x1661, "IS",  "iBR Malfunction",                   0x02189A, 0x021084, 1),
     _d(0x1662, "IS",  "iBR Torque Request Not Plausible",  0x02189C),
 
     # ── Main relay ────────────────────────────────────────────────────────────
+    # Slot 212 (0xFF)
     _d(0x1679, "ECM", "Main Relay Sticking",               0x0218A8),
 
 ]}
@@ -507,13 +538,13 @@ class DtcEngine:
 
     def dtc_off(self, dtc_code: int) -> dict:
         """
-        Isklju?i DTC:
-          1. Zero enable bajti (ako su poznati)
+        Iskljuci DTC:
+          1. Zero enable bajt (ako je poznat)
           2. Zero main code storage
           3. Zero mirror code storage
 
         NAPOMENA: Za Spark 90hp i rxtx_260 260hp SW varijante ova operacija nije
-        podrZana jer te SW varijante koriste drugaCiju arhitekturu code storagea.
+        podrzana jer te SW varijante koriste drugaciju arhitekturu code storagea.
         """
         # Blokirati na single-storage SW varijantama (Spark, 260hp)
         if self._scan and self._scan.single_storage:
@@ -540,7 +571,7 @@ class DtcEngine:
             return {"status": "ALREADY_OFF",
                     "message": f"{defn.p_code} je vec iskljucen."}
 
-        # Enable bajti
+        # Enable bajt
         if defn.enable_addr and defn.enable_size:
             for i in range(defn.enable_size):
                 self.eng.write_u8(defn.enable_addr + i, 0x00)
@@ -583,7 +614,7 @@ class DtcEngine:
                 "message": f"{defn.p_code} ({defn.name}) — ukljucen (en=0x{enable_value:02X})."}
 
     def dtc_off_all(self) -> dict:
-        """Isklju?i sve poznate ECM DTC-ove."""
+        """Iskljuci sve poznate ECM DTC-ove."""
         if self._scan and self._scan.single_storage:
             return {
                 "status": "UNSUPPORTED",
@@ -603,15 +634,15 @@ class DtcEngine:
 
     def disable_all_monitoring(self) -> dict:
         """
-        Iskljuci cijelu enable tablicu (0x021080-0x0210BD).
-        Najjaca opcija — ECU nece detektirati niti jedan fault.
+        Iskljuci cijelu enable tablicu (0x021080-0x0210BD, slot 0-61).
+        Najjaca opcija — ECU nece detektirati niti jedan fault u glavnom bloku.
         Koristiti oprezno: neke greske stite motor (misfire, oil pressure).
-        Nije podrZano za Spark/260hp varijante.
+        Nije podrzano za Spark/260hp varijante.
         """
         if self._scan and self._scan.single_storage:
             return {
                 "status": "UNSUPPORTED",
-                "message": f"Nije podrZano za {self._scan.sw_hint}.",
+                "message": f"Nije podrzano za {self._scan.sw_hint}.",
             }
         count = 0
         for addr in range(ENABLE_TABLE_START, ENABLE_TABLE_END):
