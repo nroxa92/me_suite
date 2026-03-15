@@ -1,5 +1,74 @@
 # ME17Suite — Work Log
 
+## 2026-03-15 11:00 — BUDS2/DIUS analiza: edb ZIP enkriptiran, CDID u MPEM ne ECU
+
+### Što je napravljeno
+Istraženi BUDS2 i DIUS podaci za map identifikaciju.
+
+### Rezultati
+- `edb-dump_25.21.0.zip` (265MB) = **enkriptiran**, password dolazi iz BUDS2 licence (KeysService), nemoguće bez kupljene Sea-Doo BUDS2 licence
+- `ODX_en.properties` (600KB) = samo UI labeli, nema adresa ni format info
+- `com.kpit.brp.edb.api` JAR → ZIP password = `keysService.getKeysFromAllLicenses()` (dinamički iz licence)
+- **Model ID (YDV, xxyy) NIJE u ECU fajlu** — u ECU je samo SW ID (`10SW066726`). Model identifikacija je u MPEM-u (čip ključ / RF modul), ne u ECU flashu.
+- **ori_300 vs rxp300_21**: 0 byte razlike — identični fajlovi, isti SW s dva različita jeta
+- Firmware fajlovi u edb-dump: ECU, klaster, IBR (S19/BIN format) — nedostupni bez BUDS2 licence
+
+---
+
+## 2026-03-15 09:00 — MAP_RESEARCH: Strukturalna analiza CODE regije, diff svih fajlova
+
+### Što je napravljeno
+Napisan i izvršen `analyze_maps.py` — sveobuhvatna analiza ECU binarnih fajlova.
+
+### Ključni rezultati
+
+**SECTION 1: ori_300 vs rxp300_21 (ISTI SW)**
+- 0 promijenjenih bajta — fajlovi su identični u CODE regiji
+- Zaključak: rxp300_21 "maps" fajl je isti SW kao ori_300, bez tune razlike
+
+**SECTION 2: ori_300 vs wake230 (različit SW)**
+- 516 promijenjenih regija, 18879 bajta ukupno
+- Pronađene mape koje se razlikuju: lambda @ 0x025DD0 (440B), injection @ 0x026766 (760B), ignition @ 0x026D6E (154B), injection @ 0x028103 (775B)
+- Mnoštvo axis regija (22-35B) @ 0x020154, 0x020682, 0x021750 itd.
+
+**SECTION 3a: 12×12 u8 ignition kandidati — 24 pronađena**
+- Potvrđeni ignition blokovi: @ 0x028407, 0x028547, 0x028687 (isti mean 48.7, vjerojatno 3× kopija)
+- Serija 14 blokova od 0x02B799 do 0x02C0DB (offset 0x140 = 320B između) — 14 ignition mapa!
+- Kandidat @ 0x02BC5B s mean=30.1 (vjerojatno knock delta format)
+
+**SECTION 3b: 16×16 u16 BE torque kandidati — 14 pronađena**
+- Pravi torque: @ 0x02A038 (0x7700-0x9900), @ 0x02A238, @ 0x02A550, @ 0x02A750 (Q8 ~0.5 = 128%)
+- Lažni: 0x01EF78 serija (sve C3C3 = uniform filler), 0x03F70C serija (isto)
+
+**SECTION 3c: Monotone load/RPM osi — 56 kandidata (deduplicirano)**
+- Injection load osi @ 0x02396E-0x023C92 (12 parova, svaki po 24B, odmak 0x36)
+- Mirror serija @ 0x023E84-0x0241B2 (isti pattern, odmak 0x0180 = 384B od originala)
+- Lambda RPM osa @ 0x026226 (272-4000), lambda load osa @ 0x026256 (251-97, OPADAJUĆA)
+- RPM osa @ 0x026586 i 0x026A9E (853-8107, odmak 0x518 = potvrđeni mirror)
+- Torque load osi @ 0x02A010 i 0x02A528 (odmak 0x518), i @ 0x02AE32 (100-9600 RPM format)
+- Knock/limit osi @ 0x02B5F6 i 0x02B60E (3340-2070, opadajuće — limit funkcija)
+
+**SECTION 3d: Mirror parovi — 100 pronađena**
+- Torque blokovi: odmak 0x518 (1304B maks), potvrđuje torque main+mirror
+- Ignition serija: odmak 0x140 (320B između svake mape), 14× kopije/variante
+- Injection: odmak 0x140 @ 0x0282EC-0x02842C (958B) i @ 0x02B728-0x02B868
+- Sekvenca 0x0107B8↔0x0107BC: 9372B (overlap, možda code tablica)
+- Odmak 0x17C: 0x02AE28↔0x02AFA4 (1138B) — nepoznat tip
+
+**NOVA OTKRIĆA:**
+- @ 0x026226 = lambda Y os (RPM), 12 točaka, LE u16: [272,336,...,4000] (turbine RPM?)
+- @ 0x026256 = lambda X os (load?), 12 točaka, OPADAJUĆA: [251,237,...,57]
+- @ 0x02AE32 = RPM osa za ignition/knock, 12 točaka: [100,200,400,...,9600]
+- @ 0x02B5F6 = limit/threshold osa, 12 točaka opadajuće: [3340,...,2070]
+- Ignition set od 0x02B799 do 0x02C0DB ima 14 mapa × odmak 0x140 = 14×320B (=4480B total)
+- Injection mirror @ 0x0282EC s odmak 0x140 od 0x028407-serije ignition
+
+### Fajlovi
+- `analyze_maps.py` — novi skript (C:/Users/SeaDoo/Desktop/me_suite/)
+- `_materijali/MAP_RESEARCH.md` — puni output sačuvan
+
+---
+
 ## 2026-03-15 06:30 — Osi mapa definirane: RPM korekcija + load osa + lambda X osa
 
 ### Što je napravljeno
