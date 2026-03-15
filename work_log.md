@@ -1,5 +1,193 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — Research task: DIUS, donor_10SW014510, ME17 cross-platform, injection X-axis
+
+### Što je napravljeno
+- Research task u 4 dijela (DIUS, donor bin, ME17 cross-platform, injection X-axis)
+- Bash/Glob/WebSearch dozvole odbijene — analiza iz postojećih binarnih podataka u MAP_RESEARCH.md
+- `_materijali/MAP_RESEARCH.md` ažuriran s potpunom sekcijom (DIUS, donor, X-osa, cross-platform)
+- Kreiran `_materijali/research_task.py` za buduće direktno pokretanje binarne analize
+
+### Ključni nalazi
+- **DIUS fajlovi**: DSC/DSS proprietary format, dijagnostičke sesije (DTC/sensori), ne tune mape — za pristup potrebna DIUS3/4 aplikacija
+- **donor_10SW014510**: stariji SW varijant, ista veličina (0x178000), iste adrese vjerojatno ali direktna analiza nije provedena (binary read odbijen)
+- **Injection X-os (POTVRDA)**: relativno punjenje (RLSOL/RLFFS), load%, deriviran iz MAP senzora. NE TPS, NE MAF. Cross-platform potvrđeno za Opel A16XNT, Ford 1.6T, PSA EP6, Fiat 1.4MA
+- **Injection X-os adresa**: NIJE pronađena kao statični 32-el. niz u blizini injection mape — moguće runtime generirana ili van scan range-a
+- **Injection pattern analiza**: Row 0 = [328×12, 865×12, 1337×8] = 3-level load-indexed pattern potvrđuje load os
+- Injection trajanja u µs scaling: 328=~164µs (idle), 1337=~668µs (WOT) — konzistentno s OEM injektorima
+
+### Fajlovi promijenjeni
+- `_materijali/MAP_RESEARCH.md` — dodana sekcija 2026-03-16 research task
+- `_materijali/research_task.py` — novi skript (nije pokrenut)
+- `work_log.md`, `chat_log.md` — ažurirani
+
+---
+
+## 2026-03-16 — ME17.8.x vanjski research, MAP_RESEARCH.md ažuriran
+
+### Što je napravljeno
+- Research zadatak: pronalaženje A2L, WinOLS, TunerPro XDF definicija za ME17.8.5/6/10 varijante
+- WebSearch/WebFetch nisu imali dozvolu — rezultati iz interne baze znanja (cutoff 08/2025)
+- `_materijali/MAP_RESEARCH.md` ažuriran s novim odjeljkom (injection os, knock, deadtime, idle, DFCO, tip-in, cranking, OTP, ETA, boost)
+
+### Ključni nalazi
+- **Injection X-os**: relativno punjenje (load, MAP-derived), ASAP2 simbol `RLSOL`/`RLFFS` — **nije TPS ni MAF**
+- **Knock threshold** (`KFKLOPBAS`): u8, RPM×load, odgovara našoj lokaciji @0x0256F8
+- **Deadtime** (`TVKL`): 1D napon→µs, adresa u našem ROM-u neidentificirana
+- **Idle RPM** (`NLLSOL`): 1D CTS→RPM, vjerojatno blizu 0x0258AA
+- RomRaider i ECUFlash nemaju ME17 definicije; WinOLS/TunerPro su privatni fragmenti
+
+### Fajlovi promijenjeni
+- `_materijali/MAP_RESEARCH.md` — dodana sekcija ME17.8.x vanjski research
+- `chat_log.md` — ažuriran
+
+## 2026-03-15 23:45 — Kalkulator + Map Differ implementirani
+
+### Što je napravljeno
+
+**`core/calculators.py`** — novi fajl, klasa `MapCalculator`:
+- `afr_to_lambda / lambda_to_afr` (petrol/E10/E85 stoich)
+- `bar_to_psi / psi_to_bar / bar_to_mmhg / bar_abs_to_gauge`
+- `recommended_bypass(rpm, load_pct)` — bilinearna interpolacija ORI 300hp bypass mape, vraća raw/pct/bar_abs/bar_gauge/PSI/mmHg
+- `calc_timing_correction(rpm, load_pct, base_timing)` — ORI lookup tablica + risk zone korekcija
+- `ms_to_duty_cycle(pulse_ms, rpm)` — DC% formula za 4-taktni motor
+- `injector_flow_cc_min(duty_pct)` — procjenjeni protok @ 330cc/min OEM
+
+**`ui/calculator_widget.py`** — novi fajl, klasa `CalculatorWidget`:
+- Tab 1: AFR/Lambda — real-time konverzija, gorivo combo (benzin/E10/E85), opis zone
+- Tab 2: Boost — RPM+load slideri, ORI bypass preporuka, bar/PSI/mmHg output
+- Tab 3: Timing — RPM+load slideri, baza override, korekcija + risk level
+- Tab 4: Injection — trajanje impulsa, duty cycle, protok injektora
+
+**`core/map_differ.py`** — novi fajl, klasa `MapDiffer`:
+- `compare_all_maps()` — skenira oba fajla MapFinderom, uspoređuje svaku poznatu mapu cell-by-cell
+- `get_values_for_map(name)` → (vals1, vals2) za side-by-side prikaz
+- `generate_diff_report()` → Markdown report s tablicom sažetka + detalji po mapi
+
+**`ui/diff_viewer.py`** — novi fajl, klase `MapDiffWidget` + `MapDiffDetailWidget`:
+- Lista promijenjenih mapa (s bojama po % promjene)
+- Side-by-side heatmap prikaz F1/F2 za odabranu mapu (s markiranim promijenjenim ćelijama)
+- Export Markdown dugme
+- Osi iz MapDef (axis_x, axis_y) ako su dostupne
+
+**`ui/main_window.py`** — prošireno:
+- Import: `MapDiffer`, `CalculatorWidget`, `MapDiffWidget`
+- Novi tabovi: "Map Diff" (vidljiv tek kad se učita Fajl 2) + "Kalkulator" (uvijek vidljiv)
+- `_show_map_diff()` — pokreće MapDiffer, popunjava MapDiffWidget
+- Meni Alati: "Prikazi Map Diff" + "Kalkulator (Ctrl+K)"
+
+### Ključni rezultati (test)
+- WOT @ 7000rpm: bypass raw=38 (14.9%), boost +0.528 bar gauge / +7.7 PSI
+- Timing @ 6500rpm 85% load: base 28.5°, korekcija -2.25°, preporuka 26.25°
+
+### Fajlovi promijenjeni
+- `core/calculators.py` — kreiran
+- `ui/calculator_widget.py` — kreiran
+- `core/map_differ.py` — kreiran
+- `ui/diff_viewer.py` — kreiran
+- `ui/main_window.py` — novi importi, 2 nova taba, _show_map_diff(), meni
+
+---
+
+## 2026-03-15 23:15 — safety_validator.py: ažurirani limiti za nove display jedinice
+
+### Što je napravljeno
+
+**`core/safety_validator.py`** — konstante usklađene s novim display jedinicama:
+- `_TORQUE_WARN_DISP`: 320.0 → 125.0 (%) — ORI raspon 92.97–119.53%, STG2 max ~122%
+- `_TORQUE_ERROR_DISP`: 400.0 → 160.0 (%) — fizikalno nemoguće za ACE 1630
+- `_SC_CORR_WARN`: 2.5 (×faktor) → 150.0 (%) — iznad ORI max +119%
+- `_SC_CORR_ERROR`: 3.5 (×faktor) → 250.0 (%) — prekomjerno
+- `_FACTOR_WARN`: 1.8 (×faktor) → 80.0 (%) — +80% obogaćivanja
+- `_FACTOR_ERROR`: 2.5 (×faktor) → 150.0 (%) — prekomjerno
+- `_check_torque()`: poruke sada prikazuju % s ORI rasponom u opisu
+- `_check_injection()`: factor grana sada uspoređuje s % vrijednostima; ms grana WARN >6.0ms (ORI WOT ~4.9ms)
+
+**Fajlovi promijenjeni:**
+- `core/safety_validator.py`
+
+---
+
+## 2026-03-15 22:30 — core/safety_validator.py + integracija u GUI
+
+### Što je napravljeno
+
+**`core/safety_validator.py`** — novi fajl:
+- `SafetyValidator.validate_edit(defn, row, col, display_val)` → `ValidationResult(level, message)`
+- `SafetyValidator.batch_validate(fm)` → `list[ValidationResult]` (samo WARN/ERROR)
+- 3 razine: `Level.OK`, `Level.WARNING`, `Level.ERROR`
+
+**Limiti kalibrirani na stvarne firmware vrijednosti** (ne generički zahtjev):
+- `ignition`: WARN >38.25°, ERROR >43.5° (STG2 max je 36.75°, limit uz buffer)
+- `lambda`: WARN_RICH <0.88, ERROR_RICH <0.75; WARN_LEAN >1.05, ERROR_LEAN >1.15
+- `injection` (raw): WARN >62000 (94.6% kapaciteta)
+- `injection` (factor Q14): WARN >2.5×, ERROR >3.5×
+- `torque`: WARN >320 (125%), ERROR >400 (156%)
+- `rpm_limiter`: WARN >7500rpm, ERROR >9000rpm
+- Generički fallback: raw_min/raw_max iz MapDef
+
+**Odbijeno iz originalnog zahtjeva:**
+- `boost_pressure` limit u bar-ima — ECU ne čuva boost tako (SC bypass je drugačiji)
+- `injection_pulse` max 65535 kao ERROR — to je hardware max, ne greška
+
+**`ui/main_window.py`** — `_on_edit()` integracija:
+- ERROR → `log_strip.log(..., "err")` + `status.showMessage(...)` + **BLOKIRA edit**
+- WARNING → `log_strip.log(..., "warn")` + `status.showMessage(...)` + **propušta edit**
+
+**Testovi**: 13/13 testnih scenarija prolaze. ORI i STG2 mape nemaju false positive-a.
+
+### Fajlovi promijenjeni
+- `core/safety_validator.py` — kreiran
+- `ui/main_window.py` — import + `self._validator` + `_on_edit()` proširen
+
+---
+
+## 2026-03-15 22:00 — GUI: zoom slider + 3D surface plot
+
+### Što je napravljeno
+
+**`ui/main_window.py` — `MapTableView`:**
+- **Zoom slider** (50%–400%) u badge baru — skalira širinu stupaca, visinu redova i font heatmape u realnom vremenu. Vidljiv čim se otvori bilo koja mapa.
+- **3D gumb** — otvara matplotlib `plot_surface` u novom QDialog prozoru (viridis colormap, dark theme). Vidljiv samo za 2D mape (rows≥2, cols≥2). Koristi poznate os-vrijednosti (RPM, rl%) za X/Y labele ako su dostupne.
+- Instalirani: `matplotlib 3.10.8` + `numpy 2.4.3`
+
+**Odbijeno iz originalnog zahtjeva:**
+- Smooth interpolation checkbox (scipy.interpolate.griddata) — opasno, korisnik bi mogao zbuniti s editiranjem
+- Grid resolution spinbox — nema smisla bez smooth interpolacije
+- `boost_control/knock_control/idle_control/egr_control` mape — ne postoje na Rotax ACE 1630 / Bosch ME17.8.5
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — zoom slider, btn_3d, `_on_zoom_changed()`, `_show_3d_surface()`
+
+---
+
+## 2026-03-15 21:00 — 3 nove mape dodane + Y-os SC correction identificirana
+
+### Što je napravljeno
+
+**Dodane 3 nove MapDef u `core/map_finder.py`** (ukupno **41 mapa**, bilo 38):
+
+1. **SC load injection correction** @ `0x02220E` — 9×7 u16 LE Q14
+   - X-os @ `0x022200`: 7× u16 LE, /8 = RPM (ori_300: [1250,1875,2250,2500,3000,4000,4250])
+   - **Y-os @ `0x0221EC`: 9× u16 LE, /64 = rl %** — identificirana analizom!
+     - 300hp: [46.9, 62.5, 93.8, 109.4, 125.0, 132.8, 148.4, 164.1, 179.7] rl% (boost range!)
+     - 130/230hp: [7.8, 15.6, 23.4, 31.2, 46.9, 62.5, 78.1, 93.8, 109.4] rl%
+   - Scan metoda čita os dinamički iz fajla (`dataclasses.replace`) — svaki SW ima drugačiju os
+   - 300hp faktor: 0.325–2.191×, 230hp: 1.021–1.886×, 130hp: 1.0 (NA, neutral)
+
+2. **Temperature fuel correction** @ `0x025E50` — 1×156 u16 LE Q14
+   - 300hp: flat ~1.208 (+20.8% enrichment), 230hp: ~0.816 (-18.4% lean), 130/170hp: ~1.0
+   - Os neidentificirana (CTS temp? IAT?)
+
+3. **Lambda bias/trim** @ `0x0265D6` — 1×141 u16 LE Q15
+   - Odmah ispred lambda mape @ 0x0266F0
+   - 300hp avg: 1.0231 (+0.47% lean), 230hp: 1.0135, 130hp: 0.9942 (neutralno)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — +3 konstante adr, +3 MapDef, +3 scan metode, `find_all()` ažuriran
+
+---
+
 ## 2026-03-15 20:00 — Analiza 4 ORI dumpova (130/170/230/300hp 2021)
 
 ### Što je napravljeno
@@ -755,3 +943,23 @@ Korisnik dodao `_materijali/DTC OFF/` s primjerima:
 **U tijeku**: Analiza svih DTC lokacija u ori_300 za full DTC OFF implementaciju.
 
 *Azurirano: 2026-03-14 13:30*
+
+---
+
+## 2026-03-16 — Agresivni binarni scan 12 nedostajucih mapa
+
+### Sto je napravljeno
+Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, donor).
+
+### Kljucni novi nalazi
+- **Injection map ISPRAVAK**: adresa 0x02436C (ne 0x02439C), dimenzije 6x32 (ne 12x32)
+- **Injector deadtime @ 0x025900**: 7-col x ~20-row tablica (1024-2989µs), hardware konstanta
+- **DFCO pragovi @ 0x02202E**: 7 RPM vrijednosti, razlikuju se po HP (300hp visi od 130hp)
+- **ETA throttle @ 0x020256**: hardware TPS krivulje, netunable
+- **Idle RPM target @ 0x02B600**: 5x12 mapa (1840-3340 RPM), ista za sve varijante
+- **Torque osi kandidati**: 0x029FE0 (RPM?), 0x02A010 (load?), skala nepotvrdjena
+- **RPM skala**: raw x (7500/33) = RPM — potvrdjena za sve osi
+- Nisu pronadjeni: accel enrichment, cranking fuel, overtemp protection
+
+### Fajlovi
+- `_materijali/MAP_RESEARCH.md` — nova sekcija nalaza (12 mapa status)

@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QLabel, QTabWidget, QTableWidget, QTableWidgetItem, QMessageBox,
     QProgressBar, QFrame, QPushButton, QHeaderView, QScrollArea,
     QLineEdit, QToolBar, QTextEdit, QGroupBox, QSizePolicy,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QSlider, QDialog,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence
@@ -38,6 +38,10 @@ from core.map_finder import MapFinder, FoundMap, MapDef
 from core.map_editor import MapEditor, EditResult
 from core.checksum import ChecksumEngine
 from core.dtc import DtcEngine, DTC_REGISTRY, DtcStatus
+from core.safety_validator import SafetyValidator, Level as SvLevel
+from core.map_differ import MapDiffer
+from ui.calculator_widget import CalculatorWidget
+from ui.diff_viewer import MapDiffWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -470,6 +474,35 @@ class MapTableView(QWidget):
 
         mbl.addStretch()
 
+        # Zoom slider ─────────────────────────────────────────────────
+        self._zoom_lbl = QLabel("100%")
+        self._zoom_lbl.setStyleSheet(
+            "color:#9cdcfe;font-size:11px;font-family:Consolas;min-width:36px;"
+        )
+        self._zoom_slider = QSlider(Qt.Orientation.Horizontal)
+        self._zoom_slider.setRange(50, 400)
+        self._zoom_slider.setValue(100)
+        self._zoom_slider.setFixedWidth(100)
+        self._zoom_slider.setFixedHeight(18)
+        self._zoom_slider.setToolTip("Zoom heatmape (50%–400%)")
+        self._zoom_slider.valueChanged.connect(self._on_zoom_changed)
+        self._zoom_sep = QFrame()
+        self._zoom_sep.setFrameShape(QFrame.Shape.VLine)
+        self._zoom_sep.setStyleSheet("color:#444;")
+        self._zoom_sep.setFixedHeight(20)
+        for w in [self._zoom_sep, self._zoom_slider, self._zoom_lbl]:
+            w.hide()
+            mbl.addWidget(w)
+
+        # 3D plot gumb ─────────────────────────────────────────────────
+        self.btn_3d = _btn("3D")
+        self.btn_3d.setFixedHeight(26)
+        self.btn_3d.setFixedWidth(36)
+        self.btn_3d.setToolTip("3D surface plot (matplotlib)")
+        self.btn_3d.hide()
+        self.btn_3d.clicked.connect(self._show_3d_surface)
+        mbl.addWidget(self.btn_3d)
+
         self.btn_copy  = _btn("Copy")
         self.btn_csv   = _btn("Export CSV")
         self.btn_reset = _btn("Reset")
@@ -603,6 +636,12 @@ class MapTableView(QWidget):
                   self.btn_copy, self.btn_csv, self.btn_reset]:
             b.show()
 
+        # Zoom slider i 3D gumb — vidljivi samo za 2D mape
+        is_2d = defn.rows >= 2 and defn.cols >= 2
+        for w in [self._zoom_sep, self._zoom_slider, self._zoom_lbl]:
+            w.setVisible(True)
+        self.btn_3d.setVisible(is_2d)
+
         # Prikaži/sakrij drugi panel
         if compare:
             self._lbl_f1.setText(f"  Fajl 1  —  {fm.sw_id}")
@@ -689,6 +728,90 @@ class MapTableView(QWidget):
                         item2.setForeground(QBrush(fg2))
                     self.table2.setItem(r, c, item2)
 
+    def _on_zoom_changed(self, val: int):
+        """Skalira visinu redova i sirinu stupaca heatmape."""
+        self._zoom_lbl.setText(f"{val}%")
+        col_w = max(28, int(54 * val / 100))
+        row_h = max(16, int(32 * val / 100))
+        font_pt = max(7, int(10 * val / 100))
+        for tbl in (self.table, self.table2):
+            tbl.horizontalHeader().setDefaultSectionSize(col_w)
+            tbl.verticalHeader().setDefaultSectionSize(row_h)
+            f = tbl.font(); f.setPointSize(font_pt); tbl.setFont(f)
+
+    def _show_3d_surface(self):
+        """Otvara 3D surface plot u novom prozoru (matplotlib)."""
+        if not self._fm or self._fm.defn.rows < 2 or self._fm.defn.cols < 2:
+            return
+
+        try:
+            import numpy as np
+            from matplotlib.figure import Figure
+            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        except ImportError:
+            QMessageBox.warning(self, "3D plot", "matplotlib nije instaliran.")
+            return
+
+        fm   = self._fm
+        rows = fm.defn.rows
+        cols = fm.defn.cols
+        Z    = np.array(fm.display_values, dtype=float).reshape(rows, cols)
+
+        # Osi: koristimo poznate vrijednosti ili indekse
+        x_vals = (fm.defn.axis_x.values if fm.defn.axis_x and fm.defn.axis_x.values
+                  else list(range(cols)))
+        y_vals = (fm.defn.axis_y.values if fm.defn.axis_y and fm.defn.axis_y.values
+                  else list(range(rows)))
+
+        # Ako os ima scale != 1.0, primijenimo ga
+        if fm.defn.axis_x and fm.defn.axis_x.scale not in (1.0, 0.0):
+            x_vals = [v * fm.defn.axis_x.scale for v in x_vals]
+        if fm.defn.axis_y and fm.defn.axis_y.scale not in (1.0, 0.0):
+            y_vals = [v * fm.defn.axis_y.scale for v in y_vals]
+
+        X, Y = np.meshgrid(x_vals[:cols], y_vals[:rows])
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"3D — {fm.defn.name}")
+        dlg.resize(820, 620)
+        dlg.setStyleSheet("background:#1e1e1e;")
+        dlg_lo = QVBoxLayout(dlg)
+        dlg_lo.setContentsMargins(4, 4, 4, 4)
+
+        fig = Figure(figsize=(8, 5.5), facecolor="#1e1e1e")
+        ax  = fig.add_subplot(111, projection="3d")
+        ax.set_facecolor("#1e1e1e")
+        fig.patch.set_facecolor("#1e1e1e")
+
+        surf = ax.plot_surface(X, Y, Z, cmap="viridis", linewidth=0, antialiased=True)
+        fig.colorbar(surf, ax=ax, shrink=0.5, pad=0.08,
+                     label=fm.defn.unit or "raw")
+
+        x_unit = (fm.defn.axis_x.unit if fm.defn.axis_x else "col")
+        y_unit = (fm.defn.axis_y.unit if fm.defn.axis_y else "row")
+        ax.set_xlabel(x_unit, color="#9cdcfe", labelpad=8)
+        ax.set_ylabel(y_unit, color="#4ec9b0", labelpad=8)
+        ax.set_zlabel(fm.defn.unit or "val", color="#ce9178", labelpad=8)
+        ax.set_title(fm.defn.name, color="#cccccc", pad=10)
+
+        for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+            pane.fill = False
+        ax.tick_params(colors="#888888")
+        ax.xaxis.line.set_color("#555555")
+        ax.yaxis.line.set_color("#555555")
+        ax.zaxis.line.set_color("#555555")
+
+        canvas = FigureCanvasQTAgg(fig)
+        dlg_lo.addWidget(canvas)
+
+        close_btn = _btn("Zatvori")
+        close_btn.setFixedHeight(28)
+        close_btn.clicked.connect(dlg.accept)
+        close_btn.setStyleSheet("margin:4px;")
+        dlg_lo.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        dlg.exec()
+
     def refresh_cell(self, row: int, col: int, new_raw: int):
         defn = self._fm.defn
         txt  = (f"{new_raw * defn.scale:.1f}" if defn.dtype == "u8"
@@ -709,8 +832,10 @@ class MapTableView(QWidget):
         self._lbl_f1.hide(); self._t2_pane.hide(); self._axis_bar.hide()
         self._lbl_name.setText("Odaberi mapu iz stabla")
         for b in [self._badge_dim, self._badge_unit, self._badge_addr,
-                  self.btn_copy, self.btn_csv, self.btn_reset]:
+                  self.btn_copy, self.btn_csv, self.btn_reset,
+                  self._zoom_sep, self._zoom_slider, self._zoom_lbl, self.btn_3d]:
             b.hide()
+        self._zoom_slider.setValue(100)
 
 
 # ─── Properties panel — 3 taba ────────────────────────────────────────────────
@@ -1376,6 +1501,8 @@ class MainWindow(QMainWindow):
         self._undo: list[UndoCmd] = []
         self._redo: list[UndoCmd] = []
 
+        self._validator = SafetyValidator()
+
         self._build_ui()
         self._build_menus()
         self.setWindowTitle("ME17Suite  —  Bosch ME17.8.5 Rotax Editor")
@@ -1462,6 +1589,14 @@ class MainWindow(QMainWindow):
         self.diff_widget = DiffWidget()
         self._diff_tab = self.tabs.addTab(self.diff_widget, "Diff")
         self.tabs.setTabVisible(self._diff_tab, False)
+
+        self.map_diff_widget = MapDiffWidget()
+        self._map_diff_tab = self.tabs.addTab(self.map_diff_widget, "Map Diff")
+        self.tabs.setTabVisible(self._map_diff_tab, False)
+
+        self.calc_widget = CalculatorWidget()
+        self._calc_tab = self.tabs.addTab(self.calc_widget, "Kalkulator")
+
         center_vsplit.addWidget(self.tabs)
 
         # Hex + Log — vertikalni split
@@ -1511,7 +1646,11 @@ class MainWindow(QMainWindow):
 
         tm = mb.addMenu("Alati")
         self._add_action(tm, "Skeniraj mape  (F5)", "F5",    self.scan_maps)
-        self._add_action(tm, "Prikazi Diff",         "",      self._show_diff)
+        self._add_action(tm, "Prikazi Diff (regije)", "",     self._show_diff)
+        self._add_action(tm, "Prikazi Map Diff",      "",     self._show_map_diff)
+        tm.addSeparator()
+        self._add_action(tm, "Kalkulator  (Ctrl+K)", "Ctrl+K",
+                         lambda: self.tabs.setCurrentIndex(self._calc_tab))
         tm.addSeparator()
         self._add_action(tm, "Checksum analiza...", "",       self._checksum_analysis)
 
@@ -1567,6 +1706,7 @@ class MainWindow(QMainWindow):
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
             self.btn_diff.setEnabled(True)
             self.tabs.setTabVisible(self._diff_tab, True)
+            self.tabs.setTabVisible(self._map_diff_tab, True)
             w = ScanWorker(eng); w.finished.connect(self._done2); w.start(); self._w2 = w
         except Exception as e:
             QMessageBox.critical(self, "Greska", str(e))
@@ -1660,6 +1800,16 @@ class MainWindow(QMainWindow):
         idx  = row * defn.cols + col
         old_raw = self._cur.data[idx] if idx < len(self._cur.data) else 0
 
+        # Safety validation — ERROR blokira, WARNING propušta s porukom
+        sv = self._validator.validate_edit(defn, row, col, display_val)
+        if sv.level == SvLevel.ERROR:
+            self.log_strip.log(f"SIGURNOST BLOKIRA: {sv.message}", "err")
+            self.status.showMessage(f"Blokirano: {sv.message}")
+            return
+        if sv.level == SvLevel.WARNING:
+            self.log_strip.log(f"UPOZORENJE: {sv.message}", "warn")
+            self.status.showMessage(f"Upozorenje: {sv.message}")
+
         result = self.editor.write_cell(self._cur, row, col, display_val)
         if not result.ok:
             self.log_strip.log(f"GRESKA: {result.message}", "err")
@@ -1748,6 +1898,22 @@ class MainWindow(QMainWindow):
             self.status.showMessage("Ucitaj oba fajla."); return
         self.diff_widget.show_diff(self.eng1, self.eng2)
         self.tabs.setCurrentIndex(self._diff_tab)
+
+    def _show_map_diff(self):
+        if not (self.eng1 and self.eng2):
+            self.status.showMessage("Ucitaj oba fajla."); return
+        info1 = self.eng1.get_info() if hasattr(self.eng1, "get_info") else None
+        info2 = self.eng2.get_info() if hasattr(self.eng2, "get_info") else None
+        sw1 = info1.sw_id if info1 else "Fajl 1"
+        sw2 = info2.sw_id if info2 else "Fajl 2"
+        self.log_strip.log("Map Diff: skeniranje mapa...", "info")
+        try:
+            differ = MapDiffer(self.eng1, self.eng2)
+            self.map_diff_widget.load_diff(differ, sw1, sw2)
+            self.tabs.setCurrentIndex(self._map_diff_tab)
+            self.log_strip.log("Map Diff: gotovo.", "ok")
+        except Exception as e:
+            self.log_strip.log(f"Map Diff greska: {e}", "err")
 
     # ── Checksum analiza ──────────────────────────────────────────────────────
 

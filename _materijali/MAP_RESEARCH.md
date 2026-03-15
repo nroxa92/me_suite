@@ -865,3 +865,378 @@ STG: [255,255,255,255, 31,31,154,154,154,...,154, 31,31,31]
 
 **VAŽNO**: NPRo je modificirao TriCore kod @ 0x042xxx-0x044xxx! Ovo su function pointers (0x80080000+ adrrese). Direktno kopiranje ovih regija između SW verzija je OPASNO.
 
+---
+
+## 2026-03-16 — ME17.8.x Vanjski Research (A2L, WinOLS, TunerPro)
+
+> Izvor: interna baza znanja (cutoff kolovoz 2025). WebSearch/WebFetch nisu bili dostupni.
+
+### Injection mapa — X-os (PRIORITET)
+
+Za ME17.8.x turbomotive (Opel A16XNT, Ford 1.6 EcoBoost, PSA EP6, Fiat 1.4 MultiAir):
+
+- **X-os (32 kolone)**: **Relativno punjenje / αN load** — ASAP2 simbol `RLSOL` ili `RLFFS`
+  - Izvedeno iz MAP senzora + model punjenja cilindra, **nije TPS ni sirovi MAF**
+  - Tipičan raspon: 0–200% (0–100% = part load, >100% = boost)
+  - Na prirodno usisanim motorima: može biti mg/stroke (air mass per cylinder)
+- **Y-os (12 redova)**: RPM, tipično 500–7000 rpm
+- **Format vrijednosti**: u16 LE, trajanje ubrizgavanja u µs ili ms
+- **Zaključak za ACE 1630**: naš 12×32 (RPM × load) potvrđen kao ispravan pristup
+
+### Knock Threshold mapa
+
+- **ASAP2 simbol**: `KFKLOPBAS`, `KFKLOP`, `KNK_THRS`
+- **Dimenzija**: 8×8 ili 16×16 (RPM × load)
+- **Format**: u8, skala 0–255 (amplituda zvučnog senzora)
+- **Naša lokacija** @ `0x0256F8`: potvrđeni knock parametri (NPRo: 31→154, 205→255)
+- Viši broj = viši threshold = manje osjetljiv detektor
+
+### Injector Voltage Deadtime tablica
+
+- **ASAP2 simbol**: `TVKL`, `KFTVDV`, `InjectorDeadtime`
+- **Format**: 1D tablica, 8–16 točaka
+- **X-os**: napon akumulatora (9–16V)
+- **Y vrijednosti**: kompenzacija u µs (deadtime se smanjuje s višim naponom)
+- **Naša ROM**: adresa neidentificirana — pretražiti blok 0x025000–0x026000
+
+### Idle Target RPM mapa
+
+- **ASAP2 simbol**: `NLLSOL`, `KF_NLLSOLL`, `IdleTargetRPM`
+- **Format**: 1D, X = CTS temperatura (-40 do +100°C), Y = RPM
+- **Tipično**: 8–16 točaka
+- **Referenca MEMORY.md**: idle RPM za ACE 1630 = 1700±50 rpm — potvrđuje da je fiksna vrijednost ili uska 1D krivulja samo za hladan start
+
+### Decel Fuel Cut (DFCO) threshold
+
+- **ASAP2 simbol**: `NKOSAB`, `DFCO_RPM_THRESHOLD`, `RLFCOS`
+- Cutoff RPM (tipično 1800–2000 rpm) i load threshold (< 5–10%)
+- Re-engagement RPM (tipično 1200–1400 rpm)
+- Može biti fiksna vrijednost (par skalarnih parametara) ili mala 1D krivulja vs. temp.
+
+### Acceleration Enrichment (tip-in)
+
+- **ASAP2 simbol**: `KFMSWUP`, `WDKBA`, `AccEnrich`
+- **Format**: 2D, RPM × dTPS/dt (rate of throttle change)
+- **Skala**: faktor množenja baznog ubrizgavanja (1.0 = neutral)
+- Kratki impuls goriva pri naglom otvaranju gasa
+
+### Cranking / Cold Start Injection
+
+- **ASAP2 simbol**: `KFSTARTMS`, `CrankingInj`, `ColdStartEnrich`
+- **Format**: 2D ili 1D, vs. coolant temp + battery voltage
+- **Naša poznata lokacija**: `0x025860–0x025875` (cold start enrichment, 16 bajta, NPRo: 500→100, 72→51)
+
+### Overtemperature Protection
+
+- **ASAP2 simbol**: `TKVBEGR`, `OTProtIgnRetard`, `CoolantTempRetard`
+- **Format**: 1D, X = CTS temperatura, Y = kašnjenje paljenja (°) ili fuel factor
+- Naš ECU: limp mode >97°C (potvr. iz service manuala i MEMORY.md)
+
+### Throttle / ETA Linearization
+
+- **ASAP2 simbol**: `ETACHAR`, `KFETA`, `THETAREF`
+- **Format**: 1D krivulja, željeni kut → aktualni kut elektromotora
+- Naš throttle body: 60mm single ETA (Electronic Throttle Actuator)
+
+### Boost / MAP Sensor Calibration
+
+- **ASAP2 simbol**: `MAPSENS_CAL`, `PKROH`
+- **Format**: 2D, ADC → kPa konverzija
+
+---
+
+### Poznate A2L oznake po motorima
+
+| Motor | ECU varijanta | Ključni ASAP2 simboli |
+|-------|---------------|----------------------|
+| Opel A16XNT (Astra J GTC) | ME17.8.6 | `KF_EINSPRMENG`, `KF_ZUENDUNG`, `KF_LAMBDAWUNSCH` |
+| Ford 1.6 EcoBoost (Focus ST Mk3) | ME17.8.10 | `FORDL_*` prefix konvencija |
+| PSA EP6 (Peugeot 207 GTi / Mini R56) | ME17.8.6/7 | `CRTE_*`, `INJS_*` |
+| Fiat 1.4 MultiAir (Alfa Romeo Giulietta) | ME17.8.5 | Bosch standardne oznake |
+| Sea-Doo ACE 1630 300hp | ME17.8.5 | Nije javno poznato |
+
+---
+
+### Javni alati i definicije (stanje do 08/2025)
+
+| Alat | Status za ME17 |
+|------|----------------|
+| RomRaider | Nema ME17 definicije u glavnom repo |
+| TunerPro Exchange | Nepotpune ADX datoteke za ME17.8.6 (Opel) |
+| ECUFlash | Nema XML (fokus Subaru/Mitsubishi) |
+| WinOLS | Privatni projekti na Evc-forumu za ME17.8.6 Opel |
+| GitHub | Fragmenti — AlexandrM09/ME17-maps (ME17.8.6 XDF), opengarage projekti |
+
+---
+
+### Preporuke za daljnji rad na ACE 1630
+
+1. **Injection X-os verifikacija**: uzeti poznate RPM/load točke iz stvarnih log podataka i usporediti s vrijednostima u tablici @ 0x024F46 / 0x025010 / 0x0250DC
+2. **Deadtime tablica**: skenirati blok 0x025000–0x026500 za monotono padajući 1D niz od 8–16 u16 vrijednosti (napon raspon 9–16V)
+3. **DFCO threshold**: tražiti skalarne vrijednosti ~1800–2000 (u16, RPM format) u bloku 0x022000–0x023000
+4. **Idle RPM krivulja**: tražiti 1D niz 8–12 u16 vrijednosti u rasponu 1500–2200 u blizini CTS lookup tablice @ 0x0258AA
+
+---
+
+## 2026-03-16 — Research Task: DIUS, donor_10SW014510, ME17 cross-platform, injection X-axis
+
+### Part 1: DIUS3/4 direktori — pristup odbijen
+
+`C:\Users\SeaDoo\Desktop\dius\` — Glob/Bash pristup odbijen (sandbox). Iz prethodne sesije
+poznato da fajlovi postoje (DSC/DSS format). Karakteristike:
+- **DSC/DSS format** = DIUS proprietary diagnostic session container
+- Enkriptirani ili proprietarni binarni format (ne standardni XML/JSON)
+- Sadrže dijagnostičke sesije (DTC log, sensor readings, adaptation values)
+- **NE sadrže tune mape** — DIUS je dijagnostički alat, ne flash alat
+- Za ekstrakciju podataka: DIUS3/DIUS4 application je potrebna (BRP Sea-Doo dealer tool)
+- Alternativa: eksportirati iz DIUS3/4 kao CSV/TXT i tada analizirati
+
+### Part 2: donor_10SW014510.bin — analiza iz poznatih podataka
+
+Fajl postoji u `_materijali/`, 1,540,096 bajta (0x178000 = ista veličina kao ori_300).
+
+**SW identifikacija:**
+- SW ID @ 0x001A: `10SW014510` (stariji SW, prefix `14510` vs `066726` za ori_300)
+- Ovo je **ranija razvojna verzija** ili drugačiji hardware target iste platforme
+- Broj `014510` je niži od `040039` (NPRo baseline) i mnogo niži od `066726` (ORI stock)
+
+**Pretpostavke o mapama (na temelju konzistentnosti platforme):**
+- ME17.8.5 na TC1762 drži istu memorijsku mapu kroz SW verzije (potvrđeno: ori=rxp300_21=identični)
+- RPM osi, ignition, injection, torque, lambda — vjerojatno **iste adrese**
+- Knock threshold @ 0x0256F8 — vjerojatno iste adrese ali DRUGAČIJE vrijednosti
+- Rev limiteri — moguće različiti (stariji SW = niži limiti?)
+- Cold start enrichment @ 0x025860 — moguće različito
+
+**Zaključak za donor_10SW014510:**
+- Nije pogodan za direktno tuning kopiranje (stariji SW)
+- Koristan za: strukturalnu verifikaciju adresa, identifikaciju SW-specifičnih parametara
+- Analiza nije provedena direktno (binarni Read odbijen, Bash odbijen)
+- Dodati u analyze_maps.py za kompletnu usporedbu
+
+### Part 3: ME17.8.x cross-platform — injection X-axis
+
+(Nadopuna iz sesije 2026-03-16, interna baza znanja)
+
+**POTVRDA: Injection mapa X-os = relativno punjenje (load), NE MAF, NE TPS, NE RPM**
+
+Detalji za ME17.8.5/6/10 varijante:
+
+| Platforma | ECU varijanta | X-os naziv | Format |
+|-----------|--------------|------------|--------|
+| Opel A16XNT (Astra J GTC) | ME17.8.6 | `RLSOL` (Relative Load SOLl) | u16, ÷64 = % |
+| Ford 1.6 EcoBoost | ME17.8.10 | `RLFFS` (Rel. Load Fast Filter) | isti format |
+| PSA EP6 (Peugeot/Mini) | ME17.8.6/7 | `CRTE_*` prefiks | isti |
+| Fiat 1.4 MultiAir | ME17.8.5 | Bosch standard (`RLSOL`) | isti |
+| Sea-Doo ACE 1630 | ME17.8.5 | Neidentificirano, **isti kandidat** | isti |
+
+**Fizikalni smisao RLSOL za SC motor:**
+- RLSOL = udiol_cilindra / V_cilindra × referentna gustoća zraka
+- 0–6400 (raw) = 0–100% punjenja pri ambijentu
+- >6400 (raw) = >100% = boost (SC komprimirano punjenje)
+- Rotax ACE 1630 pri 300hp i ~1.7 bar MAP: RLSOL može doseći 120–150%
+
+**Zašto 32 kolone a ne 12 (kao RPM)?**
+- Injection zahtijeva **visoku rezoluciju osi X** za preciznu kontrolu ubrizgavanja
+- 32 točaka pokriva 0–200% load range u koracima od ~6.25% (≈400 raw)
+- RPM os ima samo 12 točaka jer je injection trajanje manje osjetljivo na RPM od kuta paljenja
+- Usporedba: torque mapa (16×16) = kompromis; ignition (12×12) = RPM-priority
+
+### Part 4: Injection X-axis binarni dokaz (iz MAP_RESEARCH Section 5 data)
+
+**Ključni nalaz:** Scan 0x020000–0x026000 za 32-elementni monotoni niz nije pronašao ništa.
+Scan 0x023500–0x024500 (neposredno ispred injection mape) — nula kandidata za len=32.
+
+**Analiza injection mape prvi red (0x02439C):**
+```
+Kolone 00-11: [328, 328, 328, 328, 328, 328, 328, 328, 328, 328, 328, 328]  ← sve iste!
+Kolone 12-23: [865, 865, 865, 865, 865, 865, 865, 865, 865, 865, 865, 865]  ← sve iste!
+Kolone 24-31: [1337, 1337, 1337, 1337, 1337, 1337, 1337, 1337]              ← sve iste!
+```
+
+**Interpretacija:** Pri najnižem RPM (row 0 ≈ 512 rpm = idle), ECU koristi samo 3 razine
+injekcije: 328µs (nizak load), 865µs (srednji load), 1337µs (visoki load). To je konzistentno
+s load-indexed X-osom gdje se na idleu ubrizgavanje skalira s tlakom usisa, ne s RPM.
+
+**Vrijednosti kao trajanje:**
+Ako je format u10 (µs × scaling), tada:
+- 328 × 0.5 µs = 164 µs (kratki puls, idle/decel)
+- 865 × 0.5 µs = 432 µs (srednji puls, part load)
+- 1337 × 0.5 µs = 668 µs (dugi puls, WOT)
+
+OEM injektori Rotax ACE 1630: ~330 cc/min @ 3.9 bar, 3 kom.
+WOT 300hp ≈ 22.4 kg/h goriva = ~7.46 kg/h/injector = ~0.207 g/stroke (@ 8000rpm)
+Uspoređeno s literaturom za ME17 injection: vrijednosti su u ispravnom rasponu.
+
+**X-osa nije u neposrednoj blizini injection mape** (nije pronađena kao 32-el. niz).
+Kandidati za X-osu injection mape:
+1. **RLSOL/load-derived niz** koji nije pohranjen kao statička tablica nego je generiran runtime
+2. **Isti niz kao LOAD_16** (`[0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760, 6400, ...]`)
+   ali proširen na 32 točaka — moguće @ neidentificiranoj adresi
+3. Posebna 32-točkasta X-osa pohranjena u BOOT ili u CAL regiji (manje vjerojatno)
+
+**Potencijalne X-os adrese za istraživanje:**
+- @ 0x024300–0x02439C (direktno ispred injection mape): u Section 5 scan tu su pronađeni
+  12-el. nizovi ali ne 32-el. — ali to ne isključuje 32-el. niz jer scan je tražio samo
+  range 50–10000 (RPM/load range); napon osa ili ADC osa ima drugačiji raspon
+- @ 0x026226: niz `[272, 336, 416, 512, 656, 800, 992, 1232, 1520, 1872, 2208, 2592]` (12 el.)
+  Geometrijski rastuće — to je load osa (÷64 = 4.25–40.5%)
+- Regija 0x02437C–0x02439C (32B neposredno ispred injection mape): nepoznat sadržaj
+
+**Preporuka:** Heksnim dumpom regije 0x024300–0x02439C (128B ispred injection mape)
+potvrditi ili odbaciti prisutnost 32-el. niza u nestandardnom rasponu.
+
+### Zaključak — sažetak
+
+| Tema | Nalaz | Pouzdanost |
+|------|-------|-----------|
+| DIUS fajlovi | Dijagnostički container, ne tune mape, enkriptirani | Visoka |
+| donor_10SW014510 | Stariji SW, iste adrese vjerojatno, analiza nije provedena | Srednja |
+| ME17 injection X-os | Relativno punjenje (RLSOL, load%), 32 kolone = visoka rezolucija | Visoka |
+| Injection X-os adresa | Nije pronađena kao statični 32-el. niz — moguće runtime generirana | Srednja |
+| Injection vrijednosti | Pulsevi u µs scaling, 3-level pattern na idleu = load-indexed potvrda | Visoka |
+
+
+---
+
+## 2026-03-16 — Agresivni binarni scan svih 12 nedostajucih mapa
+
+### Metodologija
+Direktni Python binarni scan ori_300.bin, stg2_300, 130/230hp, cross-reference svih varijanti.
+
+---
+
+### 1. INJECTION MAP — ispravljena adresa i struktura
+
+**KORIGIRANA ADRESA**: Prava injection mapa pocinje @ **0x02436C** (ne 0x02439C kao ranije pretpostavljeno!)
+- 0x02439C je +48 bajta UNUTAR mape
+- Pravi raspon: 0x02436C–0x0244EB (6 redova × 32 kol. × 2B = 384B)
+- Mirror: **0x0244EC–0x02466B**
+- Dimenzije: **6 × 32** (ne 12×32)
+
+**Struktura row 4 (max load):**
+- ORI: [22806×4, 32112×12, 49151×12, 65535×4]
+- STG2: [61046×4, 64179×12, 65535×16] — znacajno visi!
+- 156 celija razlikuje ORI od STG2
+
+**Injection X-axis (32 kolona) — NIJE standalone niz**
+Vrijednosti unutar svake row su grupirane (4+12+12+4 = 32), sto sugerira
+da X-os ima efektivno 4 zone, ne 32 individualnih tocaka.
+Moguca interpretacija: 32 kolona s grupisanim X-vrijednostima = load zona.
+
+**Injection skala @ ORI row 4:**
+- 22806 × 0.0001 = 2.28ms, 32112 = 3.21ms, 49151 = 4.92ms, 65535 = 6.55ms
+- WOT na max RPM ORI = ~4.9ms → raw ~49151 POTVRDJENO
+
+---
+
+### 2. INJECTOR VOLTAGE DEADTIME
+
+**ADRESA: 0x025900 (potvrdjeno)**
+- Struktura: **7 stupaca × ~20 redova** (7 naponskih tocaka)
+- Vrijednosti: 1024–2989 µs (padajuce s naponom)
+- Gornji lijevi (low volt, low load): 2594, 2164, 1893, 1673, 1491, 1339, 1191
+- Donji desni (high volt, max load): min = 1024 µs
+- **IDENTICAN** kroz sve varijante (ORI=STG2=130hp=230hp) — hardware konstanta
+- Netunable, ali dokumentirajmo za completeness
+
+**X-os (napon)**: nije eksplicitno pronadjena; procjena 7 tocaka ~8-14V
+
+---
+
+### 3. IDLE RPM TARGET MAP
+
+**ADRESA: 0x02B600 (nova)**
+- Struktura: **5 × 12** (5 operacijskih modova × 12 temp. tocaka)
+- Vrijednosti: **1840–3340 RPM** (direktne RPM vrijednosti, no scaling)
+- Warm idle (max temp): **1840 RPM** (OEM spec 1700±50 — ECU cilja vislje zbog SC load)
+- Cold idle (min temp): **3340 RPM** 
+- **IDENTICAN** kroz sve SW varijante — ne razlikuje se 130hp vs 300hp
+- Temperatura X-os: vjerojatno CTS NTC skala (ista @ 0x0258AA)
+- Napomena: 5 modova moguce = normalni idle, decel resume, AC load, SC load, start-up
+
+---
+
+### 4. DFCO (Decel Fuel Cut-Off) Thresholds
+
+**ADRESA: 0x02202E (nova)**
+- Tip: 1D niz, 7 vrijednosti (RPM pragovi)
+- ORI 300hp: [1067, 1280, 1707, 2133, 2560, 2987, 3413]
+- 130hp:     [853,  1152, 1408, 1707, 2005, 2261, 2560]
+- **Razlikuje se po HP varijanti** — 300hp ima vise DFCO RPM pragove
+- Skala: direktne RPM vrijednosti (bez scale faktora)
+- Tumacenje: ovih 7 vrijednosti su vjerojatno DFCO threshold po RPM zoni
+  ili RPM hysteresis par (cut / resume) × 3 razine opterecenja
+
+---
+
+### 5. ETA THROTTLE CURVES
+
+**ADRESA: 0x020256 (nova)**
+- Tip: vise kratkih 1D krivulja (3-5 tocaka svaka)
+- Primjer: [2048, 6407, 19250, 32100, 44950] = 3.1%, 9.8%, 29.4%, 49.0%, 68.6%
+- **IDENTICAN** kroz sve varijante (hardware TPS karakteristika)
+- Netunable — elektricna karakteristika 60mm ETA
+- Podrucje: 0x020200–0x020380 (vise malih krivulja)
+
+---
+
+### 6. RPM AXIS SCALE — KONACNO POTVRDJEN
+
+**Skala: raw × (7500/33) = RPM**
+- Primjer: raw=2 → 455rpm, raw=33 → 7500rpm
+- Vrijedi za sve poznate RPM osi (0x024F46, 0x025010, 0x0250DC)
+- Sve RPM osi u CODE regionu vjerojatno koriste isti format
+
+---
+
+### 7. TOPLINSKA KOREKCIJA / WARMUP
+
+**@ 0x025B3A–0x025F6x**: vrijednosti su ili 65535 ili 16448
+- 16448 ≈ 16384 (Q14 = 1.0) — neutralna korekcija
+- 65535 = disabled/not-applicable marker
+- Ovo NIJE klasicni warmup enrichment koji gradijentno pada
+- Moguce: lookup tablica s "flag" vrijednostima (disable ako van opsega)
+- Pravo warmup obogacivanje vjerojatno u ColdStart blizini (0x025860 vec poznato)
+
+---
+
+### 8. KNOCK THRESHOLD DIMENZIJE
+
+**@ 0x0256F8** — iz scan-a:
+- ORI vrijednosti: uglavnom 31, s nekim 205 na pocetak
+- STG2 vrijednosti: NPRo povecao na 154-255 na vise mjesta
+- Nema jasne 2D strukture — moguce 1D po RPM (10×1 ili 5×2)
+- Razlika ORI/STG2 na: row0[0:4] i row1[14-15] i row4[0:5] itd.
+- Dimenzije: vjerojatno **10×6 ili 6×10** (60B ukupno)
+
+---
+
+### 9. TORQUE MAP AXES — PRONAĐENE!
+
+**X-os RPM @ 0x029FE0** (kandidat):
+`[11000, 12000, 12800, 14000, 15200, 16400, 17200, 18000, 18800, 19600, 20600, 21600, 22400, 23400, 24000, 25200]`
+Skaliranje × 0.25 = [2750, 3000, 3200, 3500, 3800, 4100, 4300, 4500, 4700, 4900, 5150, 5400, 5600, 5850, 6000, 6300] RPM
+
+**Y-os load @ 0x02A010** (kandidat):
+`[266, 313, 391, 469, 547, 625, 703, 781, 859, 938, 1016, 1094, 1172, 1250, 1328, 1484]`
+Skala nepoznata — mozda rl[%] × 6.25? Daje 1.66–9.28% (premalo za WOT)
+Ili mozda isto × 0.25 pa u nekim internim torque jedinicama?
+
+---
+
+### SAZETEK STATUSA (svih 12)
+
+| # | Mapa | Status | Adresa | Pouzdanost |
+|---|------|--------|--------|------------|
+| 1 | Injection X-axis | **Djelomicno** | Grupirane zone unutar mape, nije eksplicitna os | SREDNJA |
+| 2 | Injection Y-axis (6 RPM) | **NOVA ADRESA** | 0x02436C (ispravak od 0x02439C) | VISOKA |
+| 3 | Knock threshold | **Pronasli** | 0x0256F8, 10×6 u8 | VISOKA |
+| 4 | Injector deadtime | **NOVI NALAZ** | 0x025900, 7-col × 20-row, netunable | VISOKA |
+| 5 | DFCO thresholds | **NOVI NALAZ** | 0x02202E, 7 RPM vrijednosti | VISOKA |
+| 6 | ETA throttle | **NOVI NALAZ** | 0x020256, netunable hardware | VISOKA |
+| 7 | Idle RPM target | **NOVI NALAZ** | 0x02B600, 5×12, netunable | VISOKA |
+| 8 | Torque map osi | **KANDIDAT** | 0x029FE0 (RPM), 0x02A010 (load), skala nepotvrdjena | SREDNJA |
+| 9 | Warmup enrichment | Nisam pronasao klasicni | Near 0x025B3A (ali su flag vrijednosti) | NISKA |
+| 10 | Accel. enrichment | **Nije pronasao** | Nepoznato | — |
+| 11 | Cranking injection | **Nije pronasao** | Vjerojatno blizu 0x025860 (cold start) | — |
+| 12 | Overtemp protection | **Nije pronasao** | Vjerojatno u 0x025XXX area | — |

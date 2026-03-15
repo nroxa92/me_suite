@@ -7,10 +7,13 @@ Sve potvrdjene mape (CODE regija 0x010000-0x05FFFF):
   RPM osa   (3× mirror)  @ 0x024F46 / 0x025010 / 0x0250DC   BE u16, 1×16
   Rev limit (5 lokacija) @ 0x022096, 0x0220B6, 0x0220C0,
                            0x02B72A, 0x02B73E                 LE u16, scalar
-  Ignition  (16 mapa)    @ 0x02B730, stride 144B              u8, 12×12, 0.75°/bit
-  Injection main+mirror  @ 0x02439C / 0x02451C (+0x180)      LE u16, 12×32
+  Ignition  (19 mapa)    @ 0x02B730, stride 144B              u8, 12×12, 0.75°/bit
+  Injection main+mirror  @ 0x02436C / 0x0244EC (+0x180)      LE u16, 6×32
+  SC corr   (boost comp) @ 0x02220E                           LE u16, 9×7, Q14
   Torque    main+mirror  @ 0x02A0D8 / 0x02A5F0 (+0x518)      BE u16, 16×16, Q8
   Lambda    main+mirror  @ 0x0266F0 / 0x026C08 (+0x518)      LE u16, 12×18, Q15
+  Lambda bias/trim       @ 0x0265D6                           LE u16, 1×141, Q15
+  Temp fuel correction   @ 0x025E50                           LE u16, 1×156, Q14
 
 Napomene:
   - CAL regija (0x060000+) je TriCore bytekod — ne pisati!
@@ -120,9 +123,9 @@ _LOAD_16 = [0, 100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760,
             6400, 7040, 7680, 8320]
 
 _LOAD_AXIS_12 = AxisDef(count=12, byte_order="LE", dtype="u16",
-                         scale=1.0/64.0, unit="rl [%]", values=_LOAD_12)
+                         scale=1.0/64.0, unit="load [%]", values=_LOAD_12)
 _LOAD_AXIS_16 = AxisDef(count=16, byte_order="LE", dtype="u16",
-                         scale=1.0/64.0, unit="rl [%]", values=_LOAD_16)
+                         scale=1.0/64.0, unit="load [%]", values=_LOAD_16)
 
 # X osa za lambda mapu (18 stupaca) — Load (rl)
 # Verificirano prisutnošću identičnog niza tocno 0x16A bajta ispred lambda mape
@@ -131,7 +134,7 @@ _LOAD_AXIS_16 = AxisDef(count=16, byte_order="LE", dtype="u16",
 _LAMBDA_X_18 = [853, 1067, 1280, 1493, 1707, 1920, 2133, 2347,
                 2560, 2773, 2987, 3200, 3413, 3840, 4267, 4693, 5547, 6400]
 _LAMBDA_LOAD_AXIS_18 = AxisDef(count=18, byte_order="LE", dtype="u16",
-                                scale=1.0/64.0, unit="rl [%]", values=_LAMBDA_X_18)
+                                scale=1.0/64.0, unit="load [%]", values=_LAMBDA_X_18)
 
 
 # ─── RPM osa definicija ───────────────────────────────────────────────────────
@@ -269,37 +272,38 @@ _IGN_DEFS = [_make_ign_def(i) for i in range(IGN_COUNT)]
 
 # ─── Injection mapa ───────────────────────────────────────────────────────────
 
-INJ_MAIN          = 0x02439C
-INJ_MIRROR        = 0x02451C
+INJ_MAIN          = 0x02436C   # ISPRAVLJENO: bio 0x02439C (pogreška +0x30)
+INJ_MIRROR        = 0x0244EC   # ISPRAVLJENO: 0x02436C + 0x180
 INJ_MIRROR_OFFSET = INJ_MIRROR - INJ_MAIN   # 0x180
 
 _INJ_DEF = MapDef(
-    name          = "Ubrizgavanje — pulsna sirina",
+    name          = "Ubrizgavanje — trajanje (ms)",
     description   = (
-        "Trajanje ubrizgavanja (pulsna sirina injektora) — 12×32 tablica. "
-        "Vece vrijednosti = vise goriva (duze ubrizgavanje). "
-        "Osi: Y (redovi) = relativno punjenje rl [%], X (stupci) = nepoznata os. "
-        "Napomena: 32-kolumnska struktura nije klasicna RPM os — "
-        "vrijednosti se mjenjaju po grupama od 12 (moguce: 3 cilindra × 4 uvjeta). "
-        "ORI max ~49151 (~75% max), STG2 saturiran na 65535 (puni kapacitet injektora)."
+        "Trajanje ubrizgavanja (pulsna sirina injektora) — 6×32 tablica. "
+        "Vece vrijednosti = duze ubrizgavanje = vise goriva. "
+        "Procjena jedinice: raw × 0.0001 = ms (npr. raw 5000 ≈ 0.5 ms, "
+        "raw 49151 ≈ 4.9 ms na WOT). Bez A2L nije moguca precizna kalibracija. "
+        "ORI max ~49151 (~4.9 ms), STG2 saturiran na 65535 (~6.5 ms). "
+        "Osi: Y = opterecenje motora [%] (6 tocaka), X = relativno punjenje RLSOL (32 stupca)."
     ),
     category      = "injection",
-    rows=12, cols=32,
+    rows=6, cols=32,
     byte_order    = "LE", dtype = "u16",
-    scale         = 1.0,
+    scale         = 0.0001,        # procjena: raw × 0.0001 = ms trajanja ubrizgavanja
     offset_val    = 0.0,
-    unit          = "raw (u16)",   # fizikalna jedinica nepoznata bez A2L
-    axis_x        = None,          # 32 stupca — struktura nepoznata (nije RPM)
-    axis_y        = _LOAD_AXIS_12, # Y = relativno punjenje rl, 12 tocaka
+    unit          = "ms",
+    axis_x        = None,          # 32 stupca — RLSOL (relative load, load-indexed)
+    axis_y        = _LOAD_AXIS_12, # Y = opterecenje motora, koristimo 6 od 12 tocaka
     raw_min       = 0,
-    raw_max       = 0xFFFF,
+    raw_max       = 65535,
     mirror_offset = INJ_MIRROR_OFFSET,
     notes         = (
         f"Main @ 0x{INJ_MAIN:06X}, mirror @ 0x{INJ_MIRROR:06X} (+0x{INJ_MIRROR_OFFSET:X}). "
-        "ORI max ~49151, STG2 max 65535. "
-        "Fizikalna jedinica nepoznata bez A2L (vjerojatno µs ili 0.1µs). "
-        "X os (32 stupca) nije RPM — vrijednosti grupiraju po 12 po redu. "
-        "Y os: relativno punjenje rl [%], 12 tocaka @ 0x02AFAC."
+        "ISPRAVLJENO: adresa bila 0x02439C (offset +0x30), dims bile 12x32. "
+        "Pravi pocetak: 0x02436C, stvarne dims: 6x32 (binarnom skanom potvrdjeno). "
+        "X os: RLSOL (relativno punjenje, 32-tocka high-res load os) — ME17 standard. "
+        "ORI: 156 promijenjenih celija vs STG2 (znacajno tuniran NPRo). "
+        "Y os: opterecenje [%] @ 0x02AFAC (6 aktivnih od 12 dostupnih tocaka)."
     ),
 )
 
@@ -307,31 +311,32 @@ _INJ_DEF = MapDef(
 # ─── Torque mapa ─────────────────────────────────────────────────────────────
 
 _TORQUE_DEF = MapDef(
-    name          = "Moment — faktor ogranicenja [%]",
+    name          = "Moment — ogranicenje [%]",
     description   = (
-        "Faktor ogranicenja momenta — 16×16 tablica (Q8 format). "
-        "ECU mnozi zahtijevani moment s ovim faktorom. "
-        "100% = puni moment, <100% = ogranicenje (limp mode, TOPS, toplinski). "
-        "Osi: RPM (x) × opterecenje/MAP (y). "
-        "Format: raw MSB / 128 = faktor (0x80=1.0=100%)."
+        "Ogranicenje momenta motora — 16×16 tablica. "
+        "100% = puni moment dozvoljen, <100% = ogranicenje (limp mode, TOPS, toplinski). "
+        ">100% = moze se desiti pri boost (SCJ kompenzacija). "
+        "ORI: 93–120%, STG2: 93–123%. "
+        "Osi: RPM × opterecenje motora [%]."
     ),
     category      = "torque",
     rows=16, cols=16,
     byte_order    = "BE", dtype = "u16",
-    scale         = 1.0 / 128.0,
+    scale         = 100.0 / 32768.0,   # raw = MSB<<8; (MSB<<8)*100/32768 = MSB*100/128 = %
     offset_val    = 0.0,
     unit          = "%",
     axis_x        = _RPM_AXIS_16,
     axis_y        = _LOAD_AXIS_16,
-    raw_min       = 80,
-    raw_max       = 200,
+    raw_min       = 20480,   # 80% = 80*32768/100 = 26214 (spusteni na 20480 za provjeru)
+    raw_max       = 51200,   # 156% (STG2 max ~123% = 40304, 160% sigurnosni strop)
     mirror_offset = 0x518,
     notes         = (
         "Main @ 0x02A0D8, mirror @ 0x02A5F0 (+0x518). "
         "LSB uvijek 0x00 — podatak samo u MSB. "
-        "ORI raspon: 93–120%, STG2: 93–123%. "
-        "Povecanje vrijednosti = vise momenta (deaktivacija ogranicenja). "
-        "Paziti: TOPS sistem koristi ovu tablicu za zastitu."
+        "raw = (MSB << 8); display = raw * 100 / 32768 = MSB * 100 / 128. "
+        "ORI raspon: 93.0–119.5%, STG2: 92.2–122.7%. "
+        "Povecanje = vise momenta (deaktivacija ogranicenja). "
+        "TOPS sistem koristi ovu tablicu za zastitu — pazljivo pri povecavanju."
     ),
 )
 
@@ -345,12 +350,12 @@ LAM_MIRROR_OFFSET = LAM_MIRROR - LAM_MAIN   # 0x518
 _LAMBDA_DEF = MapDef(
     name          = "Lambda — ciljni AFR (open-loop)",
     description   = (
-        "Ciljni lambda faktor za ubrizgavanje — 12×18 tablica (Q15 LE). "
-        "Rotax ACE 1630/900 NEMA fizicku lambda sondu — ovo je open-loop AFR cilj "
-        "preracunat iz mape (ne iz mjerenja). "
-        "lambda < 1.0 = bogata smjesa (vise goriva, hladjenje klipa, puni gas). "
-        "lambda > 1.0 = siromasna smjesa (stednja, parcijalno opterecenje). "
-        "Osi: X = relativno punjenje/rl (18 tocaka, ~13-100%), Y = RPM (12 tocaka)."
+        "Ciljni omjer zraka/goriva (AFR) — 12×18 tablica (Q15 LE). "
+        "Rotax ACE 1630/900 NEMA fizicku lambda sondu — open-loop AFR cilj iz mape. "
+        "lambda = AFR / 14.7:  1.000 = stoehiometrija (AFR 14.7:1), "
+        "0.900 = bogato (AFR 13.2:1, puni gas), 1.050 = siromasno (AFR 15.4:1, stednja). "
+        "ORI raspon: 0.965–1.073 (AFR 14.2–15.8). STG2: 0.984–1.080 (AFR 14.5–15.9). "
+        "Osi: X = opterecenje [%] (18 tocaka), Y = RPM (12 tocaka)."
     ),
     category      = "lambda",
     rows=12, cols=18,
@@ -403,31 +408,39 @@ SC_MIRROR_OFFSET = SC_MIRROR - SC_MAIN   # 0x74
 # NPRo mijenja i ovu kopiju (drugačije vrijednosti od 0x0205A8), mogući drugi uvjeti
 SC_EXTRA  = 0x029993
 
-_SC_X_AXIS_VALS = [63, 75, 88, 100, 113, 138, 163]
+# SC X-os: MAP senzor vrijednosti interpretirane kao kPa → /100 = bar (abs.)
+#   100 = 1.00 bar = atmosferski tlak (bez boosta)
+#   163 = 1.63 bar = 0.63 bar nadtlaka (boost pressure above atm.)
+#   63  = 0.63 bar = podtlak (vakuum, zatvorena zaklopka)
+_SC_X_AXIS_VALS = [63, 75, 88, 100, 113, 138, 163]   # raw kPa vrijednosti
+_SC_X_AXIS_BAR  = [round(v * 0.01, 2) for v in _SC_X_AXIS_VALS]  # [0.63, 0.75, 0.88, 1.00, 1.13, 1.38, 1.63]
+
+# SC Y-os: opterecenje u %, 128 = 100%
 _SC_Y_AXIS_VALS = [51, 77, 102, 128, 154, 179, 205]
+_SC_Y_AXIS_PCT  = [round(v * 100.0/128.0, 1) for v in _SC_Y_AXIS_VALS]  # [39.8, 60.2, 79.7, 100.0, 120.3, 139.8, 160.2]
 
 _SC_X_AXIS = AxisDef(count=7, byte_order="BE", dtype="u8",
-                      scale=1.0, unit="MAP/ETA [raw]", values=_SC_X_AXIS_VALS)
+                      scale=0.01, unit="bar (abs.)", values=_SC_X_AXIS_VALS)
 _SC_Y_AXIS = AxisDef(count=7, byte_order="BE", dtype="u8",
-                      scale=1.0/128.0*100.0, unit="load [%]", values=_SC_Y_AXIS_VALS)
+                      scale=100.0/128.0, unit="load [%]", values=_SC_Y_AXIS_VALS)
 
 _SC_DEF = MapDef(
-    name          = "SC bypass ventil — kontrola",
+    name          = "SC bypass ventil — otvorenost [%]",
     description   = (
-        "Kontrola bypass ventila kompresora (supercharger) — 7×7 tablica. "
-        "Manja vrijednost = bypass ZATVOREN = veci boost. "
-        "255 = bypass potpuno otvoren = SC bypassed. "
-        "X os: MAP senzor ili ETA pozicija (100=referenca). "
-        "Y os: relativno opterecenje ili ETA (128=100%). "
-        "ori_300=38–205, wake230=31–79 (slabiji SC), stg2=38–255 (max boost)."
+        "Otvorenost bypass ventila kompresora — 7×7 tablica. "
+        "0% = bypass ZATVOREN = MAKSIMALNI boost (ventil blokira obilazak). "
+        "100% = bypass POTPUNO OTVOREN = NULA boosta (zrak zaobilazi kompresor). "
+        "X os: tlak usisnog zraka (MAP) u bar aps. (1.00 bar = atmosfera). "
+        "Y os: opterecenje motora [%] (100% = nominalno, >100% = boost uvjeti). "
+        "ori_300: 14.9–80.4%, wake230: 12.2–31.0%, stg2: 14.9–100.0%."
     ),
     category      = "misc",
     rows=7, cols=7,
     byte_order    = "BE",
     dtype         = "u8",
-    scale         = 1.0,
+    scale         = 100.0 / 255.0,   # raw 0-255 → 0-100% bypass otvorenost
     offset_val    = 0.0,
-    unit          = "raw (u8)",
+    unit          = "% bypass",
     axis_x        = _SC_X_AXIS,
     axis_y        = _SC_Y_AXIS,
     raw_min       = 0,
@@ -435,10 +448,9 @@ _SC_DEF = MapDef(
     mirror_offset = SC_MIRROR_OFFSET,
     notes         = (
         f"Main @ 0x{SC_MAIN:06X}, mirror @ 0x{SC_MIRROR:06X} (+0x{SC_MIRROR_OFFSET:X}). "
-        "Identificirano diff analizom ori_300 vs wake230 (isti blok, razlicit SC). "
-        "X os @ 0x020509: [63,75,88,100,113,138,163]. "
-        "Y os @ 0x020524: [51,77,102,128,154,179,205]. "
-        "Tocno skaliranje osi treba A2L potvrdu."
+        "NISKA vrijednost = vise boosta! ORI min=14.9% (puni boost), max=80.4%. "
+        "X os (MAP): [0.63, 0.75, 0.88, 1.00, 1.13, 1.38, 1.63] bar aps. @ 0x020509. "
+        "Y os (load): [39.8, 60.2, 79.7, 100.0, 120.3, 139.8, 160.2] % @ 0x020524."
     ),
 )
 
@@ -553,6 +565,280 @@ _KNOCK_PARAMS_DEF = MapDef(
 )
 
 
+# ─── SC load injection correction ────────────────────────────────────────────
+#
+# Identificirana diff analizom 4 SW varijanti (130/170/230/300hp 2021).
+# 130/170hp SVE 16384 (neutralno) → nema SC, NA motor ili SC disabled.
+# 230hp: 16728-30900 (slabiji SC), 300hp: 5325-35895 (jaki SC, dijagonalni).
+#
+# Struktura: 7-točkasta X-os (RPM) @ 0x022200, tablica 9×7 Q14 @ 0x02220E.
+#   X-os (u16 LE, /8 = RPM): ori_300 = [10000,15000,18000,20000,24000,32000,34000]
+#     → RPM: [1250, 1875, 2250, 2500, 3000, 4000, 4250]
+#   Y-os (9 redova): neidentificirana — vjerojatno load ili MAP
+# Q14: 16384 = 1.0 = neutralna korekcija, >16384 = bogaćenje, <16384 = osiromašivanje
+
+SC_CORR_Y_ADDR = 0x0221EC   # Y-os: 9× u16 LE (raw/64 = rl %)  — direktno ispred X-osi
+SC_CORR_X_ADDR = 0x022200   # X-os: 7× u16 LE (raw/8 = RPM)
+SC_CORR_ADDR   = 0x02220E   # tablica: 9×7 u16 LE Q14
+
+# ori_300 (300hp SC): Y raspon 47–180% rl (boost operating range)
+# 130/170/230hp: Y raspon 8–109% rl (NA raspon) — RAZLIKUJE SE PO SW!
+_SC_CORR_X_VALS = [1250, 1875, 2250, 2500, 3000, 4000, 4250]  # ori_300 RPM os
+_SC_CORR_Y_VALS = [3000, 4000, 6000, 7000, 8000, 8500, 9500, 10500, 11500]  # ori_300, raw /64=rl%
+
+_SC_CORR_X_AXIS = AxisDef(count=7, byte_order="LE", dtype="u16",
+                            scale=1.0/8.0, unit="rpm", values=_SC_CORR_X_VALS)
+_SC_CORR_Y_AXIS = AxisDef(count=9, byte_order="LE", dtype="u16",
+                            scale=1.0/64.0, unit="load [%]", values=_SC_CORR_Y_VALS)
+
+_SC_CORR_DEF = MapDef(
+    name          = "SC boost — korekcija goriva [%]",
+    description   = (
+        "Korekcija goriva za SC boost opterecenje — 9×7 tablica. "
+        "0% = neutralno (bez korekcije), +100% = duplo vise goriva, -50% = upola manje. "
+        "Primjer: ori_300 raspon -67.5% do +119.1% (masivna SC boost kompenzacija). "
+        "130/170hp: SVE 0% (NA motor, bez SC, nema korekcije). "
+        "X os: RPM, Y os: opterecenje motora [%] — RAZLIKUJE SE po SW varijanti! "
+        "300hp Y: 47–180% (boost raspon), 130/230hp Y: 8–109% (NA raspon)."
+    ),
+    category      = "injection",
+    rows=9, cols=7,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 16384.0,   # Q14: 16384 = 0% korekcija; prikaz u % od/+/- baznog ubrizgavanja
+    offset_val    = -100.0,             # 0% offset: raw 16384 → 16384*100/16384 - 100 = 0%
+    unit          = "% korekcija",
+    axis_x        = _SC_CORR_X_AXIS,
+    axis_y        = _SC_CORR_Y_AXIS,
+    raw_min       = 4096,   # -75% (maks. osiromašivanje)
+    raw_max       = 49152,  # +200% (trostruko bogacenje)
+    mirror_offset = 0,
+    notes         = (
+        f"Y-os @ 0x{SC_CORR_Y_ADDR:06X} (9× u16 LE, /64=rl%), "
+        f"X-os @ 0x{SC_CORR_X_ADDR:06X} (7× u16 LE, /8=RPM), "
+        f"tablica @ 0x{SC_CORR_ADDR:06X}. "
+        "ori_300 Y: [46.9, 62.5, 93.8, 109.4, 125.0, 132.8, 148.4, 164.1, 179.7] rl%. "
+        "130/230hp Y: [7.8, 15.6, 23.4, 31.2, 46.9, 62.5, 78.1, 93.8, 109.4] rl%. "
+        "Dijagonalni pattern = SC boost kompenzacija aktivna samo pri visokom opterecenju."
+    ),
+)
+
+
+# ─── Temperature fuel correction ─────────────────────────────────────────────
+#
+# Korekcija goriva indexirana temperaturom/uvjetima — 156× u16 LE Q14 @ 0x025E50.
+# Lokacija: 0x025E50–0x025F88 (312 bajta = 156 u16).
+#
+# Karakteristike po SW:
+#   300hp:    flat ~1.208 (+20.8% enrichment) — hladni/boost kompenzacija
+#   130/170hp: ~1.0 minimalna korekcija
+#   230hp:    0.816 (-18.4% lean) — decel/CTS temp lean korekcija
+#
+# Fizikalni smisao: moguće korekcija po temperaturi rashladne tekućine ili
+# po temperaturi usisnog zraka (IAT/CTS-indexed fuel correction table).
+
+TEMP_FUEL_ADDR = 0x025E50
+
+_TEMP_FUEL_DEF = MapDef(
+    name          = "Gorivo — temperaturna korekcija [%]",
+    description   = (
+        "Korekcija ubrizgavanja po temperaturi — 156 vrijednosti (1D). "
+        "0% = neutralno, +20% = 20% vise goriva, -18% = 18% manje. "
+        "300hp: flat +20.8% (bogacenje za SC/hladjenje klipova). "
+        "230hp: -18.4% (lean temp. korekcija). "
+        "130/170hp: ~+3.5% (minimalna korekcija). "
+        "Os: vjerojatno temperatura rashladne tekucine ili usisnog zraka (A2L needed)."
+    ),
+    category      = "injection",
+    rows=1, cols=156,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 16384.0,
+    offset_val    = -100.0,
+    unit          = "%",
+    axis_x        = None,   # os neidentificirana (CTS temp? IAT?)
+    axis_y        = None,
+    raw_min       = 8192,   # -50% (maks. osiromašivanje)
+    raw_max       = 32768,  # +100% (duplo bogacenje)
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{TEMP_FUEL_ADDR:06X}–0x025F88 (156× u16 LE Q14, 312B). "
+        "Os neidentificirana — moguce CTS (temp rashladne tekucine) ili IAT. "
+        "300hp: flat +20.8%, 230hp: -18.4% lean, 130/170hp: ~neutralno."
+    ),
+)
+
+
+# ─── Lambda bias (AFR trim) ───────────────────────────────────────────────────
+#
+# Lambda korekcija/bias odmah ispred lambda mape — 141× u16 LE Q15 @ 0x0265D6.
+# Q15: 32768 = lambda 1.0 (stoehiometrijsko), >32768 = lean, <32768 = bogato.
+#
+# Vrijednosti po SW:
+#   300hp:    ~32922 → +0.47% lean bias
+#   130/170hp: ~32744 → -0.07% (neutralno)
+#   230hp:    ~33558 → +2.41% lean bias (SC kompenzacija za boost?)
+#
+# Pozicija: 0x0265D6–0x026706 = 0x130 bajta = 304B → 152 u16
+# Napomena: 141 je originalna procjena — treba verificirati točan count.
+
+LAMBDA_BIAS_ADDR = 0x0265D6
+
+_LAMBDA_BIAS_DEF = MapDef(
+    name          = "Lambda bias — AFR korekcija [%]",
+    description   = (
+        "AFR trim/bias uz lambda target mapu — 141 vrijednosti (1D). "
+        "0% = neutralno (nema korekcije). +2% = 2% siromasnije od ciljne mape. "
+        "-2% = 2% bogatije od ciljne mape. "
+        "300hp: +0.47% (blagi lean), 230hp: +2.41% (lean bias za SC), 130/170hp: -0.07% (neutralno). "
+        "Smjesten odmah ispred lambda mape @ 0x0266F0."
+    ),
+    category      = "lambda",
+    rows=1, cols=141,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 32768.0,
+    offset_val    = -100.0,
+    unit          = "%",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 16384,   # lambda 0.5
+    raw_max       = 65535,   # lambda 2.0
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{LAMBDA_BIAS_ADDR:06X}–0x026706 (141× u16 LE Q15). "
+        "Odmah ispred lambda main mape @ 0x0266F0. "
+        "300hp +0.47% lean, 230hp +2.41% lean, 130/170hp neutralno. "
+        "Fizikalni smisao: globalni AFR trim po uvjetu/načinu rada ECU-a."
+    ),
+)
+
+
+# ─── Injector deadtime ────────────────────────────────────────────────────────
+#
+# Hardware konstanta — ne tunable! Kompenzira kašnjenje otvaranja injektora.
+# 7 kolona × ~20 redova u16 LE @ 0x025900 (struktura procjenjena, bez A2L).
+# Identično u svim SW varijantama (hardware-fixed karakteristika injektora).
+#
+# Kontekst ME17 standard (ASAP2: TVKL — "Totzeitkennlinie"):
+#   X os = napon baterije (battery voltage), Y os = temperatura/uvjet
+#   Vrijednosti = kašnjenje u µs (tipično 0.5–2.5 ms za high-impedancije injektore)
+
+DEADTIME_ADDR = 0x025900
+
+_DEADTIME_DEF = MapDef(
+    name          = "Injektori — deadtime korekcija (read-only)",
+    description   = (
+        "Kašnjenje otvaranja injektora (deadtime / Totzeit) — hardware konstanta. "
+        "NE MIJENJATI — kalibrirano za fizičke injektore (330cc/min). "
+        "7 kolona, ~20 redova (u16 LE). X os: napon baterije. "
+        "ECU automatski kompenzira za napon pri svakom ubrizgavanju. "
+        "Identično u svim SW varijantama (130/170/230/300hp)."
+    ),
+    category      = "misc",
+    rows=20, cols=7,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 0.001,     # procjena: µs ili ms, A2L needed
+    offset_val    = 0.0,
+    unit          = "µs (est.)",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 0,
+    raw_max       = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{DEADTIME_ADDR:06X}. Hardware konstanta — NE EDITIRATI. "
+        "Identično u svim 9 analiziranih SW varijanti. "
+        "ME17 ASAP2 naziv: TVKL (Totzeitkennlinie). "
+        "Dimenzije procijenjene bez A2L (7-col struktura potvrđena binarnim skanom)."
+    ),
+)
+
+
+# ─── DFCO (Deceleration Fuel Cut-Off) pragovi ─────────────────────────────────
+#
+# 7 RPM prag vrijednosti @ 0x02202E (u16 LE, direktni RPM, bez skale).
+# Razlikuje se po HP varijanti:
+#   130/170hp:  [853, 1067, 1280, 1493, 1707, 2133, 2560]
+#   300hp:      [1067, 1280, 1493, 1707, 2133, 2560, 3413]
+#
+# Fizikalni smisao: ECU prekida ubrizgavanje (fuel cut) pri deceleraciji
+# ispod ovih RPM pragova, ovisno o uvjetu (temperature, throttle position, gear).
+
+DFCO_ADDR = 0x02202E
+
+_DFCO_DEF = MapDef(
+    name          = "DFCO — pragovi isključivanja goriva",
+    description   = (
+        "RPM pragovi za Deceleration Fuel Cut-Off (DFCO) — 7 vrijednosti. "
+        "ECU prekida ubrizgavanje pri padu RPM ispod ovih pragova pri deceleraciji. "
+        "130/170hp: [853–2560 rpm] (niži pragovi — ranije aktivacija DFCO). "
+        "300hp: [1067–3413 rpm] (viši pragovi — konzervativnija DFCO za SC motor). "
+        "Povećanje vrijednosti = DFCO aktivniji na višim RPM = manje goriva pri usporavanju."
+    ),
+    category      = "misc",
+    rows=1, cols=7,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "rpm",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 500,
+    raw_max       = 5000,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{DFCO_ADDR:06X} (7× u16 LE, direktni RPM). "
+        "130/170hp: [853, 1067, 1280, 1493, 1707, 2133, 2560]. "
+        "300hp: [1067, 1280, 1493, 1707, 2133, 2560, 3413]. "
+        "ME17 ASAP2 naziv: NLLSOL (Leerlaufdrehzahlsollwert). "
+        "DFCO smanjuje potrošnju i emisije — promjena utječe na osjet deceleracije."
+    ),
+)
+
+
+# ─── Idle RPM target ──────────────────────────────────────────────────────────
+#
+# Tablica ciljnog ralantija — 5×12 u16 LE @ 0x02B600.
+# Vrijednosti direktno u RPM (bez skale): 1840–3340 rpm.
+# Identično u svim analiziranim SW varijantama (130/170/230/300hp).
+#
+# 5 redova: vjerojatno uvjeti (CTS temp, AC load, neutral, gear...),
+# 12 kolona: vjerojatno temperaturni ili vremenski stupnjevi.
+#
+# Napomena: ECU specs kažu 1700±50 rpm, ali firmware pokazuje 1840 rpm
+# (SC parasitni gubitak ~140 rpm kompenzira ECU setpointom).
+
+IDLE_RPM_ADDR = 0x02B600
+
+_IDLE_RPM_DEF = MapDef(
+    name          = "Ralanti — ciljni RPM",
+    description   = (
+        "Ciljni RPM ralantija — 5×12 tablica (u16 LE, direktni RPM). "
+        "ECU regulira prigušni ventil i paljenje prema ovim setpointima. "
+        "Raspon: 1840–3340 rpm (topli ralanti ~1840, hladni start ~3340). "
+        "Identično u svim SW varijantama (130/170/230/300hp). "
+        "5 redova: uvjeti rada (temperatura, AC, neutral, gear...). "
+        "12 kolona: temperaturni/vremenski stupnjevi."
+    ),
+    category      = "misc",
+    rows=5, cols=12,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "rpm",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 600,
+    raw_max       = 4500,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{IDLE_RPM_ADDR:06X} (5×12 u16 LE, direktni RPM, bez skale). "
+        "Identično u svim 9 analiziranih SW varijanti. "
+        "Topli ralanti: ~1840 rpm (ECU spec kaže 1700, razlika = SC parasitni gubitak). "
+        "Hladni start: ~3340 rpm. Dimenzije potvrđene binarnim skanom. "
+        "ME17 ASAP2 naziv: NLLSOL (ciljni RPM ralantija)."
+    ),
+)
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -638,6 +924,12 @@ class MapFinder:
         self._scan_cold_start(progress_cb)
         self._scan_knock_params(progress_cb)
         self._scan_cts_temp_axis(progress_cb)
+        self._scan_sc_correction(progress_cb)
+        self._scan_temp_fuel(progress_cb)
+        self._scan_lambda_bias(progress_cb)
+        self._scan_deadtime(progress_cb)
+        self._scan_dfco(progress_cb)
+        self._scan_idle_rpm(progress_cb)
         self._scan_dtc(progress_cb)
         return self.results
 
@@ -935,12 +1227,12 @@ class MapFinder:
             non_trivial2 = sum(1 for v in vals2 if 0 < v < 255)
             if non_trivial2 >= n // 4:
                 extra_def = MapDef(
-                    name          = "SC bypass ventil — extra kopija",
-                    description   = _SC_DEF.description + " (3. kopija @ 0x029993, mogući alternativni uvjeti)",
+                    name          = "SC bypass ventil — extra kopija [%]",
+                    description   = _SC_DEF.description + " (3. kopija @ 0x029993, moguce alternativni uvjeti/rezim)",
                     category      = "misc",
                     rows=7, cols=7,
                     byte_order    = "BE", dtype = "u8",
-                    scale         = 1.0, unit = "raw (u8)",
+                    scale         = 100.0 / 255.0, unit = "% bypass",
                     axis_x        = _SC_X_AXIS,
                     axis_y        = _SC_Y_AXIS,
                     raw_min       = 0, raw_max = 255,
@@ -1034,6 +1326,190 @@ class MapFinder:
             data    = vals,
         ))
         if cb: cb(f"  CTS temp os @ 0x{addr:06X}  1×10  [{vals[0]}..{vals[-1]}]°C")
+
+    # ── SC load injection correction scan ────────────────────────────────────
+
+    def _scan_sc_correction(self, cb=None):
+        if cb: cb("Tražim SC load injection correction...")
+        data = self.eng.get_bytes()
+
+        addr = SC_CORR_ADDR
+        n    = _SC_CORR_DEF.rows * _SC_CORR_DEF.cols  # 9 × 7 = 63
+        if addr + n * 2 > len(data):
+            if cb: cb(f"  SC correction: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: barem neke vrijednosti u Q14 rasponu korekcije
+        in_range = sum(1 for v in vals if 4096 <= v <= 49152)
+        if in_range < n // 2:
+            if cb: cb(f"  SC correction @ 0x{addr:06X}: premalo Q14 vrijednosti — preskačem")
+            return
+
+        # Dinamički čitamo Y-os iz fajla (razlikuje se po SW: 300hp vs 130/230hp)
+        y_vals = [int.from_bytes(data[SC_CORR_Y_ADDR + i*2: SC_CORR_Y_ADDR + i*2 + 2], 'little')
+                  for i in range(9)]
+        x_vals = [int.from_bytes(data[SC_CORR_X_ADDR + i*2: SC_CORR_X_ADDR + i*2 + 2], 'little')
+                  for i in range(7)]
+        y_axis = AxisDef(count=9, byte_order="LE", dtype="u16",
+                         scale=1.0/64.0, unit="rl [%]", values=y_vals)
+        x_axis = AxisDef(count=7, byte_order="LE", dtype="u16",
+                         scale=1.0/8.0, unit="rpm", values=x_vals)
+
+        from dataclasses import replace
+        defn = replace(_SC_CORR_DEF, axis_x=x_axis, axis_y=y_axis)
+
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 16384.0
+        vmax = max(vals) / 16384.0
+        y_pct = [round(v/64, 1) for v in y_vals]
+        if cb: cb(f"  SC correction @ 0x{addr:06X}  9×7  factor=[{vmin:.3f}–{vmax:.3f}]"
+                  f"  Y=[{y_pct[0]}–{y_pct[-1]}]rl%")
+
+    # ── Temperature fuel correction scan ─────────────────────────────────────
+
+    def _scan_temp_fuel(self, cb=None):
+        if cb: cb("Tražim temperature fuel correction...")
+        data = self.eng.get_bytes()
+
+        addr = TEMP_FUEL_ADDR
+        n    = _TEMP_FUEL_DEF.cols  # 156
+        if addr + n * 2 > len(data):
+            if cb: cb(f"  Temp fuel: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: Q14 korekcija — barem 80% u rasponu 0.5×–2.0× (8192–32768)
+        in_range = sum(1 for v in vals if 8192 <= v <= 32768)
+        if in_range < int(n * 0.80):
+            if cb: cb(f"  Temp fuel @ 0x{addr:06X}: premalo Q14 vrijednosti ({in_range}/{n}) — preskačem")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _TEMP_FUEL_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 16384.0
+        vmax = max(vals) / 16384.0
+        if cb: cb(f"  Temp fuel @ 0x{addr:06X}  1×156  factor=[{vmin:.3f}–{vmax:.3f}]")
+
+    # ── Lambda bias scan ──────────────────────────────────────────────────────
+
+    def _scan_lambda_bias(self, cb=None):
+        if cb: cb("Tražim lambda bias tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = LAMBDA_BIAS_ADDR
+        n    = _LAMBDA_BIAS_DEF.cols  # 141
+        if addr + n * 2 > len(data):
+            if cb: cb(f"  Lambda bias: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: Q15 lambda 0.5–2.0 → raw 16384–65535
+        in_range = sum(1 for v in vals if 16384 <= v <= 65535)
+        if in_range < n // 2:
+            if cb: cb(f"  Lambda bias @ 0x{addr:06X}: premalo Q15 vrijednosti — preskačem")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _LAMBDA_BIAS_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        avg = sum(vals) / len(vals) / 32768.0
+        if cb: cb(f"  Lambda bias @ 0x{addr:06X}  1×141  avg_lambda={avg:.4f}")
+
+    # ── Injector deadtime scan ────────────────────────────────────────────────
+
+    def _scan_deadtime(self, cb=None):
+        if cb: cb("Trazim injector deadtime tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = DEADTIME_ADDR
+        n    = _DEADTIME_DEF.rows * _DEADTIME_DEF.cols  # 20 × 7 = 140
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: deadtime vrijednosti su relativno male i ujednacene
+        non_zero = sum(1 for v in vals if v > 0)
+        if non_zero < n // 2:
+            if cb: cb(f"  Deadtime @ 0x{addr:06X}: previse nula — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _DEADTIME_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Deadtime @ 0x{addr:06X}  20x7  raw=[{min(vals)}-{max(vals)}] (read-only)")
+
+    # ── DFCO thresholds scan ──────────────────────────────────────────────────
+
+    def _scan_dfco(self, cb=None):
+        if cb: cb("Trazim DFCO pragove...")
+        data = self.eng.get_bytes()
+
+        addr = DFCO_ADDR
+        n    = 7
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: rastuci niz RPM vrijednosti u razumnom rasponu
+        if not (all(400 <= v <= 5000 for v in vals) and self._monotone(vals)):
+            if cb: cb(f"  DFCO @ 0x{addr:06X}: validacija pala — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _DFCO_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  DFCO @ 0x{addr:06X}  1×7  [{vals[0]}-{vals[-1]}] rpm")
+
+    # ── Idle RPM target scan ──────────────────────────────────────────────────
+
+    def _scan_idle_rpm(self, cb=None):
+        if cb: cb("Trazim idle RPM target tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = IDLE_RPM_ADDR
+        n    = _IDLE_RPM_DEF.rows * _IDLE_RPM_DEF.cols  # 5 × 12 = 60
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: RPM vrijednosti ralantija 600-4500, vecina u tome rasponu
+        in_range = sum(1 for v in vals if 600 <= v <= 4500)
+        if in_range < n * 3 // 4:
+            if cb: cb(f"  Idle RPM @ 0x{addr:06X}: validacija pala ({in_range}/{n}) — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _IDLE_RPM_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Idle RPM @ 0x{addr:06X}  5×12  [{min(vals)}-{max(vals)}] rpm")
 
     # ── DTC scanner ──────────────────────────────────────────────────────────
 
