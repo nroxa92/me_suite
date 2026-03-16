@@ -167,3 +167,15 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 🤖 Injection adresa ispravljena (0x02439C→0x02436C, 12×32→6×32, mirror 0x0244EC). Dodane 3 nove mape: deadtime @0x025900 (read-only), DFCO @0x02202E, idle RPM @0x02B600. Ukupno 44 mape, sve potvrđene na ori_300.bin.
 
 ---
+
+**2026-03-16**
+👤 [nastavak sesije] Agresivni binarni scan — što nam fali, što imamo a nije definirano?
+🤖 Pronađena i dodana lambda trim mapa @0x026DB8 (12×18 Q15, potvrđeno svih 216 vrijednosti) i ubrzavajuće obogaćivanje @0x028059 (KFMSWUP ekvivalent, 5×5 Q14, kompleksan format s ugrađenom dTPS osi). Ukupno 48 mapa. Neidentificirano ostaje: 0x022389 (43u8), 0x02AA42 (66u16), 7× ponavljajući 24B blok @0x02AFxx.
+
+---
+
+**2026-03-16**
+👤 daj instaliraj i pokreni ovo, molim te... [agent-paperclip iz Downloads/paperclip]
+🤖 Agent Paperclip je Claude Code desktop pratilac — instaliran npm install iz source-a, pokreće se s npm run dev u app folderu.
+
+---

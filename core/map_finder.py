@@ -13,6 +13,8 @@ Sve potvrdjene mape (CODE regija 0x010000-0x05FFFF):
   Torque    main+mirror  @ 0x02A0D8 / 0x02A5F0 (+0x518)      BE u16, 16×16, Q8
   Lambda    main+mirror  @ 0x0266F0 / 0x026C08 (+0x518)      LE u16, 12×18, Q15
   Lambda bias/trim       @ 0x0265D6                           LE u16, 1×141, Q15
+  Lambda trim (korekcija)@ 0x026DB8                           LE u16, 12×18, Q15
+  Accel enrichment       @ 0x028059                           LE u16, 5×5, Q14 (kompleksan format)
   Temp fuel correction   @ 0x025E50                           LE u16, 1×156, Q14
 
 Napomene:
@@ -757,6 +759,102 @@ _LAMBDA_PROT_DEF = MapDef(
 )
 
 
+# ─── Lambda trim (korekcija lambde po RPM×load) ───────────────────────────────
+#
+# 12×18 Q15 tablica @ 0x026DB8 — odmah iza lambda mirrora (mirror završava @ 0x026D20,
+# razmak 0x98=152B između mirrora i trima).
+# Iste dimenzije kao lambda main/mirror (12 RPM × 18 load točaka).
+# Fizikalni smisao: aditivna lambda korekcija po RPM×load — trim na lambda target mapu.
+#
+# Vrijednosti po SW (svi malo različiti = per-motor kalibracija):
+#   300hp ORI:  0.965–1.001 (blagi lean bias na visokim load točkama)
+#   300hp STG2: 0.984–0.999 (izravnano — NPRo unificirao korekciju)
+#   130hp:      0.984–1.001 (viši load malo richer)
+#   230hp:      0.970–1.014 (veće varijacije — SC kompenzacija?)
+
+LAMBDA_TRIM_ADDR = 0x026DB8
+
+_LAMBDA_TRIM_DEF = MapDef(
+    name          = "Lambda trim — korekcija po RPM×load [%]",
+    description   = (
+        "Additivna lambda korekcija uz lambda target mapu — 12×18 Q15 tablica. "
+        "0% = neutralno (nema korekcije lambda cilja). "
+        "+2% = 2% siromasnije od lambda mape. -2% = 2% bogatije. "
+        "Razlikuje se po HP varijanti — per-motor kalibracija. "
+        "300hp: 0.965–1.001 lambda, 230hp: 0.970–1.014, 130hp: 0.984–1.001. "
+        "Osi: X = opterecenje [%] (18 tocaka), Y = RPM (12 tocaka) — iste kao lambda mapa."
+    ),
+    category      = "lambda",
+    rows=12, cols=18,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 32768.0,
+    offset_val    = -100.0,
+    unit          = "%",
+    axis_x        = _LAMBDA_LOAD_AXIS_18,
+    axis_y        = _RPM_AXIS_12,
+    raw_min       = 27000,   # lambda ~0.82
+    raw_max       = 38000,   # lambda ~1.16
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{LAMBDA_TRIM_ADDR:06X} (12×18 u16 LE Q15, 432B). "
+        "Odmah iza lambda mirrora (0x026C08+432=0x026D20, razmak 0x98). "
+        "Sve 216 vrijednosti u Q15 opsegu — potvrdjeno binarnim skanom. "
+        "Iste dimenzije kao lambda main/mirror. A2L naziv: KFLAMTRIM ili KFLLAFACR."
+    ),
+)
+
+
+# ─── Ubrzavajuće obogaćivanje (KFMSWUP ekvivalent) ───────────────────────────
+#
+# Kompleksan blok @ 0x028059 (132B) — 1B global + 5 redova × 23B (svaki ima ugrađenu os).
+# Svaki red: 1B marker + 6×u16 dTPS os + 5×u16 Q14 faktori ubrizgavanja
+# dTPS os (delta-throttle/s): [0, 5, 150, 200, 350, 1500] °/s
+# 5 RPM redova (indeksirani marker bajtem 4/5 — razlike po brzini motora)
+#
+# STG2 razlike: dTPS os promijenjena na [0, 5, 150, 300, 600, 900] i Q14 vrijednosti
+# bitno povećane (do 2.64× = 164% obogaćivanja) — agresivnija tranzijentna korekcija.
+#
+# Tipični Q14 faktori:
+#   ORI: 0.760–1.600 (76%–160%) → malo obogaćivanje pri naglom pliniranju
+#   STG2: 0.480–2.640 (48%–264%) → mnogo agresivnija tranzijentna korekcija
+#
+# Analogno Bosch A2L: KFMSWUP (Kraftstoffmengen-Schub-Abschalt-Unterbrechung)
+# ili KFVDHKK (Verbrauchskorrektur Dynamisch) — bez A2L ne možemo potvrditi točan naziv.
+
+ACCEL_ENRICH_ADDR = 0x028059
+
+_ACCEL_ENRICH_DEF = MapDef(
+    name          = "Ubrzanje — tranzijentno obogaćivanje [%]",
+    description   = (
+        "Faktor obogaćivanja goriva pri naglom gazu (KFMSWUP ekvivalent) — 5×5 tablica. "
+        "Svaki red je jedan RPM uvjet, stupci = dTPS razine (brz. promjene zaklopke). "
+        "dTPS os [°/s]: ORI=[0,5,150,200,350,1500], STG2=[0,5,150,300,600,900]. "
+        "100% = neutralno (nema korekcije). <100% = decel. >100% = ubrzanje. "
+        "ORI: 76–160%, STG2: 48–264% (mnogo agresivnija tranzijentna korekcija). "
+        "Pažnja: kompleksan binarni format — svaki red ugrađuje vlastitu os u binariju."
+    ),
+    category      = "injection",
+    rows=5, cols=5,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 16384.0,
+    offset_val    = -100.0,
+    unit          = "% korekcija",
+    axis_x        = AxisDef(count=6, byte_order="LE", dtype="u16",
+                             scale=1.0, unit="dTPS [°/s]",
+                             values=[0, 5, 150, 200, 350, 1500]),  # ORI os
+    axis_y        = None,  # RPM redovi — neidentificirani bez A2L
+    raw_min       = 4096,   # -75%
+    raw_max       = 49152,  # +200%
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{ACCEL_ENRICH_ADDR:06X} (132B). Format: 1B global + 5×(1B+6×u16 os+5×u16 data). "
+        "Svaki red ugrađuje vlastitu 6-tocku dTPS os — nestandarni Bosch format. "
+        "ORI dTPS: [0,5,150,200,350,1500]°/s; STG2: [0,5,150,300,600,900]°/s. "
+        "ME17.8.5 A2L analogno: KFMSWUP ili KFVDHKK. Potvrdjeno binarnim skanom svih SW varijanti."
+    ),
+)
+
+
 # ─── Torque optimal / driver demand mapa ──────────────────────────────────────
 #
 # Blok Q8 vrijednosti @ 0x02A7F0 (odmah iza torque mirrora) — 93–107% raspon.
@@ -1017,10 +1115,12 @@ class MapFinder:
         self._scan_temp_fuel(progress_cb)
         self._scan_lambda_bias(progress_cb)
         self._scan_lambda_prot(progress_cb)
+        self._scan_lambda_trim(progress_cb)
         self._scan_torque_opt(progress_cb)
         self._scan_deadtime(progress_cb)
         self._scan_dfco(progress_cb)
         self._scan_idle_rpm(progress_cb)
+        self._scan_accel_enrich(progress_cb)
         self._scan_dtc(progress_cb)
         return self.results
 
@@ -1550,6 +1650,97 @@ class MapFinder:
         vmin = min(vals) / 32768.0
         vmax = max(vals) / 32768.0
         if cb: cb(f"  Lambda prot @ 0x{addr:06X}  12x13  [{vmin:.3f}-{vmax:.3f}]")
+
+    # ── Lambda trim scan ──────────────────────────────────────────────────────
+
+    def _scan_lambda_trim(self, cb=None):
+        if cb: cb("Trazim lambda trim tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = LAMBDA_TRIM_ADDR
+        n    = _LAMBDA_TRIM_DEF.rows * _LAMBDA_TRIM_DEF.cols  # 12×18 = 216
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: sve Q15 vrijednosti moraju biti u lambda opsegu 0.82–1.16
+        # (raw 27000–38000). Lambda trim je uska korekcija, ne ide daleko od 1.0.
+        in_range = sum(1 for v in vals if 25000 < v < 40000)
+        if in_range < int(n * 0.90):
+            if cb: cb(f"  Lambda trim @ 0x{addr:06X}: premalo Q15 vrijednosti ({in_range}/{n}) — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _LAMBDA_TRIM_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 32768.0
+        vmax = max(vals) / 32768.0
+        if cb: cb(f"  Lambda trim @ 0x{addr:06X}  12×18  lambda=[{vmin:.3f}–{vmax:.3f}]")
+
+    # ── Acceleration enrichment scan ─────────────────────────────────────────
+
+    def _scan_accel_enrich(self, cb=None):
+        if cb: cb("Trazim ubrzavajuce obogacivanje...")
+        data = self.eng.get_bytes()
+
+        addr = ACCEL_ENRICH_ADDR
+        # Format: 1B global + 5 redova × (1B marker + 6×u16 os + 5×u16 data) = 1 + 5×23 = 116B
+        # + 21B footer = ukupno ~132B. Čitamo samo 5×5 data vrijednosti.
+        ROWS, COLS = 5, 5
+        AXIS_U16   = 6   # 6-tocka dTPS os ugradjene u svaki red
+        ROW_BYTES  = (AXIS_U16 + COLS) * 2  # 22B po redu (6 axis + 5 data, sve u16 LE)
+
+        if addr + 1 + ROWS * ROW_BYTES > len(data):
+            return
+
+        # Provjeri globalni bajt (4 ili 2)
+        global_b = data[addr]
+        if global_b not in (0x02, 0x04):
+            if cb: cb(f"  Accel enrich @ 0x{addr:06X}: neocekivani global byte {global_b:#x} — preskacam")
+            return
+
+        # Izvadi 5×5 vrijednosti i ugradjenu os
+        # Struktura: 1B global + 5×(6×u16 axis + 5×u16 data) = 1 + 5×22 = 111B
+        import struct
+        vals = []
+        embedded_axis = None
+        for row in range(ROWS):
+            row_off = 1 + row * ROW_BYTES  # 1B global offset pa redovi
+            axis_off = row_off             # os odmah na pocetku reda
+            data_off = axis_off + AXIS_U16 * 2
+            if embedded_axis is None:
+                embedded_axis = [struct.unpack_from('<H', data, addr + axis_off + i*2)[0]
+                                 for i in range(AXIS_U16)]
+            for col in range(COLS):
+                v = struct.unpack_from('<H', data, addr + data_off + col*2)[0]
+                vals.append(v)
+
+        # Validacija: Q14 faktori 0.3×–3.0× (4915–49152)
+        in_range = sum(1 for v in vals if 4000 < v < 55000)
+        if in_range < ROWS * COLS * 3 // 4:
+            if cb: cb(f"  Accel enrich @ 0x{addr:06X}: validacija Q14 pala — preskacam")
+            return
+
+        # Dinamički ažuriraj X-os iz ugrađenih vrijednosti
+        from dataclasses import replace
+        x_axis = AxisDef(count=6, byte_order="LE", dtype="u16",
+                         scale=1.0, unit="dTPS [°/s]", values=embedded_axis)
+        defn = replace(_ACCEL_ENRICH_DEF, axis_x=x_axis)
+
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 16384.0
+        vmax = max(vals) / 16384.0
+        if cb: cb(f"  Accel enrich @ 0x{addr:06X}  5×5  factor=[{vmin:.3f}–{vmax:.3f}]  "
+                  f"dTPS_os={embedded_axis}")
 
     # ── Torque optimal / driver demand scan ───────────────────────────────────
 

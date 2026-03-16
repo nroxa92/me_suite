@@ -1,5 +1,22 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — map_finder.py: +2 nove mape, ukupno 48 (lambda trim + accel enrich)
+
+### Što je napravljeno
+- **Lambda trim @ 0x026DB8** (12×18 Q15): additivna lambda korekcija, odmah iza lambda mirrora. Sve 216 vrijednosti u Q15 opsegu (0.956–1.021 lambda). Razlikuje se po HP varijanti — potvrđena per-motor kalibracija.
+- **Ubrzavajuće obogaćivanje @ 0x028059** (5×5 Q14): KFMSWUP ekvivalent, tranzijentna fuel korekcija. Kompleksan binarni format: 1B global + 5 redova × (6×u16 ugrađena dTPS os + 5×u16 faktori). ORI: 76–160%, STG2: 48–264%. dTPS os = [0, 5, 150, 200, 350, 1500] °/s.
+- Ispravka offset greške u accel enrich scan-u (ROW_BYTES 23→22B, bez posebnog marker bajta)
+- Ukupno: 46 → **48 mapa**
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 2 nove MapDef + scan metode (`_scan_lambda_trim`, `_scan_accel_enrich`)
+
+### Detalji analize
+- Scan: sve neistražene CODE diff regije ORI vs STG2 >8B → 72 bloka, 1363B ukupno
+- Lambda trim potvrđena: indeks 223 je prvi out-of-range bajt (sve 216 Q15 vrijednosti validne)
+- Accel enrich: svaki red ugrađuje vlastitu os (Bosch nestandardni format) — dTPS os se mijenja između ORI i STG2, ali struktura ista
+- Preostaje neidentificirano: 0x022389 (43 u8, STG2 capuje na 180), 0x02AA42 (66 u16, >100% load?), blokovi @ 0x02AF66-0x02B3B6 (isti 24B obrasci, 7× ponavlja)
+
 ## 2026-03-16 — map_finder.py: +2 mape iz binarnog skana (ukupno 46)
 
 ### Što je napravljeno
