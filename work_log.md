@@ -1,5 +1,50 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — map_finder.py: +6 mape + TODO markers, ukupno 56
+
+### Što je napravljeno
+- **THERM_ENRICH @ 0x02AA42** (8×7 /64=%): obogaćivanje pri visokim CTS temperaturama [80-150°C], dijagonalni pattern. STG2 agresivno smanjuje (105-162%). CTS os @ 0x02AA32.
+- **EFF_CORR @ 0x0259D2** (~11×7 Q15): korekcija efikasnosti odmah iza deadtime, vrijednosti 1.00-1.22. Preambula 7 vrijednosti @ 0x0259C4. STG2=ORI. TODO: dimenzije i fizikalni smisao.
+- **OVERTEMP_LAMBDA @ 0x025ADA** (1×63 u16): sve 0xFFFF za 300hp SC (bypass), NA: Q15 ~0.855-0.926. TODO: naziv parametra.
+- **NEUTRAL_CORR @ 0x025B58** (1×63 u16): flat 16448 = Q14 1.004 (+0.4%) za 300hp SC, NA: aktivne vrijednosti. TODO: smisao.
+- **SC_BOOST_FACTOR @ 0x025DF8** (1×40 u16): flat 20046 = Q14 1.224 (+22.4%) za 300hp SC. NA: sve 0. STG2=ORI. TODO: ime parametra.
+- **LAMBDA_EFF @ 0x02AE9E** (~25×18 Q15): KFWIRKBA lambda efficiency, nestandardni Bosch format. Lambda os 18pt [0.66-1.80]. STG2: λ>1.0 → 0xFFFF (lean efficiency disabled). TODO: parser.
+- Ukupno: 50 → **56 mapa**
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 6 novih MapDef + scan metode, sve s TODO oznakama
+
+### Preostali TODO (bez A2L)
+- EFF_CORR dimenzije (11×7 vs 10×7?)
+- OVERTEMP_LAMBDA + NEUTRAL_CORR fizikalni naziv (isti KFWIRKBA family?)
+- SC_BOOST_FACTOR X-os identifikacija
+- LAMBDA_EFF parser (nestandardni format redova varijabilne širine)
+- 0x025CDC axis jedinica (CTS? RPM? još neidentificirano)
+
+## 2026-03-16 — map_finder.py: +2 mape, fix deadtime, ukupno 50 (start_inj + ign_corr)
+
+### Što je napravljeno
+- **Start injection @ 0x025CDC** (1D, 6-axis + 6-data u16 LE): kranking gorivo, os=[0,1024,1707,3413,5120,7680], data=[1732–18404]. Mirror na 0x025CF6. STG2 ne mijenja. 130hp ima drugačiji layout na toj adresi.
+- **Ignition correction @ 0x022374** (8×8 u8): korekcija/efikasnost paljenja, ugrađene osi ispred (Y=[75..200], X=[53..255]). ORI 145–200, STG2 capuje sve >180 na 180 — knock protection limit.
+- **Deadtime dimenzije ispravke**: 20×7=140 → 14×7=98 u16 (potvrđeno binarnim skanom: prvi >3000 @ idx 98).
+- Ukupno: 48 → **50 mapa**
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 2 nove MapDef + scan metode, deadtime fix
+
+### Analiza lambda efficiency bloka 0x02AE9E–0x02B400
+- **29 diff grupe** u 0x02AE00–0x02B400 (214 lokacija, sve STG2 → 0xFFFF)
+- Pattern: varijabilna širina (4,4,5,5,7,9,12,12 u16 po skupini), 3× ponavlja + partial
+- STG2 nulira sve λ>1.0 vrijednosti u ovoj regiji
+- Lambda os (18 točaka): [0.66,0.74,0.81,0.89,0.95,1.00,1.07,1.12,1.18,1.24,1.29,1.35,1.44,1.50,1.61,1.69,1.80,1.80]
+- **Zaključak**: KFWIRKBA (lambda efficiency) — složen nestandardni format, bez A2L nemoguće potpuno rekonstruirati
+- **Nije dodano u map_finder** (previsoka kompleksnost formata)
+
+### Preostali neidentificirani blokovi
+- 0x025CDC mirror struktura (2B separator između originala i mirrora) — istraženo, nije kritično
+- 0x025B00–0x025D10 — cranking region, moguće više start tables
+- 0x02AA42 (66 u16, /64 = 192–210% load range) — nepoznato
+
 ## 2026-03-16 — map_finder.py: +2 nove mape, ukupno 48 (lambda trim + accel enrich)
 
 ### Što je napravljeno
