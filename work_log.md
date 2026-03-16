@@ -1,5 +1,26 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — map_finder.py: rev limit fix, THERM_ENRICH X-os, TEMP_FUEL opis
+
+### Sto je napravljeno
+- **Rev limiter**: uklonjene pogresne adrese 0x022096, 0x0220B6, 0x0220C0 (unutar 2D tablice, nisu rev limiteri!)
+  - Ostale samo 0x02B72A i 0x02B73E = 8738 rpm (jedine stvarne adrese)
+  - Broj mapa: 56 -> 53 (ispravno)
+- **THERM_ENRICH X-os**: identificirana @ 0x02AA02 = [6400,8000,9600,11200,12800,14400,16000]
+  - Interne load jedinice, korak=1600, raspon=6400-16000 (isti format KFWIRKBA Y-os)
+  - axis_x=None -> axis_x=AxisDef(..., values=[6400..16000], unit='load [intern]')
+  - Dodan THERM_ENRICH_XAXIS_ADDR = 0x02AA02
+  - _scan_therm_enrich() dodan X-os validator
+- **TEMP_FUEL**: preimenovan u 'CTS warm-up korekcija', opis azuriran
+  - Nema fuel temp senzora, nema IAT senzora -- jedini termalni senzor je CTS
+  - Vrijednosti padaju 121% -> 68% (hladan->vruci motor) = warm-up enrichment
+  - X-os: implicit index 0-155 (ne postoji binarna os u ECU)
+  - Komentar bloka azuriran, TODO uklonjen
+
+### Fajlovi promijenjeni
+- core/map_finder.py
+
+
 ## 2026-03-16 — map_finder.py: TODO riješeni, KFWIRKBA addr ispravljena, ukupno 56
 
 ### Što je napravljeno

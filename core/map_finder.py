@@ -5,8 +5,7 @@ Bosch ME17.8.5 by Rotax (Sea-Doo 300 / TC1762)
 Sve potvrdjene mape (CODE regija 0x010000-0x05FFFF):
 
   RPM osa   (3× mirror)  @ 0x024F46 / 0x025010 / 0x0250DC   BE u16, 1×16
-  Rev limit (5 lokacija) @ 0x022096, 0x0220B6, 0x0220C0,
-                           0x02B72A, 0x02B73E                 LE u16, scalar
+  Rev limit (2 lokacije) @ 0x02B72A, 0x02B73E                 LE u16, scalar (=8738 rpm)
   Ignition  (19 mapa)    @ 0x02B730, stride 144B              u8, 12×12, 0.75°/bit
   Injection main+mirror  @ 0x02436C / 0x0244EC (+0x180)      LE u16, 6×32
   SC corr   (boost comp) @ 0x02220E                           LE u16, 9×7, Q14
@@ -178,11 +177,12 @@ _REV_SCALAR_DEF = MapDef(
     byte_order  = "LE", dtype = "u16",
     scale       = 1.0, unit = "rpm",
     raw_min     = 4000, raw_max = 13000,
-    notes       = "Potvrdjene lokacije: 0x022096, 0x0220B6, 0x0220C0, 0x02B72A, 0x02B73E",
+    notes       = "Potvrdjene lokacije: 0x02B72A, 0x02B73E (=8738 rpm). "
+                  "Adresi 0x022096/0x0220B6/0x0220C0 su unutar 2D mape — NISU rev limiteri!",
 )
 
-# 5 poznatih adresa rev limitera
-_REV_KNOWN_ADDRS = [0x022096, 0x0220B6, 0x0220C0, 0x02B72A, 0x02B73E]
+# 2 potvrdjene adrese rev limitera (ostale su bile pogresno identificirane — unutar 2D tablice)
+_REV_KNOWN_ADDRS = [0x02B72A, 0x02B73E]
 
 _REV_LIMIT_HEUR = MapDef(
     name        = "rev_limiter_table",
@@ -287,33 +287,34 @@ INJ_MIRROR        = 0x0244EC   # ISPRAVLJENO: 0x02436C + 0x180
 INJ_MIRROR_OFFSET = INJ_MIRROR - INJ_MAIN   # 0x180
 
 _INJ_DEF = MapDef(
-    name          = "Ubrizgavanje — trajanje (ms)",
+    name          = "Ubrizgavanje — relativna masa goriva (rk) [Q15]",
     description   = (
-        "Trajanje ubrizgavanja (pulsna sirina injektora) — 6×32 tablica. "
-        "Vece vrijednosti = duze ubrizgavanje = vise goriva. "
-        "Procjena jedinice: raw × 0.0001 = ms (npr. raw 5000 ≈ 0.5 ms, "
-        "raw 49151 ≈ 4.9 ms na WOT). Bez A2L nije moguca precizna kalibracija. "
-        "ORI max ~49151 (~4.9 ms), STG2 saturiran na 65535 (~6.5 ms). "
-        "Osi: Y = opterecenje motora [%] (6 tocaka), X = relativno punjenje RLSOL (32 stupca)."
+        "Relativna masa goriva (rk) — 16x12 tablica (load x RPM). "
+        "Q15 format: 32768 = 1.0 (100% bazno gorivo), >32768 = obogacivanje (SC). "
+        "Redovi 0-1 = nula (nema ubrizgavanja ispod praga). "
+        "Redovi 14-15 = nula (padding/neaktivni). "
+        "Svi stupci identicni unutar reda = RPM ne utjece na kolicinu goriva u ovoj tablici. "
+        "STG2 povecava sve vrijednosti (agresivniji map). "
+        "Osi: Y = razina opterecenja (16 tocaka), X = RPM (12 tocaka, sve jednake per row)."
     ),
     category      = "injection",
-    rows=6, cols=32,
+    rows=16, cols=12,
     byte_order    = "LE", dtype = "u16",
-    scale         = 0.0001,        # procjena: raw × 0.0001 = ms trajanja ubrizgavanja
+    scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
-    unit          = "ms",
-    axis_x        = None,          # 32 stupca — RLSOL (relative load, load-indexed)
-    axis_y        = _LOAD_AXIS_12, # Y = opterecenje motora, koristimo 6 od 12 tocaka
+    unit          = "rk [Q15]",
+    axis_x        = None,   # 12-pt RPM os (sve celije identicne unutar reda — RPM neovisan)
+    axis_y        = None,   # 16-pt load os @ ~0x024342 (potrebna A2L potvrda)
     raw_min       = 0,
     raw_max       = 65535,
     mirror_offset = INJ_MIRROR_OFFSET,
     notes         = (
-        f"Main @ 0x{INJ_MAIN:06X}, mirror @ 0x{INJ_MIRROR:06X} (+0x{INJ_MIRROR_OFFSET:X}). "
-        "ISPRAVLJENO: adresa bila 0x02439C (offset +0x30), dims bile 12x32. "
-        "Pravi pocetak: 0x02436C, stvarne dims: 6x32 (binarnom skanom potvrdjeno). "
-        "X os: RLSOL (relativno punjenje, 32-tocka high-res load os) — ME17 standard. "
-        "ORI: 156 promijenjenih celija vs STG2 (znacajno tuniran NPRo). "
-        "Y os: opterecenje [%] @ 0x02AFAC (6 aktivnih od 12 dostupnih tocaka)."
+        f"Main @ 0x{INJ_MAIN:06X}, mirror @ 0x{INJ_MIRROR:06X} (+0x{INJ_MIRROR_OFFSET:X}=0x180). "
+        "Dims ISPRAVLJENE: bile 6x32 (pogresno), stvarno 16x12. "
+        "Adresa 0x02436C tocna (red 0 i 1 = 0, podaci od reda 2=328 na 0x02439C). "
+        "Scale = Q15 (rk = rel. fuel mass), RKTI funkcija pretvara rk -> te (ms). "
+        "Y-os 10pt @ 0x024342: [1280,2560..12800] (vjerojatno RLSOL load). "
+        "STG2: sve vrijednosti povecane (agresivniji fuel map). "
     ),
 )
 
@@ -643,20 +644,23 @@ _SC_CORR_DEF = MapDef(
 #   130/170hp: ~1.0 minimalna korekcija
 #   230hp:    0.816 (-18.4% lean) — decel/CTS temp lean korekcija
 #
-# Fizikalni smisao: moguće korekcija po temperaturi rashladne tekućine ili
-# po temperaturi usisnog zraka (IAT/CTS-indexed fuel correction table).
+# Fizikalni smisao: korekcija ubrizgavanja po temperaturi rashladne tekucine (CTS).
+# Motor ACE 1630/900 nema senzor temperature goriva ni IAT — jedini termalni senzor je CTS.
+# Vrijednosti padaju od ~121% (hladan motor) prema ~68% (vruci motor) = warm-up enrichment.
+# X-os: implicit index (0-155), nema binarnih oznaka (ne postoji axis u ECU za ovu tablicu).
 
 TEMP_FUEL_ADDR = 0x025E50
 
 _TEMP_FUEL_DEF = MapDef(
-    name          = "Gorivo — temperaturna korekcija [%]",
+    name          = "Gorivo — CTS warm-up korekcija [%]",
     description   = (
-        "Korekcija ubrizgavanja po temperaturi — 156 vrijednosti (1D). "
-        "0% = neutralno, +20% = 20% vise goriva, -18% = 18% manje. "
-        "300hp: flat +20.8% (bogacenje za SC/hladjenje klipova). "
-        "230hp: -18.4% (lean temp. korekcija). "
-        "130/170hp: ~+3.5% (minimalna korekcija). "
-        "Os: vjerojatno temperatura rashladne tekucine ili usisnog zraka (A2L needed)."
+        "Korekcija ubrizgavanja po temperaturi rashladne tekucine (CTS) — 156 tocaka. "
+        "Warm-up enrichment: hladan motor dobiva vise goriva (do +21%), "
+        "topli motor manje (do -33%). Nema senzora temp. goriva niti IAT. "
+        "X-os: implicitni indeks 0-155 (nema binarnih oznaka u ECU). "
+        "0% = neutralno (=16384 Q14). "
+        "300hp: flat +20.8% (SC korekcija). "
+        "230hp: -18.4%. 130/170hp: ~neutralno."
     ),
     category      = "injection",
     rows=1, cols=156,
@@ -664,15 +668,15 @@ _TEMP_FUEL_DEF = MapDef(
     scale         = 100.0 / 16384.0,
     offset_val    = -100.0,
     unit          = "%",
-    axis_x        = None,   # os neidentificirana (CTS temp? IAT?)
+    axis_x        = None,   # nema osi u ECU -- implicit CTS index 0-155
     axis_y        = None,
-    raw_min       = 8192,   # -50% (maks. osiromašivanje)
-    raw_max       = 32768,  # +100% (duplo bogacenje)
+    raw_min       = 8192,   # -50%
+    raw_max       = 32768,  # +100%
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{TEMP_FUEL_ADDR:06X}–0x025F88 (156× u16 LE Q14, 312B). "
-        "Os neidentificirana — moguce CTS (temp rashladne tekucine) ili IAT. "
-        "300hp: flat +20.8%, 230hp: -18.4% lean, 130/170hp: ~neutralno."
+        f"@ 0x{TEMP_FUEL_ADDR:06X}-0x025F88 (156x u16 LE Q14, 312B). "
+        "CTS-indexed warm-up enrichment. Bez fizicke X-osi u ECU. "
+        "300hp: +20.8%, 230hp: -18.4%, 130/170hp: ~0%. STG2=ORI."
     ),
 )
 
@@ -876,21 +880,23 @@ _ACCEL_ENRICH_DEF = MapDef(
 #   row 7 (150°C): ORI 188.5% → STG2 162.0% (manji utjecaj)
 #
 # 130hp/082806: potpuno drugačiji sadržaj (N/A motor bez SC toplinske zaštite).
-# TODO: identificirati X-os (7 stupaca) — moguće RPM ili opterećenje bez A2L.
+# X-os (load intern, 7 točaka) @ 0x02AA02: [6400,8000,9600,11200,12800,14400,16000]
+# Iste interne load jedinice kao KFWIRKBA Y-os (korak=1600, raspon=6400–16000).
+# Fizikalni smisao: opterećenje motora — 6400=niski load, 16000=puni load.
 
-THERM_ENRICH_AXIS_ADDR = 0x02AA32  # 8× u16 LE CTS temp os [80..150]°C
-THERM_ENRICH_ADDR      = 0x02AA42  # 8×7 u16 LE /64 = %
+THERM_ENRICH_XAXIS_ADDR = 0x02AA02  # 7× u16 LE load os [6400..16000]
+THERM_ENRICH_AXIS_ADDR  = 0x02AA32  # 8× u16 LE CTS temp os [80..150]°C
+THERM_ENRICH_ADDR       = 0x02AA42  # 8×7 u16 LE /64 = %
 
 _THERM_ENRICH_DEF = MapDef(
-    name          = "Toplinsko obogaćivanje goriva — visoka temp [%]",
+    name          = "Toplinsko obogacivanje goriva — visoka temp [%]",
     description   = (
-        "Korekcija goriva pri prekoračenju temperature rashladne tekućine (CTS). "
-        "8 temp. uvjeta × 7 neidentificiranih stupaca (RPM/opterećenje?). "
-        "Skala: raw/64 = % (195–210% = bogato za SC hlađenje). "
-        "STG2 agresivno smanjuje (105–162%) — uklanja SC toplinsku zaštitu. "
-        "Dijagonalni pattern = ECU progresivno reducira zaštitu po stupcu. "
-        "CTS os (°C): [80,90,100,110,120,130,140,150]. "
-        "TODO: identificirati X-os (7 stupaca) bez A2L."
+        "Korekcija goriva pri prekoracenju temperature rashladne tekucine (CTS). "
+        "8 temp. uvjeta (Y) × 7 load stupaca (X). "
+        "Skala: raw/64 = % (195-210% = bogato za SC hladjenje). "
+        "STG2 agresivno smanjuje (105-162%) — uklanja SC toplinsku zastitu. "
+        "Dijagonalni pattern = ECU progresivno reducira zastitu po load stupcu. "
+        "CTS os: [80..150]°C. Load X-os: [6400..16000] intern (isti format KFWIRKBA)."
     ),
     category      = "injection",
     rows=8, cols=7,
@@ -898,7 +904,9 @@ _THERM_ENRICH_DEF = MapDef(
     scale         = 1.0 / 64.0,
     offset_val    = 0.0,
     unit          = "% goriva",
-    axis_x        = None,   # TODO: 7-stupačna os — neidentificirana
+    axis_x        = AxisDef(count=7, byte_order="LE", dtype="u16",
+                             scale=1.0, unit="load [intern]",
+                             values=[6400, 8000, 9600, 11200, 12800, 14400, 16000]),
     axis_y        = AxisDef(count=8, byte_order="LE", dtype="u16",
                              scale=1.0, unit="°C",
                              values=[80, 90, 100, 110, 120, 130, 140, 150]),
@@ -906,12 +914,12 @@ _THERM_ENRICH_DEF = MapDef(
     raw_max       = 16384,  # 256%
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{THERM_ENRICH_ADDR:06X} (8×7 u16 LE, 112B). "
-        f"Y-os (CTS) @ 0x{THERM_ENRICH_AXIS_ADDR:06X}: [80..150]°C (8 val). "
-        "raw/64=%. ORI: 168–210% (SC toplinsko obogaćivanje). "
-        "STG2: 105–208% (smanjuje zaštitu za performance). "
-        "TODO: X-os (7 točaka) bez A2L neidentificirana. "
-        "130hp/082806: potpuno drugačiji layout."
+        f"@ 0x{THERM_ENRICH_ADDR:06X} (8x7 u16 LE, 112B). "
+        "X-os (load) @ 0x02AA02: [6400..16000] (7 val, korak 1600). "
+        "Y-os (CTS) @ 0x02AA32: [80..150]°C (8 val). "
+        "raw/64=%. ORI: 168-210% (SC toplinsko obogacivanje). "
+        "STG2: 105-208% (smanjuje zastitu za performance). "
+        "130hp/082806: potpuno drugaciji layout."
     ),
 )
 
@@ -1705,7 +1713,7 @@ class MapFinder:
         data = self.eng.get_bytes()
 
         addr = INJ_MAIN
-        n    = _INJ_DEF.rows * _INJ_DEF.cols   # 12 × 32 = 384
+        n    = _INJ_DEF.rows * _INJ_DEF.cols   # 16 × 12 = 192
         size = n * 2                             # u16 LE = 2 bajta
 
         if addr + size > len(data):
@@ -1726,7 +1734,7 @@ class MapFinder:
             sw_id   = self._sw(),
             data    = vals,
         ))
-        if cb: cb(f"  Injection @ 0x{addr:06X}  12×32  raw=[{min(vals)}–{max(vals)}]"
+        if cb: cb(f"  Injection @ 0x{addr:06X}  16x12  raw=[{min(vals)}-{max(vals)}]"
                   f"  mirror @ 0x{INJ_MIRROR:06X}")
 
     # ── Torque scan ───────────────────────────────────────────────────────────
@@ -2230,6 +2238,7 @@ class MapFinder:
         if cb: cb("Trazim thermal fuel enrichment tablicu...")
         data = self.eng.get_bytes()
 
+        xax_addr  = THERM_ENRICH_XAXIS_ADDR
         axis_addr = THERM_ENRICH_AXIS_ADDR
         addr      = THERM_ENRICH_ADDR
         ROWS, COLS = 8, 7
@@ -2238,12 +2247,17 @@ class MapFinder:
         if addr + n * 2 > len(data):
             return
 
+        x_axis = [int.from_bytes(data[xax_addr + i*2: xax_addr+i*2+2], 'little')
+                  for i in range(COLS)]
         y_axis = [int.from_bytes(data[axis_addr + i*2: axis_addr+i*2+2], 'little')
                   for i in range(ROWS)]
         vals   = [int.from_bytes(data[addr + i*2: addr+i*2+2], 'little')
                   for i in range(n)]
 
-        # Validacija: os rastuća 70-160°C, vrijednosti 8192-16384 (/64 = 128-256%)
+        # Validacija: X-os monotona load (6400-16000), Y-os rastuća CTS 70-160°C
+        if not (self._monotone(x_axis) and 5000 <= x_axis[0] <= 8000 and x_axis[-1] <= 20000):
+            if cb: cb(f"  Therm enrich @ 0x{addr:06X}: X-os validacija pala — preskacam")
+            return
         if not (self._monotone(y_axis) and 60 <= y_axis[0] <= 100 and y_axis[-1] <= 200):
             if cb: cb(f"  Therm enrich @ 0x{addr:06X}: Y-os validacija pala — preskacam")
             return

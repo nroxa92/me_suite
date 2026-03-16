@@ -203,3 +203,11 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11->10, _scan_sc_boost_factor dodao lambda os validaciju, KFWIRKBA kompletno revidiran (41x18 uniformna, adresa 0x02AE5E, Y-os 0x02AE40). Sve 56 mapa pronalaze se ispravno.
 
 ---
+
+---
+
+**2026-03-16**
+[Korisnik] Sto nam jos fali od mapa? Nema fuel temp senzora. Lambda ne znamo. Accel enrich RPM pragovi nepoznati. Rev limit prikazuje pogresno. Sto je deadtime i treba li nam?
+[Claude] Rev limit fix: 0x022096/0x0220B6/0x0220C0 su unutar 2D tablice (NISU rev limiteri) -- uklonjene. Ostaju samo 0x02B72A i 0x02B73E = 8738 rpm. THERM_ENRICH X-os pronadjena @ 0x02AA02 = [6400..16000] load intern (korak 1600). TEMP_FUEL preimenovan u CTS warm-up korekcija (nema fuel/IAT senzora, implicit CTS index). Deadtime = hardware injector delay (battery voltage × temp indexed), read-only, nije za tuning.
+
+---
