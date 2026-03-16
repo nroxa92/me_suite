@@ -711,6 +711,95 @@ _LAMBDA_BIAS_DEF = MapDef(
 )
 
 
+# ─── Lambda zaštitna / max injection mapa ─────────────────────────────────────
+#
+# 12×13 tablica u16 LE @ 0x02469C (312B = 156 u16), odmah iza injection mirrora.
+# Dijagonalni pattern: dolje-lijevo (idle) = male vrijednosti, gore-desno (WOT) = 65535.
+# ORI 300hp: raspon 1311–58982 (dijagonalni step pattern)
+# NPRo STG2: SVE saturirano na 65535 (maksimalna sloboda za bogaćenje — WOT tune)
+# ORI 230hp = ORI 130hp = ORI 300hp (identično u svim SW varijantama)
+#
+# Fizikalni smisao (procjena bez A2L):
+#   Moguće: KFLFMXSUB (max lambda za komponentnu zaštitu) ili
+#   KFMSANPKW (max injection za normalnu operaciju) — ME17 standard.
+#   Gornja granica koliko ECU smije ubrizgati u pojedinoj RPM×load ćeliji.
+#   BitEdit ME17.8.5 lista: "Lambda efficiency" / "Target lambda for knock protection"
+
+LAMBDA_PROT_ADDR = 0x02469C
+
+_LAMBDA_PROT_DEF = MapDef(
+    name          = "Lambda zaštita — max ubrizgavanje [Q15]",
+    description   = (
+        "Gornja granica ubrizgavanja / lambda zaštitna mapa — 12×13 tablica. "
+        "Dijagonalni pattern: idle (dolje-lijevo) = malo, WOT (gore-desno) = 65535. "
+        "ORI: 1311–58982 (dijagonalni step). NPRo STG2: SVE 65535 (max sloboda). "
+        "Identično u 300/230/130hp (zajednička baza). "
+        "Procjena: Q15 gornja granica lambde ili max injection za zaštitu komponenti."
+    ),
+    category      = "lambda",
+    rows=12, cols=13,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32768.0,
+    offset_val    = 0.0,
+    unit          = "lambda (Q15)",
+    axis_x        = None,   # 13 kolona — neidentificirana os
+    axis_y        = _LOAD_AXIS_12,
+    raw_min       = 0,
+    raw_max       = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{LAMBDA_PROT_ADDR:06X} (12×13 u16 LE Q15, 312B). "
+        "Odmah iza injection mirrora (0x024660). "
+        "STG2 saturira sve na 65535 — tipicno za WOT/performance tune. "
+        "ME17 standard naziv: KFLFMXSUB ili KFMSANPKW (A2L potvrda potrebna). "
+        "13. kolona puni se postepeno (dijagonalni shift po redu)."
+    ),
+)
+
+
+# ─── Torque optimal / driver demand mapa ──────────────────────────────────────
+#
+# Blok Q8 vrijednosti @ 0x02A7F0 (odmah iza torque mirrora) — 93–107% raspon.
+# Torque mirror (0x02A5F0) završava na 0x02A5F0 + 512B = 0x02A7F0 — ODMAH iza!
+# 300hp: 93.0–107.0%, 230hp: 90.6–107.8%, 130hp: 92.2–107.7%
+# NPRo STG2: pomiče na 93.0–107.0% (malo drugačije raspoređeno)
+#
+# BitEdit lista za ME17.8.5 ima "Optimal torque" — ovo je DRUGI torque blok.
+# Mogući fizikalni smisao: torque efficiency korekcija ili driver demand torque
+# (KFWDKMSN/KFOPTTURB — optimalni torque po uvjetu paljenja/lambda).
+
+TORQUE_OPT_ADDR = 0x02A7F0
+
+_TORQUE_OPT_DEF = MapDef(
+    name          = "Torque optimal / driver demand [%]",
+    description   = (
+        "Drugi torque blok odmah iza torque mirrora — Q8 format, 93–107% raspon. "
+        "Manji raspon od glavne torque mape (93–119%). "
+        "Moguće: 'Optimal torque' ili 'Driver demand torque' (BitEdit ME17.8.5). "
+        "300hp: 93–107%, 230hp: 90–108%, 130hp: 92–108%. "
+        "Razlikuje se po HP varijanti — aktivno kalibriran."
+    ),
+    category      = "torque",
+    rows=16, cols=16,
+    byte_order    = "BE", dtype = "u16",
+    scale         = 100.0 / 32768.0,
+    offset_val    = 0.0,
+    unit          = "%",
+    axis_x        = _RPM_AXIS_16,
+    axis_y        = _LOAD_AXIS_16,
+    raw_min       = 24576,   # 75%
+    raw_max       = 40960,   # 125%
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{TORQUE_OPT_ADDR:06X}. Odmah iza torque mirrora (0x02A7F0). "
+        "Q8 format: raw × 100/32768 = %. LSB uvijek 0x00. "
+        "BitEdit naziv: 'Optimal torque'. "
+        "300hp ORI: 93-107%, STG2: slicno ali preraspoređeno. "
+        "A2L potvrda potrebna za tocne osi i fizikalni smisao."
+    ),
+)
+
+
 # ─── Injector deadtime ────────────────────────────────────────────────────────
 #
 # Hardware konstanta — ne tunable! Kompenzira kašnjenje otvaranja injektora.
@@ -927,6 +1016,8 @@ class MapFinder:
         self._scan_sc_correction(progress_cb)
         self._scan_temp_fuel(progress_cb)
         self._scan_lambda_bias(progress_cb)
+        self._scan_lambda_prot(progress_cb)
+        self._scan_torque_opt(progress_cb)
         self._scan_deadtime(progress_cb)
         self._scan_dfco(progress_cb)
         self._scan_idle_rpm(progress_cb)
@@ -1430,6 +1521,70 @@ class MapFinder:
         ))
         avg = sum(vals) / len(vals) / 32768.0
         if cb: cb(f"  Lambda bias @ 0x{addr:06X}  1×141  avg_lambda={avg:.4f}")
+
+    # ── Lambda protection / max injection scan ───────────────────────────────
+
+    def _scan_lambda_prot(self, cb=None):
+        if cb: cb("Trazim lambda zastitnu tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = LAMBDA_PROT_ADDR
+        n    = _LAMBDA_PROT_DEF.rows * _LAMBDA_PROT_DEF.cols  # 12×13 = 156
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: dijagonalni pattern — vrijednosti moraju biti rastuće u opsegu
+        non_zero = sum(1 for v in vals if v > 100)
+        if non_zero < n // 2:
+            if cb: cb(f"  Lambda prot @ 0x{addr:06X}: previse nula — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _LAMBDA_PROT_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 32768.0
+        vmax = max(vals) / 32768.0
+        if cb: cb(f"  Lambda prot @ 0x{addr:06X}  12x13  [{vmin:.3f}-{vmax:.3f}]")
+
+    # ── Torque optimal / driver demand scan ───────────────────────────────────
+
+    def _scan_torque_opt(self, cb=None):
+        if cb: cb("Trazim optimal torque tablicu...")
+        data = self.eng.get_bytes()
+
+        addr = TORQUE_OPT_ADDR
+        n    = _TORQUE_OPT_DEF.rows * _TORQUE_OPT_DEF.cols  # 16×16 = 256
+        if addr + n * 2 > len(data):
+            return
+
+        vals = []
+        valid = True
+        for i in range(n):
+            o  = addr + i * 2
+            hi = data[o]
+            lo = data[o + 1]
+            if lo != 0x00:
+                valid = False; break
+            if not (60 <= hi <= 220):   # 46-169% raspon
+                valid = False; break
+            vals.append((hi << 8) | lo)
+
+        if not valid:
+            if cb: cb(f"  Torque opt @ 0x{addr:06X}: validacija pala — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _TORQUE_OPT_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Torque opt @ 0x{addr:06X}  16x16  [{min(v>>8 for v in vals)}-{max(v>>8 for v in vals)}] MSB")
 
     # ── Injector deadtime scan ────────────────────────────────────────────────
 

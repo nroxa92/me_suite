@@ -26,7 +26,26 @@
       "Bash(pip install:*)",
       "Bash(cd:*)",
       "Bash(python:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:oldskulltuning.com)",
+      "WebFetch(domain:www.seadoospark.org)",
+      "WebFetch(domain:www.softdump.net)",
+      "WebFetch(domain:tunerpro.net)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:mhhauto.com)",
+      "WebFetch(domain:www.maptuner.com)",
+      "WebFetch(domain:www.ecuedit.com)",
+      "WebFetch(domain:www.greenhulk.net)",
+      "WebFetch(domain:www.diag-systems.net)",
+      "WebFetch(domain:www.autotuner.com)",
+      "WebFetch(domain:www.ziptuning.com)",
+      "WebFetch(domain:www.seadooforum.com)",
+      "WebFetch(domain:diag-systems.net)",
+      "WebFetch(domain:portal.ziptuning.com)",
+      "WebFetch(domain:scanmatik.ru)",
+      "WebFetch(domain:ecutools.eu)",
+      "WebFetch(domain:chiptuningshop.com)"
     ]
   }
 }

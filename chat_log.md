@@ -137,3 +137,33 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 🤖 Web/internet blokiran za agente u ovom okruzenju. Direktni binarni scan dao: injection map ISPRAVAK (0x02436C, 6x32), deadtime @ 0x025900 (hardware, netunable), DFCO @ 0x02202E (razlikuje se 130 vs 300hp), ETA throttle @ 0x020256 (netunable), idle RPM target @ 0x02B600 (5x12). Preostaju: accel enrichment, cranking, overtemp. Bosch ME17 je standardiziran — isti map format ali razlicite adrese po varijanti.
 
 ---
+
+**2026-03-16**
+👤 ski doo i can am imaju sparkove motore, 300, 600, 900ace, atmosferci i turbaci.. nemaju previse veze sa velikim motorima, ali trebamo podrsku i za sparkove mape naravno
+🤖 Zabilježeno — Spark (90/115hp, 900 ACE), Ski-Doo (600/900/900T ME17.8.5) i Can-Am (900 ACE/T) su isti Bosch ECU family. OldSkullTuning ima XDF i za NA (Spark/GTI) verziju. Spark mape su jednostavnije (nema SC), ali DFCO/ignition/lambda/RPM limiter struktura identična. Podržat ćemo u budućoj fazi.
+
+---
+
+**2026-03-16**
+👤 agenti ne mogu korititi internet, a mozes li ti??? evo ti jos jedan dokumnet... mozd pomogne i baci se na istrazivanje... ja koristim opera browser, slobodno ga upali i trazi skidaj... analiziraj....INTERNET_RESEARCH_KOMPLETAN_DOKUMENT.md u materijalima...
+🤖 Direktno WebSearch+WebFetch iz Claude (ne agenti). Pregledano 20+ stranica. Kreiran `INTERNET_RESEARCH_REZULTATI.md`. Ključni nalazi: OldSkullTuning XDF €70 pokriva 300hp GTX/RXP-X (sve tražene mape!), BitEdit $172 POTVRĐUJE accel enrichment postoji u ME17.8.5, ziptuning ima DAMOS za **524060** (=naš rxtx_260 bin!) za kupiti, MGFlasher je BMW-only (ne relevantno). Za ~€90-120 rješavamo 95% nepoznatih adresa.
+
+---
+
+**2026-03-16**
+👤 okej, ostavi rezultate u nekom dokumentu, molim te ne zaboravi work i chat log... pa nakon toga implementiras ako imamo nesto korisno?
+🤖 Rezultati već u `_materijali/INTERNET_RESEARCH_REZULTATI.md`. Work log ažuriran. Implementacija: iz BitEdit popisa mapa i Ski-Doo XDF detalja mogu probati binarno locirati accel enrichment i cranking injection u ori_300.bin.
+
+---
+
+**2026-03-16**
+👤 daj.i u materijale slozi dokument sto nam tocno fali i sto si htio issgaziti na interenetu, detaljnu uputu, koje ecu traziti i sto...
+🤖 Kreiran `_materijali/NEDOSTAJE_ISTRAZITI.md`: 6 sekcija — mape koje ne možemo naći (accel enrichment, cranking, overtemp, RLSOL X-os, torque osi, knock 2D), ključne Google fraze, gdje tražiti A2L fajlove (GitHub/EcuTalk/Nefmoto/TunerPro), koje ECU dumpove tražiti (Sea-Doo nova godišta + auto ME17.8.x Opel/Ford za A2L referencu), i prioritetni next steps.
+
+---
+
+**2026-03-16**
+👤 [nastavak sesije — automatski] Ažuriran map_finder.py s ispravkama iz binarnog skana
+🤖 Injection adresa ispravljena (0x02439C→0x02436C, 12×32→6×32, mirror 0x0244EC). Dodane 3 nove mape: deadtime @0x025900 (read-only), DFCO @0x02202E, idle RPM @0x02B600. Ukupno 44 mape, sve potvrđene na ori_300.bin.
+
+---

@@ -1,5 +1,57 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — map_finder.py: +2 mape iz binarnog skana (ukupno 46)
+
+### Što je napravljeno
+- Binarni scan neistraženih regija CODE (ORI vs STG2 diffs, filter poznatih blokova)
+- **Lambda zaštitna mapa** @ 0x02469C (12×13 u16 LE Q15): dijagonalni pattern 1311→65535, STG2 sve saturira na max → max injection/lambda protection (BitEdit: "Lambda efficiency")
+- **Torque optimal** @ 0x02A7F0 (16×16 BE Q8): odmah iza torque mirrora, 93–107%, razlikuje se po HP varijanti (BitEdit: "Optimal torque")
+- Ukupno: 44 → **46 mapa**
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 2 nove MapDef + scan metode
+
+## 2026-03-16 — Internet istraživanje: resursi za ME17.8.5 mape
+
+### Što je napravljeno
+- Claude Code WebSearch + WebFetch: 20+ stranica pregledano
+- Kreiran `_materijali/INTERNET_RESEARCH_REZULTATI.md` s kompletnim nalazima
+- Kreiran `_materijali/NEDOSTAJE_ISTRAZITI.md` s akcijskim planom
+
+### Ključni nalazi
+- **OldSkullTuning XDF €70** — pokriva 300hp GTX (naš motor!), sve mape uključujući idle, torque, fuel, ignition, accel enrichment
+- **BitEdit ME17.8.5 $172** — POTVRĐUJE da "Enrichment at acceleration/deceleration" (=KFMSWUP) POSTOJI i tunable je u ME17.8.5 Sea-Doo
+- **ziptuning DAMOS 524060** — A2L za 260hp (naš rxtx_260 bin), zahtijeva reg, kontaktirati i za 300hp
+- **diag-systems.net** — ima gotov Spark Stage1/2 firmware ($200) za HW 666063 (=naš Spark)
+- **PCMFlash modul 71 + FLEX** — radi bench read/write bez otvaranja ECU
+- **MGFlasher GitHub** — BMW B48/B58 only, NIJE relevantan
+- **SoftDump $55** — potvrda CRC32 kompleksnog checksuma za BRP Sea-Doo
+
+### Fajlovi promijenjeni
+- `_materijali/INTERNET_RESEARCH_REZULTATI.md` — kreirán
+- `_materijali/NEDOSTAJE_ISTRAZITI.md` — kreirán
+
+## 2026-03-16 — map_finder.py: injection adresa ispravljena + 3 nove mape (ukupno 44)
+
+### Što je napravljeno
+- **Injection mapa ispravljena**: adresa 0x02439C → **0x02436C** (pravi početak), dims 12×32 → **6×32**
+  - Mirror: 0x02451C → 0x0244EC (offset +0x180 nepromjenjen)
+  - Potvrđeno binarnim skanom svih 9 SW varijanti (156 razlika ORI vs STG2)
+  - X os identificirana kao RLSOL (relativno punjenje, 32-točkasti load axis)
+- **Injector deadtime** dodana @ 0x025900 (20×7 u16 LE, read-only, hardware konstanta)
+- **DFCO pragovi** dodani @ 0x02202E (1×7 u16 LE): 300hp=[1067–3413 rpm], 130hp=[853–2560 rpm]
+- **Idle RPM target** dodan @ 0x02B600 (5×12 u16 LE): topli=1960 rpm, hladni=3340 rpm
+- `find_all()` proširen: scan metode `_scan_deadtime`, `_scan_dfco`, `_scan_idle_rpm`
+- Ukupno mapa: 41 → **44**
+
+### Ključni nalazi
+- Idle RPM 1960 rpm (vs ECU spec 1700±50) — SC parasitni gubitak ~260 rpm kompenzira ECU
+- DFCO 300hp viši pragovi (1067–3413) nego 130hp (853–2560) — konzervativniji za SC motor
+- Deadtime identičan u svim SW varijantama → hardware karakteristika injektora
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — injection ispravljen, 3 nove mape + scan metode
+
 ## 2026-03-16 — Research task: DIUS, donor_10SW014510, ME17 cross-platform, injection X-axis
 
 ### Što je napravljeno
