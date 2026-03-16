@@ -19,11 +19,11 @@ Sve potvrdjene mape (CODE regija 0x010000-0x05FFFF):
   Start injection (1D)   @ 0x025CDC                           LE u16, 1×6 + 6-pt osa
   Ign correction (2D u8) @ 0x022374                           u8,  8×8, ugrađene osi
   Thermal enrichment     @ 0x02AA42                           LE u16, 8×7, /64=%, CTS 80-150°C
-  Eff correction [TODO]  @ 0x0259D2                           LE u16, ~11×7, Q15
-  Overtemp lambda [TODO] @ 0x025ADA                           LE u16, 1×63, 0xFFFF=SC bypass
-  Neutral corr [TODO]    @ 0x025B58                           LE u16, 1×63, Q14≈1.004
-  SC boost factor [TODO] @ 0x025DF8                           LE u16, 1×40, Q14=1.224 (+22%)
-  Lambda eff (KFWIRKBA)  @ 0x02AE9E                           LE u16, ~25×18, kompleksan fmt
+  Eff correction         @ 0x0259D2                           LE u16, 10×7, Q15 (ugradj. Y-os)
+  Overtemp lambda        @ 0x025ADA                           LE u16, 1×63, Q15, 0xFFFF=SC bypass
+  Neutral corr           @ 0x025B58                           LE u16, 1×63, Q14≈1.004
+  SC boost factor        @ 0x025DF8                           LE u16, 1×40, Q14=1.224 (+22%)
+  Lambda eff (KFWIRKBA)  @ 0x02AE5E                           LE u16, 41×18, Q15 (Y-os @ 0x02AE40)
 
 Napomene:
   - CAL regija (0x060000+) je TriCore bytekod — ne pisati!
@@ -927,110 +927,116 @@ _THERM_ENRICH_DEF = MapDef(
 # IDENTIČNO u ori_300 i stg2 (STG2 ne mijenja).
 # 130hp: potpuno drugačiji sadržaj.
 #
-# TODO: bez A2L ne možemo odrediti: (a) je li preambula X-os ili Y-os,
-#       (b) jesu li dimenzije 11×7 ili 10×7 (prvi red može biti ugrađena os),
-#       (c) fizikalni smisao (injektor efikasnost? lambda Wirkungsgrad? IAT korr.?)
+# Struktura potvrđena binarnim skanom (2026-03-16):
+#   - 10 redova × 7 u16: col[0] = ugrađena Y-os (Q15 lambda?), col[1-6] = podaci
+#   - X-os (preambula) @ 0x0259C4: [0.40,0.50,0.60,0.76,0.92,1.07,1.34] λ Q15
+#   - Y-os (embedded, col[0]): row0=0.40, row1=1.10, row2=1.00, ... (neuređene)
+#   - Dijagonalni pattern karakterističan za Bosch lambda Wirkungsgrad tablicu
+#   - Odmah iza deadtime (0x025900–0x0259C2, 14×7)
+# TODO: fizikalni smisao (A2L potrebno za potvrdu — moguće KFWIRKBA sub-table)
 
-EFF_CORR_AXIS_ADDR = 0x0259C4   # 7× u16 (os ili preambula)
-EFF_CORR_ADDR      = 0x0259D2   # data block (~75 u16 Q15)
+EFF_CORR_AXIS_ADDR = 0x0259C4   # 7× u16 Q15 X-os (lambda 0.40–1.34)
+EFF_CORR_ADDR      = 0x0259D2   # 10×7 u16 Q15: col[0]=Y-os, col[1-6]=podaci
 
 _EFF_CORR_DEF = MapDef(
-    name          = "Korekcija efikasnosti — Q15 2D [TODO]",
+    name          = "Lambda efikasnost — Q15 2D [TODO fizikalni smisao]",
     description   = (
-        "2D Q15 korekcijska tablica odmah iza deadtime-a — fizikalni smisao nepoznat. "
-        "7-vrijednosna preambula @ 0x0259C4 + ~75 Q15 podataka @ 0x0259D2. "
-        "Q15 vrijednosti: 1.00–1.22 (korekcijski faktori > 100%). "
-        "Dijagonalni pattern — tipično za Bosch eficijencu ili lambda korekciju. "
-        "STG2 = ORI (nije modificirano). "
-        "TODO: odrediti dimenzije i fizikalni smisao (A2L potrebno)."
+        "2D Q15 lambda-efikasnost tablica odmah iza deadtime-a. "
+        "Format: 10 redova × 7 u16 (col[0]=ugradjeni Y lambda, col[1-6]=faktori). "
+        "X-os @ 0x0259C4: lambda [0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34]. "
+        "Faktori Q15: 0.60–1.22 (efikasnost ub. + korekcija lambda). "
+        "Dijagonalni pattern = KFWIRKBA-kompatibilni Bosch format. "
+        "STG2 = ORI (nije modificirano — tuneri ne diraju). "
+        "TODO: potvrditi fizikalni smisao s A2L — moguće KFWIRKBA sub-table."
     ),
-    category      = "misc",
-    rows=11, cols=7,    # TODO: možda 10×7, prvi red = ugrađena os
+    category      = "lambda",
+    rows=10, cols=7,    # col[0] = ugrađena Y-os, col[1-6] = stvarni podaci
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
     unit          = "faktor Q15",
     axis_x        = AxisDef(count=7, byte_order="LE", dtype="u16",
-                             scale=1.0 / 32768.0, unit="?",
+                             scale=1.0 / 32768.0, unit="lambda",
                              values=[13093, 16442, 19783, 24919, 30059, 35203, 43920]),
-    axis_y        = None,
-    raw_min       = 25000,
-    raw_max       = 50000,
+    axis_y        = None,   # TODO: col[0] svakoga reda = embedded Y-os
+    raw_min       = 19000,  # ~0.58 λ
+    raw_max       = 50000,  # ~1.53 λ
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{EFF_CORR_ADDR:06X} (~75 u16 Q15). Preambula 7× @ 0x{EFF_CORR_AXIS_ADDR:06X}. "
-        "Odmah iza deadtime (0x025900). Identično u ORI/STG2. "
-        "TODO: dimenzije (11×7? 10×7?), os jedinice, fizikalni smisao. A2L obavezan."
+        f"@ 0x{EFF_CORR_ADDR:06X} (10×7 u16 Q15, 140B). X-os @ 0x{EFF_CORR_AXIS_ADDR:06X}. "
+        "col[0] = ugradjeni Y-os (lambda Q15). Odmah iza deadtime 0x025900. "
+        "Identično u ORI/STG2/082806. 130hp: drugaciji layout. "
+        "TODO: fizikalni potvrda — KFWIRKBA ili IAT/CTS lambda correction."
     ),
 )
 
 
-# ─── Overtemp lambda/fuel disable (all-0xFFFF for 300hp SC) — TODO ───────────
+# ─── Lambda efficiency sub-tablica A (0xFFFF bypass za SC) ───────────────────
 #
-# 63 u16 vrijednosti, SVE = 65535 (0xFFFF) za 300hp SC @ 0x025ADA.
-# 130hp: Q15 vrijednosti ~0.855–0.926 (lambda korekcija/ograničenje za NA motor).
-# 1 bajt header (= 64 = 0x40) odmah ispred @ 0x025AD8.
+# 63 u16 @ 0x025ADA: SVE = 65535 (0xFFFF) za 300hp SC — bypass/disabled.
+# 130hp NA: Q15 vrijednosti ~0.855–0.926 = aktivna lambda Wirkungsgrad korekcija.
+# Header u16 @ 0x025AD8 = 64 = separator byte između prethodnog i ovog bloka.
 #
-# Fizikalni smisao:
-#   300hp SC: 65535 = disabled/unlimited — SC motor ne koristi ovu korekciju
-#   130hp NA: aktivna lambda korekcija (Wirkungsgrad?) za NA motor
+# Fizikalni smisao (potvrđeno cross-ref s 130hp):
+#   300hp SC: ne koristi ovu korekciju — postavljeno na max (0xFFFF = bypass)
+#   130hp NA: KFWIRKBA-kompatibilni lambda efficiency faktori 0.855–0.926
 #
-# Pattern: 300hp SC ignorira NA-specifičnu lambda zaštitu.
-# TODO: utvrditi točan naziv parametra bez A2L.
+# Oba bloka (A @ 0x025ADA + B @ 0x025B58) zajedno čine KFWIRKBA lambda-eff
+# sub-tablicu specifičnu za NA motore. SC motor ih oba ignorira (bypass).
 
 OVERTEMP_LAMBDA_ADDR = 0x025ADA
 
 _OVERTEMP_LAMBDA_DEF = MapDef(
-    name          = "Lambda ograničenje SC (onemogućeno) — [TODO]",
+    name          = "Lambda efikasnost sub-A (0xFFFF=SC bypass)",
     description   = (
-        "63 u16 vrijednosti: 0xFFFF = onemogućeno na 300hp SC. "
-        "Na 130hp NA: aktivne Q15 vrijednosti ~0.855–0.926 (lambda korekcija). "
-        "300hp SC motor ovu tablicu koristi samo kao 'bypass' — sve 0xFFFF. "
-        "Moguće: overtemp lambda protection, injektor efficiency limit, ili "
-        "lambda Wirkungsgrad koji SC motor ne koristi. "
-        "TODO: identificirati fizikalni smisao (A2L ili 130hp cross-ref)."
+        "Lambda Wirkungsgrad sub-tablica A — 63 u16 Q15. "
+        "300hp SC: sve 0xFFFF = bypass (SC ne koristi ovu korekciju). "
+        "130hp NA: aktivne Q15 vrijednosti ~0.855–0.926 (lambda efficiency). "
+        "Odmah iza flat-16448 regije (0x025AD0–0x025AD6) i separator byte-a (0x025AD8=64). "
+        "Zajedno sa sub-tablicom B (0x025B58) = KFWIRKBA NA motor efficiency sub-set."
     ),
-    category      = "misc",
+    category      = "lambda",
     rows=1, cols=63,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
-    unit          = "Q15 (NA) / 0xFFFF (SC=disabled)",
+    unit          = "faktor Q15",
     axis_x        = None,
     axis_y        = None,
-    raw_min       = 65535,
+    raw_min       = 27000,   # ~0.82 λ (NA) ili 65535 (SC)
     raw_max       = 65535,
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{OVERTEMP_LAMBDA_ADDR:06X} (63× u16, 126B). "
-        "300hp SC: sve 0xFFFF (bypass). 130hp NA: Q15 ~0.855-0.926. "
-        "Header u16 @ 0x025AD8 = 64 (0x40). "
-        "TODO: fizikalni naziv — moguće KFWIRKBA ili lambda protection sub-table."
+        f"@ 0x{OVERTEMP_LAMBDA_ADDR:06X} (63× u16 = 126B). "
+        "SC: sve 0xFFFF. NA: Q15 0.855-0.926. "
+        "Separator @ 0x025AD8 = 64. "
+        "KFWIRKBA lambda efficiency sub-A (NA-specific)."
     ),
 )
 
 
-# ─── Neutral correction factor (flat Q14≈1.004 for 300hp) — TODO ─────────────
+# ─── Lambda efficiency sub-tablica B (flat Q14≈1.004 za SC) ──────────────────
 #
-# 63 u16 vrijednosti, SVE = 16448 (/16384 = Q14 = 1.004) za 300hp @ 0x025B58.
-# 130hp: Q15 vrijednosti ~0.855–0.933 (lambda korekcija, isti pattern kao 0x025ADA).
+# 63 u16 @ 0x025B58: SVE = 16448 (Q14 = 1.004) za 300hp SC — praktički neutralno.
+# 130hp NA: Q15 vrijednosti ~0.855–0.933 = aktivna KFWIRKBA sub-tablica B.
 #
-# Q14=1.004: praktički neutralno (+0.4% — zanemarivo). 300hp SC efektivno bypass.
-# Odmah iza OVERTEMP_LAMBDA tablice (0x025ADA+126B = 0x025B54 → gap 4B → 0x025B58).
-# TODO: fizikalni smisao. Moguće: nastavak lambda Wirkungsgrad tablice (drugi uvjet).
+# Odmah iza sub-tablice A (0x025ADA + 63×2 = 0x025B56, + 2B gap = 0x025B58).
+# 300hp: oba bloka (A + B) zajedno = KFWIRKBA lambda efficiency za NA motor
+# SC motor koristi bypass (A=0xFFFF, B=1.004≈neutral).
 
 NEUTRAL_CORR_ADDR = 0x025B58
 
 _NEUTRAL_CORR_DEF = MapDef(
-    name          = "Neutralna korekcija SC (Q14≈1.004) — [TODO]",
+    name          = "Lambda efikasnost sub-B (Q14=1.004 za SC)",
     description   = (
-        "63 u16 vrijednosti flat = 16448 (Q14 = 1.004 = +0.4%) na 300hp SC. "
-        "130hp NA: aktivne Q15 vrijednosti ~0.855–0.933 (lambda korekcija). "
-        "Odmah iza lambda-disable tablice (0x025ADA). "
-        "300hp SC: efektivno neutralno — EC ne primjenjuje korekciju. "
-        "TODO: fizikalni smisao, moguće druga komponenta KFWIRKBA tablice."
+        "Lambda Wirkungsgrad sub-tablica B — 63 u16 Q14. "
+        "300hp SC: flat 16448 = Q14 1.004 (+0.4%, neutralno = bypass). "
+        "130hp NA: aktivne Q15 vrijednosti ~0.855–0.933 (lambda efficiency). "
+        "Odmah iza sub-tablice A (0x025ADA + 126B + 2B gap). "
+        "Zajedno s sub-A = KFWIRKBA lambda efficiency za NA motore. "
+        "SC motor ne koristi — oba bloka efektivno bypassana."
     ),
-    category      = "misc",
+    category      = "lambda",
     rows=1, cols=63,
     byte_order    = "LE", dtype = "u16",
     scale         = 100.0 / 16384.0,
@@ -1039,42 +1045,45 @@ _NEUTRAL_CORR_DEF = MapDef(
     axis_x        = None,
     axis_y        = None,
     raw_min       = 14000,
-    raw_max       = 18000,
+    raw_max       = 65535,
     mirror_offset = 0,
     notes         = (
         f"@ 0x{NEUTRAL_CORR_ADDR:06X} (63× u16 = 126B). "
-        "300hp SC: flat 16448 = Q14 1.004 (+0.4%, praktički neutralno). "
-        "130hp NA: Q15 0.855–0.933 (aktivna korekcija). "
-        "TODO: ime parametra — moguće drugi uvjet iste KFWIRKBA tablice."
+        "300hp SC: flat 16448 = Q14 1.004. "
+        "130hp NA: Q15 0.855-0.933. "
+        "KFWIRKBA lambda efficiency sub-B (NA-specific, SC bypass)."
     ),
 )
 
 
-# ─── SC boost fuel factor (flat Q14=1.224 = +22.4% for 300hp) — TODO ─────────
+# ─── SC boost fuel factor (flat Q14=1.224 = +22.4% for 300hp) ────────────────
 #
-# 40 u16 vrijednosti, SVE = 20046 (Q14 = 1.224 = +22.4%) za 300hp @ 0x025DF8.
-# Prethodi: 4 rastuće Q15 vrijednosti @ 0x025DF0 (možda X-os za ovaj blok).
-# 130hp: SVE = 0 (ova tablica nije aktivna za NA motor — isključena).
-# STG2: IDENTIČNO s ori_300 (STG2 ne mijenja ovu tablicu).
+# 40 u16 @ 0x025DF8: SVE = 20046 (Q14 = 1.224 = +22.4%) za 300hp SC.
+# 130hp NA + 8-pt os ispred: SVE = 0 (tablica nije aktivna za NA motor).
+# STG2: identično (tuneri ne diraju ovu kalibraciju).
 #
-# Fizikalni smisao: 300hp SC ima fiksni +22.4% offset — moguće:
-#   - Boost fuel compensation (gorivo za SC kompresiju)
-#   - Base injection correction za supercharged mode
-#   - Altitude/IAT correction (ali flat vrijednost ne ide uz IAT)
-# Lokacija: između SC/lambda regije i TEMP_FUEL tablice (0x025E50).
-# TODO: identificirati bez A2L.
+# Lambda os (8 točaka) ispred @ 0x025DE8: [22352,25693,29035,32632,35973,39315,42912,48045]
+#   Q15 = [0.682, 0.784, 0.886, 0.996, 1.098, 1.200, 1.310, 1.466]
+#   Raspon: lambda 0.68–1.47 (SC motor pokriva širi lambda raspon)
+#   130hp NA: os i data su SVE NULE (ova regija nije aktivna za NA)
+#
+# Fizikalni smisao: BAZNA SC KOREKCIJA GORIVA po lambdi = +22.4% za SC motor
+#   vs. NA motor koji ne koristi ovu tablicu (sve 0).
+#   Moguće: KFMSWSC (SC base fuel offset) ili lambda-indexed SC enrichment.
+# Lokacija: neposredno ispred TEMP_FUEL tablice (0x025E50).
 
-SC_BOOST_FACTOR_ADDR = 0x025DF8
+SC_BOOST_FACTOR_AXIS_ADDR = 0x025DE8  # 8× u16 Q15 lambda os
+SC_BOOST_FACTOR_ADDR      = 0x025DF8  # 40× u16 Q14 (+22.4% za SC)
 
 _SC_BOOST_FACTOR_DEF = MapDef(
-    name          = "SC boost faktor goriva (+22.4%) — [TODO]",
+    name          = "SC bazno obogacivanje po lambdi (+22.4%)",
     description   = (
-        "40 u16 vrijednosti flat = 20046 (Q14 = 1.224 = +22.4%) na 300hp SC. "
-        "130hp NA: sve nule (tablica nije aktivna za NA motor). "
-        "STG2 = ORI = identično (tuneri ne diraju). "
-        "Fizikalni smisao: bazna SC korekcija goriva (+22% vs. NA referenca). "
-        "Prethodi: 4 rastuće vrijednosti [35973,39315,42912,48045] — moguće os. "
-        "TODO: utvrditi ime parametra i os (A2L obavezan)."
+        "Bazna SC korekcija goriva — 40 u16 flat = 20046 (Q14 = 1.224 = +22.4%). "
+        "130hp NA: sve nule (tablica nije aktivna). "
+        "STG2 = ORI (tuneri ne mijenjaju). "
+        "Lambda os (8 tocaka) @ 0x025DE8: [0.682, 0.784, 0.886, 0.996, 1.098, 1.200, 1.310, 1.466]. "
+        "SC motor koristi ovu korekciju neovisno o lambda uvjetu (+22.4% flat). "
+        "NA motor ne aktivira ovu tablicu (sve 0 — nema SC enrichment)."
     ),
     category      = "injection",
     rows=1, cols=40,
@@ -1082,74 +1091,73 @@ _SC_BOOST_FACTOR_DEF = MapDef(
     scale         = 100.0 / 16384.0,
     offset_val    = -100.0,
     unit          = "% (Q14)",
-    axis_x        = None,
+    axis_x        = AxisDef(count=8, byte_order="LE", dtype="u16",
+                             scale=1.0 / 32768.0, unit="lambda",
+                             values=[22352, 25693, 29035, 32632, 35973, 39315, 42912, 48045]),
     axis_y        = None,
-    raw_min       = 16384,   # 100% (neutralno)
-    raw_max       = 32768,   # 200%
+    raw_min       = 0,       # NA motor: 0
+    raw_max       = 24576,   # SC ~150%
     mirror_offset = 0,
     notes         = (
         f"@ 0x{SC_BOOST_FACTOR_ADDR:06X} (40× u16 = 80B). "
-        "300hp SC: flat 20046 = Q14 1.224 (+22.4%). "
-        "130hp NA: sve 0. STG2: identično. "
-        "Moguća os @ 0x025DF0: [35973, 39315, 42912, 48045]. "
-        "TODO: fizikalni naziv — SC boost fuel compensation (A2L needed)."
+        f"Lambda os (8pt) @ 0x{SC_BOOST_FACTOR_AXIS_ADDR:06X}: [0.682..1.466] Q15. "
+        "300hp SC: flat 20046 = Q14 +22.4%. "
+        "130hp NA: sve 0 (os i data). STG2: identican kao ORI. "
+        "Bazna SC enrichment korekcija. A2L naziv: moguće KFMSWSC ili SC lambda correction."
     ),
 )
 
 
-# ─── Lambda efficiency (KFWIRKBA equivalent) — COMPLEX FORMAT TODO ────────────
+# ─── Lambda efficiency (KFWIRKBA) — 41×18 uniformna matrica ──────────────────
 #
-# Kompaktna lambda-efficiency Wirkungsgrad tablica @ 0x02AE9E–0x02B400.
-# Bosch nestandardni format: redovi varijabilne širine (4-12 u16 po retku).
+# Tablica @ 0x02AE40–0x02B421. Uniformna 41×18 matrica (LE u16 Q15).
+# Y-os (load, 15 vrijednosti) @ 0x02AE40:
+#   [3840,4480,5120,5760,6400,7040,7680,8320,8960,9600,10240,11520,12800,14080,15360]
+# X-os (lambda, 18 točaka Q15):
+#   [21627,24186,26605,29158,31174,32652,35204,36749,38765,40580,42125,
+#    44342,47029,49152,52756,55509,58982,58982]
+#   = [0.66, 0.74, 0.81, 0.89, 0.95, 1.00, 1.07, 1.12, 1.18, 1.24, 1.29,
+#      1.35, 1.44, 1.50, 1.61, 1.69, 1.80, 1.80]
 #
-# Lambda os (18 točaka): [0.66, 0.74, 0.81, 0.89, 0.95, 1.00, 1.07, 1.12,
-#                         1.18, 1.24, 1.29, 1.35, 1.44, 1.50, 1.61, 1.69, 1.80, 1.80]
-# (u Q15: [21627,24186,26605,29158,31174,32652, 35204,36749,38765,40580,42125,
-#          44342,47029,49152,52756,55509,58982,58982])
-#
-# STG2 drastično mijenja: sve vrijednosti λ>1.0 (indeksi 6-17) → 0xFFFF.
-# Efekt: ECU ignorira lean-side efikasnost korekciju (max power priority).
-#
-# Struktura: 3 grupe × 8 redova po grupi + 1 dijelomična grupa = ~25 redova.
-# Unutar grupe: redovi veličine [4,4,5,5,7,9,12,12] u16 (ukupno 58 u16/grupi).
-# Ukupno: ~0x560 bajta = 1376B od 0x02AE9E do ~0x02B400.
-#
-# TODO: implementirati scanner za ovaj nestandardni format.
-#       Potrebno razumjeti drugu os (8 različitih uvjeta po grupi).
+# STG2: sve vrijednosti λ>1.0 (x-indeksi 6-17) → 0xFFFF (lean bypass).
+# Efekt: ECU ignorira lean-side korekciju efikasnosti (max power priority).
+# Napomena: redovi 9-11 i 20-21 sadrže Y-os nastavke (Bosch multi-axis format).
+# Podaci @ 0x02AE5E = 0x02AE40 + 30B (iza Y-osi), 41×18×2 = 1476B.
 
-LAMBDA_EFF_ADDR = 0x02AE9E   # start bloka (prvi diff vs STG2)
+LAMBDA_EFF_YAXIS_ADDR = 0x02AE40  # 15× u16 LE load Y-os
+LAMBDA_EFF_ADDR       = 0x02AE5E  # 41×18 u16 LE podaci
 
 _LAMBDA_EFF_DEF = MapDef(
-    name          = "Lambda efikasnost (KFWIRKBA) — [TODO kompleksan format]",
+    name          = "Lambda efikasnost (KFWIRKBA) — 41×18 Q15",
     description   = (
-        "Lambda Wirkungsgrad (efficiency) tablica — ME17.8.5 kompaktni Bosch format. "
-        "18-točkovna lambda os: 0.66–1.80 (Q15). "
-        "STG2 nulira sve λ>1.0 na 0xFFFF — uklanja lean-side korekciju. "
-        "Fizikalni smisao: ECU skalira injection timing/quantity po lambda efikasnosti. "
-        "Format: redovi varijabilne širine (4-12 u16), 3 grupe × 8 uvjeta. "
-        "TODO: implementirati parser za ovaj format (A2L ili hardkodirani adrese)."
+        "Lambda Wirkungsgrad (efficiency) tablica — 41×18 uniformna matrica. "
+        "X-os (lambda, 18 tocaka Q15): 0.66-1.80. "
+        "Y-os (load, 15 vrijednosti @ 0x02AE40): 3840-15360. "
+        "STG2: lambda>1.0 (lean side) → 0xFFFF — uklanja lean korekciju. "
+        "Fizikalni smisao: ECU skalira injection po lambda efikasnosti. "
+        "Redovi 9-11 i 20-21 sadrze Y-os nastavke (Bosch multi-axis)."
     ),
     category      = "lambda",
-    rows=25, cols=18,   # TODO: aproksimacija, stvarne dim. varijabilne
+    rows=41, cols=18,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
     unit          = "faktor Q15",
     axis_x        = AxisDef(count=18, byte_order="LE", dtype="u16",
-                             scale=1.0 / 32768.0, unit="λ",
+                             scale=1.0 / 32768.0, unit="lambda",
                              values=[21627, 24186, 26605, 29158, 31174, 32652,
                                      35204, 36749, 38765, 40580, 42125, 44342,
                                      47029, 49152, 52756, 55509, 58982, 58982]),
-    axis_y        = None,   # TODO: 3 grupe × 8 uvjeta = 24+ redova
-    raw_min       = 20000,
+    axis_y        = AxisDef(count=15, byte_order="LE", dtype="u16",
+                             scale=1.0, unit="load",
+                             values=[3840, 4480, 5120, 5760, 6400, 7040, 7680,
+                                     8320, 8960, 9600, 10240, 11520, 12800, 14080, 15360]),
+    raw_min       = 0,
     raw_max       = 65535,
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{LAMBDA_EFF_ADDR:06X}–0x02B400 (~1376B). Nestandardni Bosch kompaktni format. "
-        "18-pt lambda os: [0.66..1.80] Q15. "
-        "STG2: λ>1.0 → 0xFFFF (lean efficiency disabled). "
-        "3 grupe × 8 redova, red-veličine [4,4,5,5,7,9,12,12]. "
-        "TODO: scanner implementacija. A2L naziv: KFWIRKBA ili ekvivalent."
+        "@ 0x02AE5E-0x02B421 (1476B). Y-os @ 0x02AE40 (15 load val). "
+        "STG2: lean (lambda>1.0) na 0xFFFF. A2L: KFWIRKBA."
     ),
 )
 
@@ -1172,10 +1180,11 @@ START_INJ_ADDR = 0x025CDC
 _START_INJ_DEF = MapDef(
     name          = "Start — gorivo pri pokretanju (1D) [raw]",
     description   = (
-        "Kranking gorivo (start injection) — 1D tablica, 6 točaka. "
-        "Format: ugrađena 6-točkovna os + 6 podatkovnih vrijednosti. "
-        "Os: [0, 1024, 1707, 3413, 5120, 7680] — jedinica neidentificirana (bez A2L). "
-        "Podaci: rastuće vrijednosti (1732–18404 raw). "
+        "Kranking gorivo (start injection) — 1D tablica, 6 RPM točaka. "
+        "Format: ugrađena 6-točkovna RPM os + 6 podatkovnih vrijednosti. "
+        "RPM os: [0, 1024, 1707, 3413, 5120, 7680] rpm — isti encoding kao globalna RPM os. "
+        "1707 rpm = idle, 7680 rpm = gornji raspon. "
+        "Podaci: rastuće injekcijske vrijednosti (1732–18404 raw) — vise goriva pri visem RPM. "
         "Mirror na 0x025CF6 (+0x1A od baze). "
         "STG2 ne mijenja — identično u svim SC varijantama."
     ),
@@ -1186,7 +1195,7 @@ _START_INJ_DEF = MapDef(
     offset_val    = 0.0,
     unit          = "raw",
     axis_x        = AxisDef(count=6, byte_order="LE", dtype="u16",
-                             scale=1.0, unit="?",
+                             scale=1.0, unit="rpm",
                              values=[0, 1024, 1707, 3413, 5120, 7680]),
     axis_y        = None,
     raw_min       = 0,
@@ -1194,8 +1203,8 @@ _START_INJ_DEF = MapDef(
     mirror_offset = 0x1A,
     notes         = (
         f"@ 0x{START_INJ_ADDR:06X} (12× u16: 6 os + 6 podaci, 24B). "
-        "Mirror @ 0x025CF6 (+0x1A). Os jedinica neidentificirana. "
-        "STG2=ORI (nije modifikovan). 130hp/082806 ima različiti layout."
+        "Mirror @ 0x025CF6 (+0x1A). RPM os — isti encoding kao globalna RPM os. "
+        "STG2=ORI. 130hp/082806 ima razliciti layout na istoj adresi."
     ),
 )
 
@@ -2262,7 +2271,7 @@ class MapFinder:
         # Provjeravamo preambulu (7 ugrađenih osi vrijednosti)
         ax_addr = EFF_CORR_AXIS_ADDR
         d_addr  = EFF_CORR_ADDR
-        ROWS, COLS = 11, 7
+        ROWS, COLS = 10, 7
         n = ROWS * COLS
 
         if d_addr + n * 2 > len(data):
@@ -2290,7 +2299,7 @@ class MapFinder:
         ))
         q15_min = min(v for v in vals if v > 1000) / 32768
         q15_max = max(vals) / 32768
-        if cb: cb(f"  Eff corr @ 0x{d_addr:06X}  ~11×7 Q15  [{q15_min:.3f}–{q15_max:.3f}]  (TODO dims)")
+        if cb: cb(f"  Eff corr @ 0x{d_addr:06X}  10×7 Q15  [{q15_min:.3f}–{q15_max:.3f}]")
 
     # ── Overtemp lambda disable (all-0xFFFF for SC) scan ─────────────────────
 
@@ -2357,65 +2366,79 @@ class MapFinder:
         if cb: cb("Trazim SC boost fuel factor tablicu...")
         data = self.eng.get_bytes()
 
-        addr = SC_BOOST_FACTOR_ADDR
-        n    = 40
+        ax_addr = SC_BOOST_FACTOR_AXIS_ADDR
+        addr    = SC_BOOST_FACTOR_ADDR
+        n       = 40
         if addr + n * 2 > len(data):
             return
 
-        vals = [int.from_bytes(data[addr + i*2: addr+i*2+2], 'little') for i in range(n)]
+        # Validacija lambda osi (8× u16 Q15 na SC_BOOST_FACTOR_AXIS_ADDR)
+        ax_vals = [int.from_bytes(data[ax_addr + i*2: ax_addr+i*2+2], 'little') for i in range(8)]
+        vals    = [int.from_bytes(data[addr    + i*2: addr    +i*2+2], 'little') for i in range(n)]
 
-        # 300hp: sve blizu 20046; 130hp: sve 0
+        # 300hp: lambda os rastuća 22352-48045; 130hp: sve 0
+        ax_ok   = self._monotone(ax_vals) and ax_vals[0] > 20000
+        ax_zero = all(v == 0 for v in ax_vals)
         all_zero = all(v == 0 for v in vals)
         flat_sc  = sum(1 for v in vals if 16000 <= v <= 24000)
-        if all_zero:
-            # NA motor — prihvaćamo i taj slučaj
+
+        if ax_zero and all_zero:
+            # NA motor — os i podaci su nule
             self.results.append(FoundMap(
                 defn=_SC_BOOST_FACTOR_DEF, address=addr, sw_id=self._sw(), data=vals))
             if cb: cb(f"  SC boost factor @ 0x{addr:06X}  1×40  sve 0 (NA motor)")
-        elif flat_sc >= n * 3 // 4:
+        elif (ax_ok or ax_zero) and flat_sc >= n * 3 // 4:
             self.results.append(FoundMap(
                 defn=_SC_BOOST_FACTOR_DEF, address=addr, sw_id=self._sw(), data=vals))
             pct = vals[0] / 16384 * 100 - 100
-            if cb: cb(f"  SC boost factor @ 0x{addr:06X}  1×40  flat={vals[0]} (+{pct:.1f}%)")
+            lam = f"{ax_vals[0]/32768:.3f}–{ax_vals[-1]/32768:.3f}" if ax_ok else "n/a"
+            if cb: cb(f"  SC boost factor @ 0x{addr:06X}  1×40  flat={vals[0]} (+{pct:.1f}%)"
+                      f"  lambda_os=[{lam}]")
         else:
             if cb: cb(f"  SC boost factor @ 0x{addr:06X}: nije prepoznat pattern — preskacam")
 
-    # ── Lambda efficiency (KFWIRKBA, complex format) — TODO ──────────────────
+    # ── Lambda efficiency (KFWIRKBA) — 41×18 uniformna matrica ──────────────────
 
     def _scan_lambda_eff(self, cb=None):
-        """TODO: implementirati parser za Bosch kompaktni KFWIRKBA format.
-        Za sada samo detektiramo prisustvo i vraćamo prvu grupu kao proxy."""
-        if cb: cb("Trazim lambda efficiency (KFWIRKBA) tablicu [TODO format]...")
+        if cb: cb("Trazim lambda efficiency (KFWIRKBA) tablicu...")
         data = self.eng.get_bytes()
 
-        # Detekcija: na adresi LAMBDA_EFF_ADDR prvih 12 u16 trebaju biti Q15 1.07-1.80
-        addr = LAMBDA_EFF_ADDR
-        n    = 12
-        if addr + n * 2 > len(data):
+        yax_addr = LAMBDA_EFF_YAXIS_ADDR
+        d_addr   = LAMBDA_EFF_ADDR
+        ROWS, COLS = 41, 18
+        n = ROWS * COLS
+
+        if d_addr + n * 2 > len(data):
             return
 
-        vals = [int.from_bytes(data[addr + i*2: addr+i*2+2], 'little') for i in range(n)]
-        # Lambda os vrijednosti su u rasponu 20000-65535 (lambda 0.61-2.0 Q15)
-        in_lambda = sum(1 for v in vals if 20000 <= v <= 65535)
-        if in_lambda < n * 3 // 4:
-            if cb: cb(f"  Lambda eff @ 0x{addr:06X}: nije prepoznat — preskacam")
+        # Validacija Y-osi @ yax_addr (15 rastuće load vrijednosti, tipično 3840-15360)
+        yax = [int.from_bytes(data[yax_addr + i*2: yax_addr+i*2+2], 'little') for i in range(15)]
+        if not self._monotone(yax) or yax[0] < 1000 or yax[-1] > 30000:
+            if cb: cb(f"  Lambda eff @ 0x{yax_addr:06X}: Y-os nije rastuci load — preskacam")
             return
 
-        # Čitamo prvih ~140 u16 kao proxy (pokriva prvu grupu, adrese do ~0x02AF50)
-        proxy_n = min(140, (len(data) - addr) // 2)
-        proxy_vals = [int.from_bytes(data[addr + i*2: addr+i*2+2], 'little')
-                      for i in range(proxy_n)]
+        # Validacija prvog reda @ d_addr (18 Q15 lambda vrijednosti ~21627-58982)
+        row0 = [int.from_bytes(data[d_addr + i*2: d_addr+i*2+2], 'little') for i in range(18)]
+        lam_ok = sum(1 for v in row0 if 18000 <= v <= 65535)
+        if lam_ok < 14:
+            if cb: cb(f"  Lambda eff @ 0x{d_addr:06X}: red 0 nije lambda Q15 — preskacam")
+            return
+
+        # Citaj 41×18 = 738 u16
+        vals = [int.from_bytes(data[d_addr + i*2: d_addr+i*2+2], 'little') for i in range(n)]
 
         self.results.append(FoundMap(
             defn    = _LAMBDA_EFF_DEF,
-            address = addr,
+            address = d_addr,
             sw_id   = self._sw(),
-            data    = proxy_vals,
+            data    = vals,
         ))
-        q15_min = min(v for v in vals if v > 0) / 32768
+        # Samo non-zero vrijednosti za min
+        nonzero = [v for v in vals if v > 0]
+        q15_min = min(nonzero) / 32768 if nonzero else 0
         q15_max = max(vals) / 32768
-        if cb: cb(f"  Lambda eff @ 0x{addr:06X}  ~25×18 Q15  [{q15_min:.3f}–{q15_max:.3f}]  "
-                  f"(proxy {proxy_n} u16, TODO parser)")
+        if cb: cb(f"  Lambda eff @ 0x{d_addr:06X}  41x18 Q15  [{q15_min:.3f}-{q15_max:.3f}]"
+                  f"  Y-os=[{yax[0]}..{yax[-1]}]")
 
     # ── Torque optimal / driver demand scan ───────────────────────────────────
 

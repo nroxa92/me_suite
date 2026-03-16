@@ -195,3 +195,11 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 🤖 Dodano 6 novih mapa (50→56): THERM_ENRICH (8×7 CTS enrichment), EFF_CORR (Q15 2D iza deadtime), OVERTEMP_LAMBDA (1×63 SC bypass), NEUTRAL_CORR (1×63 Q14≈1.004), SC_BOOST_FACTOR (+22.4% SC only), LAMBDA_EFF (KFWIRKBA 18-pt lambda os, kompleksan format). Sve neistražene s TODO markerima.
 
 ---
+
+---
+
+**2026-03-16**
+[auto-resume sesija]
+Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11->10, _scan_sc_boost_factor dodao lambda os validaciju, KFWIRKBA kompletno revidiran (41x18 uniformna, adresa 0x02AE5E, Y-os 0x02AE40). Sve 56 mapa pronalaze se ispravno.
+
+---

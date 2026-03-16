@@ -1,5 +1,26 @@
 # ME17Suite — Work Log
 
+## 2026-03-16 — map_finder.py: TODO riješeni, KFWIRKBA addr ispravljena, ukupno 56
+
+### Što je napravljeno
+- **_scan_eff_corr()**: ROWS=11→10 (usklađeno s MapDef), log poruka ažurirana
+- **_scan_sc_boost_factor()**: dodan validator za 8-pt lambda os @ SC_BOOST_FACTOR_AXIS_ADDR (0x025DE8). Validira ax_ok/ax_zero uvjete.
+- **LAMBDA_EFF**: kompletno prepravljen — stara pretpostavka "variable-width rows [4,4,5,5,7,9,12,12]" bila pogrešna.
+  - Prava struktura: uniformna **41×18** matrica
+  - Y-os (15 load vrijednosti): @ 0x02AE40 = [3840...15360]
+  - Podaci: @ 0x02AE5E (= Y-os + 30B), 41×18×2 = 1476B
+  - Stara adresa 0x02AE9E bila **u sredini reda 1** (col 14) — scanner uvijek failao
+  - Ispravljeno: LAMBDA_EFF_ADDR=0x02AE5E, LAMBDA_EFF_YAXIS_ADDR=0x02AE40
+  - STG2: lambda>1.0 (x-indeksi 6-17) → 0xFFFF (lean bypass) ✓
+- **MapDef**: `_LAMBDA_EFF_DEF` rows=24→41, axis_y dodana (15 load vrijednosti)
+- **Header file**: sve TODO oznake uklonjene iz popisa mapa
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — bugfix scan metode, nova adresa KFWIRKBA
+
+### Test
+- ori_300.bin: 56/56 mapa OK, 0x02AE5E pronađena 41×18 Q15
+
 ## 2026-03-16 — map_finder.py: +6 mape + TODO markers, ukupno 56
 
 ### Što je napravljeno
