@@ -6,6 +6,8 @@ Testira core funkcionalnost na stvarnim bin fajlovima.
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 from core.engine import ME17Engine, FILE_SIZE, CAL_START, CAL_END, CODE_START, CODE_END
 from core.map_finder import MapFinder
@@ -13,8 +15,8 @@ from core.checksum import ChecksumEngine
 
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
-ORI_PATH  = os.path.join(ROOT, "ori_300.bin")
-STG2_PATH = os.path.join(ROOT, "npro_stg2_300.bin")
+ORI_PATH  = os.path.join(ROOT, "_materijali", "ori_300.bin")
+STG2_PATH = os.path.join(ROOT, "_materijali", "npro_stg2_300.bin")
 
 
 def test_load_ori():

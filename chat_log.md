@@ -211,3 +211,25 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 [Claude] Rev limit fix: 0x022096/0x0220B6/0x0220C0 su unutar 2D tablice (NISU rev limiteri) -- uklonjene. Ostaju samo 0x02B72A i 0x02B73E = 8738 rpm. THERM_ENRICH X-os pronadjena @ 0x02AA02 = [6400..16000] load intern (korak 1600). TEMP_FUEL preimenovan u CTS warm-up korekcija (nema fuel/IAT senzora, implicit CTS index). Deadtime = hardware injector delay (battery voltage × temp indexed), read-only, nije za tuning.
 
 ---
+
+---
+
+**2026-03-17**
+👤 ahej bok analiziraj projekt i molim te nastavi gdje smo stali kada nas je prekinuo limit...nemoj pitati nikakve dozvole samo sibaj.. ako trebas nesto pitaj ako nisi siguran, hval ti
+🤖 Obnovljen kontekst. Testovi fixani (bin putanje + UTF-8). Novi fajlovi u _materijali: RXP300 21 maps=identičan ori_300, rxpstg1 524060=Stage1 260hp (38 bloka/2934B), GTI/WAKE full PCMFlash dumpovi, EEPROM dump. Stage1 260hp mijenja ignition (+1.5-2°, adrese 0x028A0A/B4A/C8A), fuel multipliers, code patch @0x012E00. Čekam uputu za sljedeći korak.
+
+---
+
+---
+
+**2026-03-17**
+👤 pa nebih sada jos gubio vrijeme na 260 jer ro je 1.5l motor, vis eme zanima da bas kompletiramo ovo sto imamo 21 god jer to mi je trenutno akutalno, i spark rcimo mi je interesantan..
+🤖 EEPROM parser implementiran (core/eeprom.py + ui/eeprom_widget.py): hull ID, MPEM SW, datumi programiranja, serijski broj, dealer, odometar. Potvrđeno na 3 uzorka. Spark map_finder nalazi samo 9/53 mapa jer treba ORI za diff kalibraciju.
+
+---
+
+**2026-03-17**
+👤 mogu ti sutra dumpati starije 300 da nademo ori po sw, a budem ti dumpao i te 90 ks spark i gti, 90ks
+🤖 Odlično — dump lista je pripremljena u nastavku.
+
+---

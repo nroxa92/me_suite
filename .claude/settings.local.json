@@ -45,7 +45,9 @@
       "WebFetch(domain:portal.ziptuning.com)",
       "WebFetch(domain:scanmatik.ru)",
       "WebFetch(domain:ecutools.eu)",
-      "WebFetch(domain:chiptuningshop.com)"
+      "WebFetch(domain:chiptuningshop.com)",
+      "Read(//c/Users/SeaDoo/Desktop/ECU//**)",
+      "Read(//c/Users/SeaDoo/Desktop//**)"
     ]
   }
 }

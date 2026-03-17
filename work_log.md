@@ -1119,3 +1119,56 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 
 ### Fajlovi
 - `_materijali/MAP_RESEARCH.md` — nova sekcija nalaza (12 mapa status)
+
+## 2026-03-17 — Nastavak sesije, analiza novih fajlova, fix testova
+
+### Što je napravljeno
+- **test/test_core.py**: ispravke putanja (ori_300 + npro_stg2 u _materijali/), UTF-8 encoding fix za Windows konzolu
+- **Analiza novih bin fajlova** u _materijali:
+  - `RXP 300 21/21mh maps` = identičan ori_300 (0 byte razlika) — stock 300hp ECU
+  - `RXP TEST/rxpstg1nas` = Stage 1 tune za 260hp SW 524060 (2934B razlika u 38 bloka)
+  - `GTI RENT 19` + `WAKE PRO 230 17` = PCMFlash full chip dump (325/315KB, nestandardni format)
+  - `RXP 300 21/21mh eeprom` = 32KB EEPROM (YDV89660E121, 1037550003 MPEM SW, datumi 04/07-05-21)
+
+### Stage 1 260hp (524060) key diff adrese
+- Ignition advance +1.5-2°: 3× 174B blok @ 0x028A0A, 0x028B4A, 0x028C8A (drugačije od 300hp!)
+- Fuel multipliers: 8× 34B blok @ 0x028502-0x028620
+- Code patch: 0x012E00-0x012F00 (256B, 0xC3→0x00) — potencijalni rev limiter bypass
+- Nepoznata tablica: 0x02914A-0x02964A (1280B, sve 0→1)
+- 3 kriptografska bloka (checksum/RSA podpis)
+
+### Fajlovi promijenjeni
+- test/test_core.py — putanje + UTF-8
+
+
+## 2026-03-17 — EEPROM parser + viewer, analiza Spark mapa
+
+### Što je napravljeno
+- **core/eeprom.py** — EepromParser klasa, potvrđeni offset-i na 3 EEPROM uzorka:
+  - 0x0013: datum prvog programiranja (DD-MM-YY ASCII)
+  - 0x001E: datum zadnjeg ažuriranja
+  - 0x0032: MPEM SW ID (10 chars)
+  - 0x0040: servisni SW ID (uvijek "1037500313")
+  - 0x004C: broj programiranja (u8)
+  - 0x004D: ECU serijski broj "SF00HMxxxxx"
+  - 0x0082: Hull ID / VIN "YDVxxxxxxxxx"
+  - 0x0102: dealer naziv (ASCII)
+  - 0x0125: odometar (5-digit ASCII, BRP jedinice — konverzija nepoznata)
+- **ui/eeprom_widget.py** — EepromWidget tab (identifikacija, SW, datumi, odo, dealer, greške)
+- **ui/main_window.py** — integriran EepromWidget kao tab + Fajl menu stavka "Otvori EEPROM dump"
+- **Potvrđeni podaci iz EEPROM-a**:
+  - RXP300 2021: YDV89660E121, MPEM 1037550003, dealer SEA-DOO, odo 17502
+  - Spark 18: YDV64206E414, MPEM 1037525858, dealer JetMedic, odo 60620
+  - RXP20: YDV10275I920, MPEM 1037550003, dealer [nije prog.], odo 15538
+
+### Spark mape — status
+- map_finder pronalazi samo 9/53 mapa na Spark STG2 SW (1037544876)
+- Uzrok: scan metode validiraju vrijednosti specifične za 300hp SC motor
+- Potrebno: Spark ORI dump za diff analizu i kalibraciju scan metoda
+- Bez ORI ne možemo pouzdano locirati Spark ignition/injection/torque adrese
+
+### Fajlovi promijenjeni
+- core/eeprom.py — novo
+- ui/eeprom_widget.py — novo
+- ui/main_window.py — EEPROM tab + menu
+

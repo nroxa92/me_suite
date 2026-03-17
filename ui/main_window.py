@@ -42,6 +42,7 @@ from core.safety_validator import SafetyValidator, Level as SvLevel
 from core.map_differ import MapDiffer
 from ui.calculator_widget import CalculatorWidget
 from ui.diff_viewer import MapDiffWidget
+from ui.eeprom_widget import EepromWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -1597,6 +1598,9 @@ class MainWindow(QMainWindow):
         self.calc_widget = CalculatorWidget()
         self._calc_tab = self.tabs.addTab(self.calc_widget, "Kalkulator")
 
+        self.eeprom_widget = EepromWidget()
+        self._eeprom_tab = self.tabs.addTab(self.eeprom_widget, "EEPROM")
+
         center_vsplit.addWidget(self.tabs)
 
         # Hex + Log — vertikalni split
@@ -1637,6 +1641,8 @@ class MainWindow(QMainWindow):
         self._add_action(fm, "Spremi kao...",       "",       self._save_as)
         fm.addSeparator()
         self._add_action(fm, "Export CSV...",       "",       self._export_csv)
+        fm.addSeparator()
+        self._add_action(fm, "Otvori EEPROM dump...", "",    self._open_eeprom)
         fm.addSeparator()
         self._add_action(fm, "Izlaz  (Ctrl+Q)",    "Ctrl+Q", self.close)
 
@@ -1890,6 +1896,19 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Exportovano: {Path(path).name}")
         except Exception as e:
             QMessageBox.critical(self, "Export greska", str(e))
+
+    # ── EEPROM ────────────────────────────────────────────────────────────────
+
+    def _open_eeprom(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Otvori EEPROM dump", "",
+            "Binary fajlovi (*.bin);;Svi fajlovi (*)"
+        )
+        if not path:
+            return
+        self.eeprom_widget.load_file(path)
+        self.tabs.setCurrentIndex(self._eeprom_tab)
+        self.log_strip.log(f"EEPROM učitan: {path}", "ok")
 
     # ── Diff ──────────────────────────────────────────────────────────────────
 
