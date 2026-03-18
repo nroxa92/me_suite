@@ -1516,3 +1516,50 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 - core/eeprom.py (reverted 0x0125 hipoteza, dodana odo_hhmm() metoda)
 - ui/eeprom_widget.py (odo prikazuje Xh YYmin iz minuta)
 - docs/QA_LOG.md (ispravljen odgovor o radnim satima)
+
+## 2026-03-18 — Spark 900 ACE mape implementirane u map_finder.py
+
+### Što je napravljeno
+- Potpuna binarana analiza Spark injection/ignition/lambda mapa (analyze_spark_injection.py output)
+- Utvrđene točne dimenzije i adrese za sve Spark mape
+- Implementirani Spark scanneri u core/map_finder.py
+- SW-variant gating u find_all() — Spark vs 300hp auto-detect
+- Obrisane temp istraživačke skripte (12 fajlova)
+
+### Ključni nalazi
+- **Injection**: 0x0222BE, 30×20 u16 LE, mirror +0x518 (0x0227D6) — 600 u16, 0 mirror diffs
+- **RPM os**: 0x02225A, 20pt (1920-6656 RPM, raw/4), u16 LE
+- **Load os**: 0x022282, 30pt (3999-33600), u16 LE, monotono
+- **Ignition**: 6 karti @ 0x026A76, stride 0x90, 12×12 u8, 0.75°/bit (9°-42.75° BTDC)
+  - Mirror +0x140, kopije karti 0-5 identične
+- **Lambda**: 4 kopije @ 0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2, 8×16 Q15, λ 0.737-1.004
+- 0x022E42 = lambda Q7 tablica (raw 96-128), NE injection (ispravka QA_LOG greške)
+- Mirror offset za injekciju = +0x518 (isti kao 300hp torque!)
+- 0x0224DC = redak 15+, kol 4 unutar injekcijskog bloka (NIJE početak tablice)
+
+### Testovi
+- Spark: 13 mapa (axis×2, injection, ignition×6, lambda×4) — OK
+- 300hp: 53 mapa — nema regresije
+
+### Fajlovi promijenjeni
+- core/map_finder.py (+150 linija: _SPARK_INJ_DEF, _SPARK_IGN_DEFS, _SPARK_LAMBDA_DEF, 3 scan metode, find_all() gating)
+- Obrisano: analyze_eeprom_odo*.py, analyze_spark_injection.py, eeprom_timer_check.py, research_gti155*.py, spark_research*.py (11 temp fajlova)
+
+## 2026-03-18 — Kraj sesije / status snapshot
+
+### Stanje projekta
+- **300hp (ACE 1630)**: 53 mape, svi scanneri rade, SW 10SW066726 / 10SW040039
+- **Spark 900 ACE**: 13 mapa (injection 30×20, ignition 6×12×12, lambda 4×8×16), SW 1037xxxxxx
+- **EEPROM**: parser radi, radni sati iz circular buffera (min→Xh YYmin)
+- **DTC**: 111 kodova, 3 SW varijante, Spark DTC OFF blokiran (arhitektura drugačija)
+- **Checksum**: CRC32-HDLC, CODE promjene ne zahtijevaju novi CS
+- **GUI**: Medium Dark stylesheet, heatmap tablica, properties panel, undo/redo, CSV export
+- **settings.json**: auto-approve svih alata postavljeno
+
+### TODO za sljedeću sesiju
+- GTI SE 155 (10SW025752) — riješiti konflikt adresa (2 agenta dala različite rezultate)
+  - Stari agent: injection @ 0x02439C (isto kao 300hp)
+  - Novi agent: injection @ 0x022066 (12×16, Spark-like RPM os)
+  - Treba: verifikacijska skripta na gti_155_18_10SW025752.bin
+- Spark rev limiter adresa — nije još pronađena
+- analyze_maps.py — provjeriti što radi i je li korisno zadržati

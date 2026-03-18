@@ -1441,6 +1441,133 @@ _IDLE_RPM_DEF = MapDef(
 )
 
 
+# ─── Spark 900 ACE — mape ─────────────────────────────────────────────────────
+#
+# SW ID: "1037544876" (NPRo STG2), "1037525897" (ORI 2014)
+# Sve adrese verificirane na npro_stg2_spark.bin (0x178000 B)
+#
+# Injection struktura (potvrđena mirror analizom):
+#   RPM os (20pt): 0x02225A, u16 LE, 1920-6656 RPM (raw/4)
+#   Load os (30pt): 0x022282, u16 LE, 3999-33600
+#   Injection data: 0x0222BE, 30×20, u16 LE, range 479-4443 µs
+#   Mirror: +0x518 = 0x0227D6 (potvrđeno 0 diffs na 600 u16)
+#
+# Ignition (6 karti, 12×12 u8, 0.75°/bit):
+#   Base: 0x026A76, stride: 0x90 (=144B), range 12-57 (9°-42.75°BTDC)
+#   Mirror: +0x140 od base (potvrđeno za karti 0-5)
+#
+# Lambda (open-loop AFR cilj, 4 kopije):
+#   Primary: 0x025F5C, 8×16, u16 LE Q15, λ 0.737-1.004
+#   Copies: +0x122 svaka (0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2)
+
+_SPARK_INJ_RPM_AXIS_DEF = MapDef(
+    name         = "Spark RPM os (20pt)",
+    description  = "Spark 900 ACE RPM osa za injection mape. 20 točaka, u16 LE. "
+                   "Stvarni RPM = raw / 4. Raspon: 1920-6656 RPM.",
+    category     = "axis",
+    rows=1, cols=20,
+    byte_order   = "LE", dtype = "u16",
+    scale        = 0.25,
+    offset_val   = 0.0,
+    unit         = "RPM",
+    raw_min      = 7680, raw_max = 26624,
+    notes        = "@ 0x02225A. RPM = raw/4. 20 točaka: 1920-6656 RPM.",
+)
+
+_SPARK_INJ_LOAD_AXIS_DEF = MapDef(
+    name         = "Spark load os (30pt)",
+    description  = "Spark 900 ACE load osa za injection mape. 30 točaka, u16 LE. "
+                   "Raspon: 3999-33600 (relativno opterećenje).",
+    category     = "axis",
+    rows=1, cols=30,
+    byte_order   = "LE", dtype = "u16",
+    scale        = 1.0,
+    offset_val   = 0.0,
+    unit         = "",
+    raw_min      = 3999, raw_max = 33600,
+    notes        = "@ 0x022282. 30 točaka: 3999-33600.",
+)
+
+_SPARK_INJ_DEF = MapDef(
+    name          = "Spark ubrizgavanje (KFTIUP) [µs]",
+    description   = (
+        "Spark 900 ACE injection map. 30×20 tablica (load × RPM). "
+        "Vrijednosti u µs ili BRP internim jedinicama. "
+        "Veće vrijednosti = dulje ubrizgavanje = više goriva. "
+        "ORI raspon: 479-4443, STG2 raspon slično. "
+        "Osi: Y = opterećenje (30pt @ 0x022282), X = RPM (20pt @ 0x02225A)."
+    ),
+    category      = "injection",
+    rows=30, cols=20,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "µs",
+    raw_min       = 400, raw_max = 5000,
+    mirror_offset = 0x518,
+    notes         = (
+        "Spark 900 ACE. Primary @ 0x0222BE, mirror @ 0x0227D6 (+0x518). "
+        "Mirror potvrđen: 0 razlika na 600 u16 vrijednosti. "
+        "RPM os 20pt @ 0x02225A (raw/4=RPM, 1920-6656). "
+        "Load os 30pt @ 0x022282 (3999-33600)."
+    ),
+)
+
+_SPARK_IGN_NAMES = [
+    "base_low_load",
+    "base_mid_load",
+    "base_high_load",
+    "boost_low",
+    "boost_mid",
+    "idle",
+]
+
+def _make_spark_ign_def(idx: int) -> MapDef:
+    addr = 0x026A76 + idx * 0x90
+    return MapDef(
+        name          = f"Spark paljenje #{idx:02d} [{_SPARK_IGN_NAMES[idx] if idx < len(_SPARK_IGN_NAMES) else 'map'}]",
+        description   = (
+            f"Spark 900 ACE ignition mapa #{idx}. 12×12 u8, 0.75°/bit. "
+            f"Vrijednosti 12-57 = 9°-42.75° pred TMT. "
+            f"Smanjiti za detonacije, povećati pažljivo za performanse. "
+            f"Mirror na +0x140 od base."
+        ),
+        category      = "ignition",
+        rows=12, cols=12,
+        byte_order    = "LE", dtype = "u8",
+        scale         = 0.75,
+        offset_val    = 0.0,
+        unit          = "° BTDC",
+        raw_min       = 10, raw_max = 60,
+        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Mirror na 0x{addr+0x140:06X}.",
+    )
+
+_SPARK_IGN_DEFS = [_make_spark_ign_def(i) for i in range(6)]
+
+_SPARK_LAMBDA_DEF = MapDef(
+    name          = "Spark lambda cilj (open-loop) [λ]",
+    description   = (
+        "Spark 900 ACE open-loop AFR korekcija. 8×16 tablica. "
+        "Q15 format: 32768 = 1.0 (λ=1.0, stoichiometric AFR=14.7). "
+        "Vrijednosti <32768 = bogato (više goriva), >32768 = siromasno. "
+        "Raspon: 0.737–1.004 λ. 4 identične kopije."
+    ),
+    category      = "lambda",
+    rows=8, cols=16,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32768.0,
+    offset_val    = 0.0,
+    unit          = "λ",
+    raw_min       = 24000, raw_max = 33000,
+    mirror_offset = 0x122,
+    notes         = (
+        "Spark 900 ACE. 4 kopije: @ 0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2. "
+        "Offset između kopija: +0x122 (290B). Svaka kopija 256B (8×16×2). "
+        "Lambda = raw / 32768. Ne postoji fizička lambda sonda!"
+    ),
+)
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -1515,36 +1642,46 @@ class MapFinder:
 
     def find_all(self, progress_cb: Optional[Callable] = None) -> list[FoundMap]:
         self.results = []
-        self._scan_rpm_axes(progress_cb)
-        self._scan_rev_limiter_known(progress_cb)
-        self._scan_rev_limiter_heuristic(progress_cb)
-        self._scan_ignition(progress_cb)
-        self._scan_injection(progress_cb)
-        self._scan_torque(progress_cb)
-        self._scan_lambda(progress_cb)
-        self._scan_sc(progress_cb)
-        self._scan_cold_start(progress_cb)
-        self._scan_knock_params(progress_cb)
-        self._scan_cts_temp_axis(progress_cb)
-        self._scan_sc_correction(progress_cb)
-        self._scan_temp_fuel(progress_cb)
-        self._scan_lambda_bias(progress_cb)
-        self._scan_lambda_prot(progress_cb)
-        self._scan_lambda_trim(progress_cb)
-        self._scan_torque_opt(progress_cb)
-        self._scan_deadtime(progress_cb)
-        self._scan_dfco(progress_cb)
-        self._scan_idle_rpm(progress_cb)
-        self._scan_accel_enrich(progress_cb)
-        self._scan_start_inj(progress_cb)
-        self._scan_ign_corr(progress_cb)
-        self._scan_therm_enrich(progress_cb)
-        self._scan_eff_corr(progress_cb)
-        self._scan_overtemp_lambda(progress_cb)
-        self._scan_neutral_corr(progress_cb)
-        self._scan_sc_boost_factor(progress_cb)
-        self._scan_lambda_eff(progress_cb)
-        self._scan_dtc(progress_cb)
+        is_spark = self._sw().startswith("1037") and not self._sw().startswith("10SW")
+
+        if is_spark:
+            # Spark 900 ACE mape (SW: 1037xxxxxx)
+            if progress_cb: progress_cb(f"Spark 900 ACE SW detektiran ({self._sw()})...")
+            self._scan_spark_injection(progress_cb)
+            self._scan_spark_ignition(progress_cb)
+            self._scan_spark_lambda(progress_cb)
+        else:
+            # 300hp / 260hp ACE 1630 mape (SW: 10SWxxxxxx ili nepoznat)
+            self._scan_rpm_axes(progress_cb)
+            self._scan_rev_limiter_known(progress_cb)
+            self._scan_rev_limiter_heuristic(progress_cb)
+            self._scan_ignition(progress_cb)
+            self._scan_injection(progress_cb)
+            self._scan_torque(progress_cb)
+            self._scan_lambda(progress_cb)
+            self._scan_sc(progress_cb)
+            self._scan_cold_start(progress_cb)
+            self._scan_knock_params(progress_cb)
+            self._scan_cts_temp_axis(progress_cb)
+            self._scan_sc_correction(progress_cb)
+            self._scan_temp_fuel(progress_cb)
+            self._scan_lambda_bias(progress_cb)
+            self._scan_lambda_prot(progress_cb)
+            self._scan_lambda_trim(progress_cb)
+            self._scan_torque_opt(progress_cb)
+            self._scan_deadtime(progress_cb)
+            self._scan_dfco(progress_cb)
+            self._scan_idle_rpm(progress_cb)
+            self._scan_accel_enrich(progress_cb)
+            self._scan_start_inj(progress_cb)
+            self._scan_ign_corr(progress_cb)
+            self._scan_therm_enrich(progress_cb)
+            self._scan_eff_corr(progress_cb)
+            self._scan_overtemp_lambda(progress_cb)
+            self._scan_neutral_corr(progress_cb)
+            self._scan_sc_boost_factor(progress_cb)
+            self._scan_lambda_eff(progress_cb)
+            self._scan_dtc(progress_cb)
         return self.results
 
     # ── RPM Axis scan ─────────────────────────────────────────────────────────
@@ -2607,6 +2744,115 @@ class MapFinder:
             ))
             if cb: cb(f"  DTC P0523 @ 0x{0x02108E:06X}  code=0x{code_le_0523:04X}  "
                       f"enable={[hex(b) for b in enable_vals_0523]}")
+
+    # ── Spark 900 ACE — scanneri ──────────────────────────────────────────────
+
+    def _scan_spark_injection(self, cb=None):
+        if cb: cb("Trazim Spark injection mapu...")
+        data = self.eng.get_bytes()
+
+        # RPM os (20pt) @ 0x02225A
+        rpm_addr = 0x02225A
+        if rpm_addr + 40 <= len(data):
+            rpm_vals = [int.from_bytes(data[rpm_addr+i*2:rpm_addr+i*2+2], 'little') for i in range(20)]
+            if self._monotone(rpm_vals) and 7000 <= rpm_vals[0] <= 9000:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_INJ_RPM_AXIS_DEF,
+                    address = rpm_addr,
+                    sw_id   = self._sw(),
+                    data    = rpm_vals,
+                ))
+                if cb: cb(f"  Spark RPM os @ 0x{rpm_addr:06X}: {[v//4 for v in rpm_vals[:5]]}...{[v//4 for v in rpm_vals[-3:]]} RPM")
+
+        # Load os (30pt) @ 0x022282
+        load_addr = 0x022282
+        if load_addr + 60 <= len(data):
+            load_vals = [int.from_bytes(data[load_addr+i*2:load_addr+i*2+2], 'little') for i in range(30)]
+            if self._monotone(load_vals) and 3000 <= load_vals[0] <= 5000:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_INJ_LOAD_AXIS_DEF,
+                    address = load_addr,
+                    sw_id   = self._sw(),
+                    data    = load_vals,
+                ))
+                if cb: cb(f"  Spark load os @ 0x{load_addr:06X}: {load_vals[:3]}...{load_vals[-3:]}")
+
+        # Injection data (30x20) @ 0x0222BE
+        addr = 0x0222BE
+        n    = _SPARK_INJ_DEF.rows * _SPARK_INJ_DEF.cols  # 30×20 = 600
+        size = n * 2  # u16 = 1200 bytes
+
+        if addr + size > len(data):
+            if cb: cb(f"  Spark injection: izvan granica @ 0x{addr:06X}")
+            return
+
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        mn, mx = min(vals), max(vals)
+
+        if _SPARK_INJ_DEF.raw_min <= mn and mx <= _SPARK_INJ_DEF.raw_max + 1000:
+            self.results.append(FoundMap(
+                defn    = _SPARK_INJ_DEF,
+                address = addr,
+                sw_id   = self._sw(),
+                data    = vals,
+            ))
+            mirror = addr + _SPARK_INJ_DEF.mirror_offset
+            if cb: cb(f"  Spark injection @ 0x{addr:06X}  raw=[{mn}–{mx}]"
+                      f"  mirror @ 0x{mirror:06X}")
+        else:
+            if cb: cb(f"  Spark injection @ 0x{addr:06X}: validacija pala raw=[{mn}–{mx}]")
+
+    def _scan_spark_ignition(self, cb=None):
+        if cb: cb("Trazim Spark ignition mape...")
+        data = self.eng.get_bytes()
+        found = 0
+
+        for idx in range(6):  # 6 karti (0-5), potvrđena mirror kopija
+            addr = 0x026A76 + idx * 0x90
+            if addr + 144 > len(data):
+                continue
+            raw = list(data[addr:addr + 144])
+            in_range = sum(1 for v in raw if 10 <= v <= 60)
+            var = max(raw) - min(raw)
+            if in_range / 144 >= 0.90 and var >= 10:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_IGN_DEFS[idx],
+                    address = addr,
+                    sw_id   = self._sw(),
+                    data    = raw,
+                ))
+                found += 1
+                if cb: cb(f"  Spark ignition #{idx:02d} @ 0x{addr:06X}"
+                          f"  raw=[{min(raw)}–{max(raw)}]"
+                          f"  ({min(raw)*0.75:.1f}°–{max(raw)*0.75:.1f}°BTDC)")
+
+        if cb: cb(f"  Spark ignition: {found}/6 karti pronađeno")
+
+    def _scan_spark_lambda(self, cb=None):
+        if cb: cb("Trazim Spark lambda mape...")
+        data = self.eng.get_bytes()
+
+        addrs = [0x025F5C, 0x02607E, 0x0261A0, 0x0262C2]
+        n = _SPARK_LAMBDA_DEF.rows * _SPARK_LAMBDA_DEF.cols  # 8×16 = 128
+        size = n * 2  # 256B
+
+        found = 0
+        for addr in addrs:
+            if addr + size > len(data):
+                continue
+            vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+            mn, mx = min(vals), max(vals)
+            if _SPARK_LAMBDA_DEF.raw_min <= mn and mx <= _SPARK_LAMBDA_DEF.raw_max + 1000:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_LAMBDA_DEF,
+                    address = addr,
+                    sw_id   = self._sw(),
+                    data    = vals,
+                ))
+                found += 1
+                if cb: cb(f"  Spark lambda @ 0x{addr:06X}  λ=[{mn/32768:.3f}–{mx/32768:.3f}]")
+
+        if cb: cb(f"  Spark lambda: {found}/4 kopija pronađeno")
 
     # ── Diff-guided scanner ───────────────────────────────────────────────────
 

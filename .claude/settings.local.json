@@ -49,7 +49,10 @@
       "Read(//c/Users/SeaDoo/Desktop/ECU//**)",
       "Read(//c/Users/SeaDoo/Desktop//**)",
       "Bash(PYTHONIOENCODING=utf-8 python analyze_spark_injection.py 2>&1 | tail -n 150)",
-      "Bash(PYTHONIOENCODING=utf-8 python analyze_spark_injection.py 2>&1 | head -n 120)"
+      "Bash(PYTHONIOENCODING=utf-8 python analyze_spark_injection.py 2>&1 | head -n 120)",
+      "Bash(PYTHONIOENCODING=utf-8 python test/test_core.py 2>&1 | tail -20)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \"\nfrom core.engine import ME17Engine\nfrom core.map_finder import MapFinder\n\neng = ME17Engine\\(\\)\neng.load\\('_materijali/npro_stg2_spark.bin'\\)\nprint\\(f'SW: {eng.info.sw_id}'\\)\n\nmf = MapFinder\\(eng\\)\nresults = mf.find_all\\(lambda s: print\\(f'  {s}'\\)\\)\nprint\\(f'Ukupno: {len\\(results\\)} mapa'\\)\nfor r in results:\n    print\\(f'  {r.defn.category:12} @ 0x{r.address:06X}  {r.defn.name[:50]}'\\)\n\" 2>&1)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \"\nfrom core.engine import ME17Engine\nfrom core.map_finder import MapFinder\neng = ME17Engine\\(\\)\neng.load\\('_materijali/ori_300.bin'\\)\nprint\\(f'SW: {eng.info.sw_id}'\\)\nmf = MapFinder\\(eng\\)\nresults = mf.find_all\\(\\)\nprint\\(f'Ukupno: {len\\(results\\)} mapa'\\)\ncats = {}\nfor r in results:\n    cats[r.defn.category] = cats.get\\(r.defn.category, 0\\) + 1\nfor cat, cnt in sorted\\(cats.items\\(\\)\\):\n    print\\(f'  {cat}: {cnt}'\\)\n\" 2>&1)"
     ]
   }
 }
