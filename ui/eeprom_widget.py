@@ -99,7 +99,7 @@ class EepromWidget(QWidget):
         self._grp_id    = self._make_group("Identifikacija vozila")
         self._grp_sw    = self._make_group("Software verzije")
         self._grp_dates = self._make_group("Datumi programiranja")
-        self._grp_odo   = self._make_group("Odometar")
+        self._grp_odo   = self._make_group("Radni sati / Odometar")
         self._grp_dealer = self._make_group("Dealer / servis")
         self._grp_errors = self._make_group("Dijagnostika / upozorenja")
 
@@ -118,10 +118,10 @@ class EepromWidget(QWidget):
         self._f_date2   = self._add_field(self._grp_dates, "Zadnje ažuriranje")
         self._f_pcount  = self._add_field(self._grp_dates, "Broj programiranja")
 
-        # Odo
-        self._f_odo_raw = self._add_field(self._grp_odo, "Odo (BRP jedinice)")
-        self._f_odo_note = self._add_field(self._grp_odo, "Napomena")
-        self._f_odo_note.set_value("BRP vlasničke jedinice — exact konverzija nepoznata")
+        # Radni sati / odometar
+        self._f_odo_raw = self._add_field(self._grp_odo, "Radni sati (odo)")
+        self._f_odo_note = self._add_field(self._grp_odo, "Sirova vrijednost (min)")
+        self._f_odo_note.set_value("—")
         self._f_odo_note.set_color("#AAAAAA")
 
         # Dealer
@@ -217,9 +217,9 @@ class EepromWidget(QWidget):
         self._f_date2.set_value(_v(info.date_last_update))
         self._f_pcount.set_value(str(info.prog_count) if info.prog_count else "—")
 
-        self._f_odo_raw.set_value(
-            str(info.odo_raw) if info.odo_raw else "—"
-        )
+        self._f_odo_raw.set_value(info.odo_hhmm())
+        self._f_odo_note.set_value(str(info.odo_raw) if info.odo_raw else "—")
+        self._f_odo_note.set_color("#667788")
 
         self._f_dealer.set_value(_v(info.dealer_name, "Nije programirano"))
 

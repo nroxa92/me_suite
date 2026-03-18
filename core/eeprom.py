@@ -21,10 +21,12 @@ from typing import Optional
 
 EEPROM_SIZE = 32_768  # 32KB
 
-# ─── EEPROM odometar — BRP unique units ──────────────────────────────────────
-# Mjerna jedinica nepoznata bez BRP dokumentacije.
-# Empirijski: RXP300 2021 = 17502 pri ~175h(?), Spark 2018 = 60620 pri ~148h
-# Moguće da su to engine ticks, timer pulses ili neka kompozitna jedinica.
+# ─── EEPROM offset 0x0125 — neidentificirano polje ───────────────────────────
+# Vrijednost: 5-digit ASCII string. Ponavljaju se "60620", "BRP10", ili 0x00.
+# NIJE hw timer ni radni sati — hipoteza HHHM odbačena (nije konzistentno).
+# Pravi radni sati su u circular bufferu (isti mehanizam kao odometar):
+#   064/063 HW: @ 0x0562 (u16 LE, minute), backup: 0x0D62 / 0x1562
+#   062 HW: @ 0x5062 → 0x4562 → 0x1062 (rotacija)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -47,12 +49,20 @@ class EepromInfo:
     # Vlasnik / dealer
     dealer_name: str = ""       # Dealer naziv (iz BUDS2)
 
-    # Odometar
-    odo_raw: int = 0            # BRP unutarnje jedinice (exact conversion nepoznata)
+    # Odometar (circular buffer, u minutama)
+    odo_raw: int = 0            # Vrijednost iz circular buffera (u16 LE, minute); adresa ovisi o HW tipu
 
     # Meta
     file_size: int = 0
     source_path: str = ""
+
+    def odo_hhmm(self) -> str:
+        """Formatira odometar (minute) kao HHHh MMmin."""
+        if self.odo_raw <= 0:
+            return "—"
+        hours = self.odo_raw // 60
+        minutes = self.odo_raw % 60
+        return f"{hours}h {minutes:02d}min"
 
     def model_year_guess(self) -> Optional[str]:
         """Pokušaj ekstrakcije godine iz hull ID (YDV89660E121 → E=2014? 1=2021?)."""

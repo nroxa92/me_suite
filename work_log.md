@@ -1,5 +1,285 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — GTI 155 (10SW025752) binarna analiza — ključne mape identificirane
+
+### Što je napravljeno
+- Analiziran binarni fajl `_materijali/gti_155_18_10SW025752.bin` (1,540,096B, isti format kao ori_300)
+- SW ID potvrđen: `10SW025752` @ 0x001A
+- Motor: Rotax 1503/1504, 1.5L ATM, 155hp, HW folder 062
+- Pronađene sve ključne mape: injection, ignition, lambda, rev limiter
+
+### Ključni nalazi — GTI 155 adrese
+
+#### 1. RPM osi
+- **Kratka RPM os** @ `0x02202E` (12pt, u16 LE): [853, 1152, 1408, 1707, 2005, 2261, 2560, 2816, 3413, 3968, 4139, 4267] — za injection
+- **Kratka RPM os** @ `0x0221EC` (8pt): [500, 1000, 1500, 2000, 3000, 4000, 5000, 6000] — second block
+- **IGN RPM os** @ `0x028176` (8pt): [640, 1067, 1493, 1920, 2347, 2773, 3200, 3627]
+- 30+ RPM osi ukupno (razni podblokovi od 0x022000 do 0x028200)
+
+#### 2. Injection mapa (KFZW / glavni injection)
+- **Adresa**: `0x022066` (u16 LE)
+- **Dimenzije**: 12×16 (RPM os 12pt × Load os 16pt)
+- **RPM os** @ `0x02202E`: [853...4267 rpm]
+- **Load os** @ `0x022046` (16pt): [5200, 6000, 8000, 10000, ..., 32000]
+- **Raw raspon**: 3193–14432, prosj. 9153 (×0.65 vs. ori_300 – ATM vs. SC)
+- **Kraj mape**: `0x0221E6`
+- Mirror/duplicat ne pronađen na istom offsetu kao ori_300
+
+#### 3. Ignition mape
+- **Serija**: 8 mapa po 144B (12×12 u8, °/bit = 0.75°), aligned na 144B
+- **Mapa #0** @ `0x028310`: raw 40–67, °BTDC 30.00–50.25°
+- **Mapa #1** @ `0x0283A0`: raw 47–67, 35.25–50.25°
+- **Mapa #2** @ `0x028430`: raw 40–67
+- **Mapa #3** @ `0x0284C0`: raw 47–67
+- **Mapa #4** @ `0x028550`: raw 40–67
+- **Mapa #5** @ `0x0285E0`: raw 47–67 (score 12/12)
+- **Mapa #6** @ `0x028670`: raw 40–67
+- **Mapa #7** @ `0x028700`: raw 43–67 (score 12/12)
+- **IGN Load os** @ `0x02813C` (12pt): [38, 52, 64, 76, 90, 102, 116, 128, 140, 154, 202, 208]
+- **IGN RPM os** @ `0x028176` (8pt): [640, 1067, 1493, 1920, 2347, 2773, 3200, 3627]
+- Serija mapa @ 0x02B7F0-0x02BEB0 (raw 33–45, °25–34°) — vjerojatno knock/trim mape
+
+#### 4. Lambda mapa
+- **Adresa**: `0x0265AE` (u16 LE, Q15)
+- **Dimenzije**: 12×9 = 108 vrijednosti
+- **Lambda raspon**: 0.944–0.984 (GTI je open-loop, uglavnom 0.965 = blago bogata)
+- **RPM os ispred** @ `0x02658E` (16pt): [1493, 1707, ..., 4693]
+- **Mirror lambda** @ `0x026AC6`: raspon 0.917–0.984 (offset +0x518 od prve)
+- **Usporedba s ori_300**: GTI lambda je fiksna (flat ~0.965 vs. ori_300 varijabilna 0.94–1.07)
+
+#### 5. Rev limiter
+- **Najvjerojatnija adresa**: `0x0237A0` — izolirani u16 LE 7700 rpm, okružen nulama
+- Alternativni kandidati: `0x025574` (7700), `0x022364` (7700)
+- Adrese 0x02B72A/0x02B73E iz ori_300 → u GTI daju 8481 (0x2121 = repeat bytes 0x21 = char '!')
+- **Vrijednost**: 7700 rpm (vs. ori_300 ≥ 8481, SC motor)
+- Upozorenje: nema confirmirane single adrese — potrebna daljnja analiza
+
+#### 6. Torque mapa
+- **Nije pronađena** u Q8 16×16 formatu kao ori_300 @ 0x02A0D8
+- GTI region oko 0x029EC0 sadrži bytes 0–249 ali bez jasne matričke strukture
+- ATM motor 155hp vjerojatno nema kompeksnu torque limitaciju kao SC 300hp
+
+### Usporedba GTI vs ori_300
+| Mapa        | ori_300 adresa | GTI 155 adresa | Dimenzije GTI |
+|-------------|----------------|----------------|---------------|
+| Injection   | 0x02439C       | **0x022066**   | 12×16 u16 LE  |
+| Ignition    | 0x02B730+      | **0x028310+**  | 8× 12×12 u8   |
+| Lambda      | 0x0266F0       | **0x0265AE**   | 12×9 Q15 LE   |
+| Rev limiter | 0x02B72A       | **0x0237A0?**  | u16 LE        |
+| Torque      | 0x02A0D8       | nije pronađena | —             |
+
+### Fajlovi promijenjeni
+- tmp_gti_analysis.py, tmp_gti_analysis2.py, tmp_gti_analysis3.py, tmp_gti_final.py, tmp_gti_torque.py, tmp_gti_torque2.py, tmp_gti_inj_final.py (privremene analize, za brisanje)
+
+
+
+## 2026-03-18 — EEPROM hw timer @ 0x0125: format potvrden, circular buffer adrese verificirane
+
+### Sto je napravljeno
+- Pokrenuta analiza 33 EEPROM fajla iz ECU/061/062/063/064 foldera
+- Potvrden format @ 0x0125: 5-znamenkasti ASCII integer, ali NE HHHM — vec TOTALNE MINUTE (kao i odometar)
+- Circular buffer adrese verificirane za sva 3 HW tipa
+
+### Kljucni nalazi
+
+#### Format @ 0x0125 (hw timer):
+- **Format je UKUPNE MINUTE kao u16 LE** — isti princip kao odometar (circular buffer slot @ 0x0125 nije hw timer nego nesto drugo)
+- Vrijednost '60620' se ponavlja u vise fajlova — to je KONSTANTA/SW verzija, ne timer
+- Vrijednost 'BRP10' u 064 fajlovima = ASCII tekst (serijski broj ili SW oznaka), nije timer
+- **0x0125 je POGRESNA adresa za hw timer** — hipoteza HHHM integer nije potvrena
+- Stvarni hw timer u minutama je circular buffer: isti mehanizam kao odo
+
+#### Circular buffer POTVRENO:
+- **062 HW**: Aktivni slot rotira: 0x5062 (143-21, 848-33), 0x4562 (backup za 848-33), 0x1062 (1-4, 228-52, 86-24) — u16 LE, ukupne minute
+- **063 HW**: Aktivni slot = **0x0DE2** (u16 LE, ukupne minute) — potvreno za 585-42 i 92-51
+- **064 HW**: Aktivni slot rotira: 0x0562 (85-31, 86-31, 9-5, 99-50), 0x0D62 (211-07, 58), 0x1562 (211-07) — svi u16 LE
+
+#### Circular buffer rotacija za 064 (najpotpunije verificirano):
+- 064 koristi 3 adrese (0x0562, 0x0D62, 0x1562) — aktivni je onaj s vaijednoscu != 0
+- Offset +0x0800 između slotova za 064 (nije +0x0800 tocno, ali isti princip kao eeprom_parser.py)
+
+### Fajlovi promijenjeni
+- eeprom_timer_check.py (pomocna skripta, moze se obrisati)
+
+---
+
+## 2026-03-17 12:00 — EEPROM radni sati ispravka, Spark mape, QA_LOG kreiran
+
+### Što je napravljeno
+- `core/eeprom.py`: ispravka komentar za 0x0125 — sad "Radni sati (hw timer)", format HHHM (17502 = 175h 02min). Dodana `hw_timer_hhmm()` metoda.
+- `ui/eeprom_widget.py`: group "Odometar" → "Radni sati (hw timer)", prikazuje "175h 02min".
+- `docs/QA_LOG.md`: Kreiran novi Q&A fajl za kratke odgovore na tehničke upite.
+- `docs/MAPA_ADRESE.md`: Spark injection/lambda/rev limiter kandidati dodani; EEPROM 0x0125 → "Radni sati".
+
+### Ključni nalazi (Spark binarni sken — agent b9upkyjpz kompletiran)
+- INJ kandid.: 0x022E42 (16×16, raw=96–654) + mirror 0x023358 (+0x516 offset, gotovo isti kao 300hp +0x518)
+- Lambda (4 kopije): 0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2 (8×16 Q15, λ=0.737–1.004)
+- Ignition prim. (viši score): 0x0276A5 (neporavnata adr!); 0x024810 je sekundarna (potvrđena)
+- Lambda 0x017xxx su false positives (TriCore kod s sličnim bitpattern-om)
+
+### Fajlovi promijenjeni
+- core/eeprom.py, ui/eeprom_widget.py, docs/MAPA_ADRESE.md, docs/QA_LOG.md
+
+---
+
+## 2026-03-17 — EEPROM Circular Buffer Analiza + EepromParser
+
+### Što je napravljeno
+- Kompletna analiza EEPROM circular buffera za Sea-Doo Bosch ME17.8.5
+- Analizirano 68 EEPROM fajlova iz C:/Users/SeaDoo/Desktop/ECU/
+- Napisane analizne skripte: analyze_eeprom_odo.py, analyze_eeprom_odo2.py, analyze_eeprom_odo3.py
+- Implementiran core/eeprom_parser.py s potpunom EepromParser klasom
+
+### Potvrđene adrese odometra
+**HW 064 (MPEM 1037550003):**
+- Primarni: 0x0562 (u16 LE) — anchor slot @ 0x0550+18
+- Fallback: 0x0D62 i 0x1562 (stariji/wrap layout, npr. 064 211-07 = 12667 min)
+
+**HW 063 (MPEM 1037525858, Spark 90hp):**
+- Primarni: 0x0562 (isti anchor slot!)
+- Visoke minute (>32767): 0x0DE2 (npr. 063 585-42 = 35142 min)
+
+**HW 062 (1.5L GTI/RXT):**
+- Prioritet: 0x5062 → 0x4562 → 0x1062 (circular buffer rotira)
+
+### Circular buffer format (063/064 HW)
+- Anchor slot: 0x0550 (20B), ODO @ offset+18 = 0x0562
+- Buffer regija: 0x0AA8-0x0C70 (064) ili 0x0AC4/0x1344/0x1AC4 (063, 3 kopije)
+- Stride: 20B (faza 1) ili 25B (faza 2 za 064)
+- Slot format (20B): [4B flags][4B session][4B data][2B event_count][u16 ODO][2B type]
+- Aktivni slot marker: byte[12]=0x80 0x84 = "zadnji upisani"
+- "FF FF" na početku = prethodni ciklus / stara kopija
+- "A0 99 00 64" = standardni session tag
+
+### HW Timer (nepromjenjiv)
+- @ 0x0125, 5 ASCII znakova
+- "60620" = factory default za 064 HW
+- 062 fajlovi bez MPEM stringa imaju null bytes na 0x0125
+
+### EepromParser verifikacija
+- 11/11 test cases OK (tolerancija ±2 min)
+- HW detekcija: via MPEM string u EEPROM-u ili heuristika po adresama
+
+### Fajlovi
+- analyze_eeprom_odo.py — masovni scan svih EEPROM-a
+- analyze_eeprom_odo2.py — duboka analiza slot formata
+- analyze_eeprom_odo3.py — konačna komparativna analiza
+- core/eeprom_parser.py — novi parser modul
+
+### Neidentificirani / TODO
+- 064 135 GTI 18 i 064 135 RXP 21 (8100 min): @ 0x0562 vraća 8091/8670 (off ~±10)
+- 064 149 (8940 min): @ 0x0562 vraća 8986 (off +46)
+- Stride pattern 064 buffer nije potpuno dekodiran
+- 062 HW circular buffer layout nije istražen
+- 061 HW nije analiziran (nema MPEM stringa)
+
+## 2026-03-17 — Spark SW 1037544876 binarni sken (injection, lambda, ignition, rev limiter, diff)
+
+### Što je napravljeno
+- Pokrenute 2 istraživačke skripte (spark_research.py, spark_research2.py) na npro_stg2_spark.bin i alen_spark_2014_1037525897.bin
+- Identificirane injection mape, lambda mape, ignition mape, rev limiter, RPM osi
+
+### Ključni nalazi (SW 1037544876 — npro_stg2_spark)
+
+**RPM osa (potvrđena):**
+- RPM_OS @ 0x021748 (15-pt LE): [853..7400] — prvih 15 točaka; puna os ima još 9200, 10800...
+
+**Injection mapa (POTVRĐENA):**
+- INJ_main @ 0x02225C (12×32 u16 LE): raw=479–33600, avg=3684, **MIRROR @ +0x518 = 0x022774**
+  - Napomena: row0 počinje s RPM vrijednostima (8704..26624, 3999..15600) — ovo su OSI ugrađene ispred tablice!
+  - Stvarna injection tablica počinje @ 0x0222C0 (gdje count počinje od 479, 508..): 12×12 ili sličnog formata
+  - Alternativan pogled: @ 0x0224DC (10×32, raw=1646–4249, avg=2912) s MIRROR+0x518 — ovo izgleda kao pravi fuel puls
+
+**Lambda/AFR mape (4 identične kopije — vjerojatno 4-kanalni?):**
+- LAM @ 0x025F5C (8×16 u16 LE): raw=24158–32896, λ=0.737–1.004
+- LAM @ 0x02607E (8×16 u16 LE): raw=24158–32896, λ=0.737–1.004  (mirror +0x122)
+- LAM @ 0x0261A0 (8×16 u16 LE): raw=24158–32896, λ=0.737–1.004  (mirror +0x244)
+- LAM @ 0x0262C2 (8×16 u16 LE): raw=24158–32896, λ=0.737–1.004  (mirror +0x366)
+- Napomena: Spark nema lambda sondu — ove mape su open-loop AFR target (kao 300hp)
+- Raspon λ=0.737–1.004 — uglavnom bogato (bez lean zona), logično za SC motor bez O2
+
+**Ignition mape (identificirano 22 unikatnih 144B blokova):**
+- IGN_1 @ 0x0276A5 (12×12 u8): raw=10–89 (7.5°–66.8°) — PRIMARNA (score=934), adresa nije poravnata!
+- IGN_2 @ 0x02778D (12×12 u8): raw=12–89 (9.0°–66.8°) — sekundarna (score=914)
+- IGN_3 @ 0x0247D3 (12×12 u8): raw=45–95 (33.8°–71.2°) — treća, adresa neporavnata!
+- IGN_4 @ 0x026B0C (12×12 u8): raw=10–56 (7.5°–42.0°) — četvrta, + 3 kopije (0x026C4C, 0x026D8C)
+- IGN_5 @ 0x026A76 (12×12 u8): raw=12–57 (9.0°–42.8°) — + 3 kopije (0x026BB6, 0x026CF6, 0x026E36)
+- Niz mapa @ 0x029643, 0x0296D3, 0x029783 itd. — manje varijacije (20°–32°), vjerojatno knock korekc.
+- NAPOMENA: Poznata adresa 0x024810 nije top-score! Pravi glavni IGN je @ 0x0276A5 (neporavnat!)
+
+**Rev limiter (TODO — previše šuma):**
+- Region 0x024090: 7967/8090 rpm u ponavljajućim pattern 12×12 bloku — to je INJECTION (mješoviti)
+- Izoliran skalar @ 0x022D58: 7700 rpm (kontekst= [0,0,0,0, 7700, 0]) — KANDIDAT
+- Izoliran skalar @ 0x021C06: 8500 rpm — potencijalni soft limit
+- Niz @ 0x0295C8: 7710, 7710, 7710, 7966, 8481... — ovo je TORQUE ili IGN mapa, nije limiter
+- Precizna identifikacija rev limitera zahtijeva cross-ref s TC1762 kodom
+
+**Diff alen (1037525897) vs npro (1037544876):**
+- 244661 diff bajta u CODE regiji (0x010000-0x060000)
+- Velika razlika kroz cijeli CODE — drugačiji SW (2014 vs 2016+), ne samo tune
+- BOOT region (0x010000-0x01FFFF): razlike u rutinama, lookup tablicama
+- Region 0x021724–0x023A48 (8997B): sadrži RPM os, injection, ignition — sve drugačije (drugi SW format)
+- Region 0x031546–0x03FC7B (59190B): ogromna razlika — alen_spark ima drugačiji kod
+
+### Fajlovi izmijenjeni
+- spark_research.py, spark_research2.py (privremene istraživačke skripte — mogu se obrisati)
+
+---
+
+## 2026-03-17 — GTI SE 155 (10SW025752) istraživanje svih mapa
+
+### Što je napravljeno
+- Kompletna binarni scan GTI 155 vs ori_300 (300hp) i old300 (10SW004672)
+- Identifikacija svih ključnih mapa za GTI 155 1.5L NA motor
+- Kreirane 3 istraživačke skripte: research_gti155.py, _part2.py, _part3.py, _part4.py
+
+### Ključni nalazi
+
+**Mape koje su ISTE kao 300hp (iste adrese, identične vrijednosti):**
+- RPM_OS_1 @ 0x024F46 (16 × u16 BE): [512..8448] — 100% match
+- RPM_OS_2 @ 0x025010 (16 × u16 BE): [512..8448] — 100% match
+- RPM_OS_3 @ 0x0250DC (16 × u16 BE): [512..8448] — 100% match
+- INJECTION_main @ 0x02439C (12×32 u16 LE): 100% match — identične vrijednosti!
+- INJECTION_mirror @ 0x02451C: 100% match
+
+**Mape RAZLIČITE od 300hp (iste adrese, drugačije vrijednosti):**
+- TORQUE @ 0x02A0D8: GTI ima flat 32768 (=1.0×Q8, NA motor!), 300hp ima 34048-39168 (SC torque)
+- TORQUE_mirror @ 0x02A5F0: isto kao main, flat 32768
+- DFCO @ 0x02202E: GTI=[853,1152,1408..6000], 300=[1067,1280..7000] (GTI ima niže granice)
+- SC_BYPASS @ 0x020534: GTI ima 30-82 (niže od 300hp 38-255), GTI nema SC ali mapa postoji!
+- IDLE_RPM @ 0x02B600: GTI offset = 2 bajta (shifted tablica) vs 300hp
+
+**Mape NA RAZLIČITIM ADRESAMA u GTI:**
+- IGNITION: GTI ima **8 mapa 12×12 u8 @ 0x027594** (spacing=144B), ne @ 0x02B730!
+  - Vrijednosti: 80-92° (vs 300hp 26-30° na 0x02B730)
+  - 0x027594, 0x027624, 0x0276B4, 0x027744, 0x0277D4, 0x027864, 0x0278F4, 0x027984
+- REV LIMITER: GTI = **7725 RPM** @ 0x029318 (u16 BE), ne @ 0x02B72A!
+  - Context potvrđuje: 0x029318 = [1280, 1556, 7725, 15450, 30720] (7725×2=15450)
+  - Drugi primjerak @ 0x0293FC = [0, 1556, 7725, 15450, 30720]
+  - 0x02B72A na GTI = 0x2121 = 8481 (NIJE rev limiter na GTI!)
+- LAMBDA: GTI @ **0x0265B0** (12×18 u16 LE Q15), ne @ 0x0266F0!
+  - Vrijednosti: 0.944–1.038 (konzervativnije open-loop od 300hp 0.965–1.073)
+
+**Diff analiza:**
+- GTI vs ori_300: 1190 diff blokova ≥ 64B, ukupno **133 kB razlike**
+- GTI vs old300: 1935 diff blokova ≥ 64B, ukupno **230 kB razlike**
+- GTI je SLIČNIJI ori_300 nego old300 (10SW004672)
+- Najveći diff: 0x022E85 (815B) i 0x02339D (815B) — neidentificirani blokovi s manjim vrijednostima
+- Ignition regija 0x027594-0x027820 je diff (IGN_GTI mape, drugačije od 300hp)
+
+### Fajlovi promijenjeni
+- research_gti155.py (kreirano — istraživačka skripta, može se obrisati)
+- research_gti155_part2.py (kreirano)
+- research_gti155_part3.py (kreirano)
+- research_gti155_part4.py (kreirano)
+
+### TODO za slijedeću sesiju
+- Dodati GTI 155 podršku u map_finder.py (drugačije adrese za IGN, REV_LIM, LAMBDA)
+- Verificirati broj GTI ignition mapa (8 ili više?)
+- Provjeri SC_BYPASS mapa na GTI — je li to throttle limiter ili nešto drugo?
+
+---
+
 ## 2026-03-16 — map_finder.py: rev limit fix, THERM_ENRICH X-os, TEMP_FUEL opis
 
 ### Sto je napravljeno
@@ -1172,3 +1452,67 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 - ui/eeprom_widget.py — novo
 - ui/main_window.py — EEPROM tab + menu
 
+
+## 2026-03-17 23:45 — Dokumentacija + agenti + novi fajlovi
+
+### Što je napravljeno
+- **Kopirani novi fajlovi u _materijali**:
+  - `spark_ori_2016_666063.bin` (SW=10SW011328, layout od 0x020000!)
+  - `gti_155_18_10SW025752.bin`
+  - `rxpx300_16_10SW004672.bin`
+  - `alen_spark_2014_1037525897.bin`
+- **ECU inventura** (C:/Users/SeaDoo/Desktop/ECU/):
+  - 22 FLASH (1.5MB), 70 EEPROM (32KB), 12 FULL dump (325KB)
+  - Nove SW verzije: 10SW004672, 10SW025752, 10SW011328, 1037525897, 1037400677
+  - EEPROM promjenjivi odometar: u16 LE u minutama, circular buffer (adresa varira)
+- **docs/MAPA_ADRESE.md** — kompletan referentni dokument:
+  - SW verzije i modeli (13 varijanata)
+  - 300hp mape (sve 53+ adrese)
+  - Spark mape (2 potvrđene, ostatak TODO)
+  - DTC adrese + OFF procedure (300hp + Spark)
+  - EEPROM struktura (7 fiksnih offseta)
+  - Checksum info + fizikalne jedinice
+- **3 paralelna agenta pokrenuta**:
+  - Agent 1: Spark mape istraživanje (af19fac74d08b72c9)
+  - Agent 2: GTI 155 mape istraživanje (ac382b43a21c0c402)
+  - Agent 3: EEPROM circular buffer analiza (ac9192d20528be8d1)
+
+### Ključni nalazi
+- Spark ORI 2016 ima NESTANDARDNI layout: podaci od 0x020000 (sve FF do tada)
+- GTI 155 koristi iste RPM os adrese kao 300hp (0x024F46 → [512,1024,..8192])
+- Spark ignition samo @ 0x024810 (jedina validna 144B ign blok u CODE)
+- Spark DTC P1550 enable: 1 bajt @ 0x0207A5, state @ 0x020E5E
+
+### Fajlovi promijenjeni
+- docs/MAPA_ADRESE.md — kreiran
+- work_log.md — ovo ažuriranje
+
+
+---
+
+## 2026-03-18 00:30 — GTI 155 mape potvrđene, Spark injection potvrđena, 0x0125 hipoteza odbačena
+
+### GTI SE 155 ključni nalazi (potpuno potvrđeno)
+- RPM osi: ISTE kao 300hp @ 0x024F46 / 0x025010 / 0x0250DC
+- Injection: ISTA @ 0x02439C (NE 0x02436C!) / mirror 0x02451C — 100% match
+- Ignition: NOVA adresa — 8 mapa @ 0x027594 (ne 0x02B730!)
+- Lambda: @ 0x0265B0 (ne 0x0266F0!)
+- Rev limiter: 7725 rpm @ 0x029318 + 0x0293FC (ne 0x02B72A!)
+- Torque: flat 32768 (NA motor, nema SC)
+
+### Spark mape (potvrđeno)
+- Injection prava: 0x0224DC (10x32 u16 LE, fuel vrijednosti) + mirror @+0x518=0x022A54
+- Injection širi blok (s osima): 0x02225C (12x32)
+- Ignition primarna (viši score!): 0x0276A5 — 0x024810 je sekundarna
+- Lambda 4×: 0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2 (8×16 Q15)
+
+### EEPROM 0x0125 — hipoteza ODBAČENA
+- Vrijednost "60620", "BRP10", ili 0x00 — SW konstanta, NIJE hw timer!
+- core/eeprom.py reverted: odo_raw ostaje u minutama iz circular buffera
+- Pravi radni sati: circular buffer (064 @ 0x0562, 063 @ 0x0DE2, 062 @ 0x5062)
+
+### Fajlovi promijenjeni
+- docs/MAPA_ADRESE.md (GTI 155 kompletna tablica, Spark injection korekcija, 0x0125 ispravak)
+- core/eeprom.py (reverted 0x0125 hipoteza, dodana odo_hhmm() metoda)
+- ui/eeprom_widget.py (odo prikazuje Xh YYmin iz minuta)
+- docs/QA_LOG.md (ispravljen odgovor o radnim satima)

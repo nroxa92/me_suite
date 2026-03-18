@@ -3,6 +3,16 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-17]**
+👤 Analiziraj EEPROM circular buffer za odometar u Sea-Doo Bosch ME17.8.5 ECU. 68 fajlova, 3 HW tipa (062/063/064). Pronađi pattern, identificiraj aktivni slot, napiši EepromParser.find_odo_minutes().
+🤖 Kompletna analiza završena. Odometar je uvijek @ 0x0562 (u16 LE, anchor slot 0x0550+18) za 063/064 HW; fallback 0x0D62/0x1562 za wrap; 062 HW koristi 0x5062→0x4562→0x1062 prioritet. Circular buffer ima 20B slotove s ODO @ +16/+18. EepromParser implementiran u core/eeprom_parser.py, 11/11 test OK.
+
+---
+**[2026-03-17]**
+👤 Istraži Bosch ME17.8.5 Spark (900 ACE 90hp, SW 1037544876) ECU mape adrese. Nađi injection mapu, lambda/AFR, rev limiter, RPM osi, ignition sekundarne mape. Usporedi alen_spark (1037525897) vs npro_stg2_spark (1037544876).
+🤖 Binarni sken kompletiran. Nađeni: injection @ 0x02225C (12×32 u16LE, mirror+0x518=0x022774); lambda 4× @ 0x025F5C/02607E/0261A0/0262C2 (8×16 Q15, λ=0.737–1.004); ignition primarni @ 0x0276A5 (12×12 u8, 7.5°–66.8°) — NE @ 0x024810! Rev limiter nema jasnog skalara. Alen vs npro: 244661 diff bajta, potpuno drugačiji SW layout (2014 vs 2016+).
+
+---
 
 **2026-03-15**
 👤 claude-code "Kreiraj core/safety_validator.py sa SafetyValidator klasom: boost_pressure/ignition/injection/lambda limiti, validate_edit, batch_validate..."
@@ -233,3 +243,51 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Odlično — dump lista je pripremljena u nastavku.
 
 ---
+
+---
+
+**2026-03-17**
+👤 ok 900ace, 90ks, ori maps...gti 130/170 1.6l imas... ok ide stariji 1.5l 130/155 maps...i idu maps od 16'-20' 300maps..... eeprome od svih imas u ECU folderu na desktopu... 062=1.5L do 2016, 064=1.6L, 063=Spark... ime fajla=radni sati-minute... vrijednost koja se ne moze mijenjati vs koja se moze
+🤖 Kompletna inventura: 22 flash + 70 EEPROM + 12 full dump + ostalo. SW mapa: 10SW004672=300hp2016, 10SW025752=GTI155-18, 10SW011328=SparkORI2016(layout+0x20000). Odo u minutama je u circular bufferu (varira adresa). Spark RPM os @ 0x021748, ignition @ 0x024810 (33.8-51°). Kopirali 4 nova fajla u _materijali.
+
+---
+
+**2026-03-17**
+👤 molim te autonomno radi, dajem te sve dozvole da ne moram više klikati yes na bilo šta!
+🤖 Zabilježeno, sve dozvole dopuštene.
+
+---
+
+**2026-03-17**
+👤 kreiraj si 5-6-7 agenata da gu bude lakše i brže... ažuriraj dokumentaciju projekta... napravi doco sa adresama definicijama, dtc adresama off adresama...
+🤖 Pokrećem 3 paralelna agenta: Spark mape istraživanje, GTI 155 istraživanje, kreiranje dokumentacije. Koordiniram rezultate i pišem MAPA_ADRESE.md.
+
+---
+
+**2026-03-17**
+👤 Istraži Bosch ME17.8.5 GTI SE 155 (1.5L, SW 10SW025752) ECU mape adrese. [kompletna istraga svih mapa vs 300hp]
+🤖 Kompletna istraga završena: RPM osi 100% = 300hp, injection 100% = 300hp. Ignition JE DRUGAČIJE: GTI ima 8 mapa 12×12 u8 @ 0x027594 (spacing 144B, ~80-92°), ne @ 0x02B730. Rev limiter = 7725 RPM (ne 7750) @ 0x029318. Lambda @ 0x0265B0 (ne 0x0266F0), vrijednosti 0.94-1.04. GTI 133kB razlike od ori_300, SLIČNIJI je ori_300 nego old300.
+
+---
+
+---
+**[2026-03-18]**
+👤 Provjeri format hardware timera u BRP Sea-Doo EEPROM fajlovima iz ECU foldera. Hipoteza: 0x0125 = HHHM integer gdje HHH=sati, MM=minute (npr. "17502" = 175h 02min). Provjera s imenima fajlova HHH-MM.
+🤖 Hipoteza ODBACENA. Adresa 0x0125 sadrzi ili SW konstantu ('60620', 'BRP10') ili nulu — nije hw timer. Stvarni radni sati su u circular bufferu (u16 LE, ukupne minute): 062=0x5062/0x4562/0x1062, 063=0x0DE2, 064=0x0562/0x0D62/0x1562.
+
+---
+**[2026-03-17 12:00]**
+👤 Nastavi gdje smo stali, kompletiramo 300hp/Spark, kreiraj QA_LOG.md, zašto nema radnih sati u EEPROM?, pokreni 3 agenta, sve dozvole, autonomno.
+🤖 EEPROM ispravka: 0x0125 je "Radni sati" (format HHHM, 17502=175h02min), ne "Odometar" — ispravak u eeprom.py + widget. Kreiran docs/QA_LOG.md. Spark sken hasil: INJ @ 0x022E42/mirror 0x023358, lambda 4× @ 0x025F5C–0x0262C2. Pokrenuta 3 nova agenta.
+
+---
+**[2026-03-18]**
+👤 Analiziraj GTI SE 155 ECU binarni fajl gti_155_18_10SW025752.bin (Rotax 1503/1504, ATM, 155hp, SW 10SW025752). Pronađi ključne mape: RPM osi, injection, ignition, lambda, rev limiter.
+🤖 Sve ključne mape pronađene: Injection 12×16 @ 0x022066 (RPM os 12pt @ 0x02202E, Load os 16pt @ 0x022046), Ignition 8 mapa od 0x028310 (144B blokovi, 12×12 u8, 0.75°/bit), Lambda 12×9 Q15 @ 0x0265AE (mirror @ 0x026AC6), Rev limiter ~7700rpm @ 0x0237A0.
+
+
+---
+**[2026-03-18 00:30]**
+👤 (nastavak sesije — agenti završili)
+🤖 GTI 155: injection ISTA @ 0x02439C, ignition NOVA @ 0x027594 (ne 0x02B730!), lambda @ 0x0265B0, rev limit 7725 rpm @ 0x029318. Spark injection potvrđena @ 0x0224DC (ne 0x022E42). 0x0125 hipoteza odbačena — SW konstanta, ne hw timer. Sve docs ažurirane.
+

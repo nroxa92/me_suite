@@ -47,7 +47,9 @@
       "WebFetch(domain:ecutools.eu)",
       "WebFetch(domain:chiptuningshop.com)",
       "Read(//c/Users/SeaDoo/Desktop/ECU//**)",
-      "Read(//c/Users/SeaDoo/Desktop//**)"
+      "Read(//c/Users/SeaDoo/Desktop//**)",
+      "Bash(PYTHONIOENCODING=utf-8 python analyze_spark_injection.py 2>&1 | tail -n 150)",
+      "Bash(PYTHONIOENCODING=utf-8 python analyze_spark_injection.py 2>&1 | head -n 120)"
     ]
   }
 }
