@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QFrame, QPushButton, QHeaderView, QScrollArea,
     QLineEdit, QToolBar, QTextEdit, QGroupBox, QSizePolicy,
     QListWidget, QListWidgetItem, QSlider, QDialog,
+    QStackedWidget, QMenu, QToolButton,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence
@@ -343,7 +344,7 @@ class MapLibraryPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(220)
+        self.setMinimumWidth(260)
         self._all: list[FoundMap] = []
         self._compare: list[FoundMap] = []
 
@@ -427,6 +428,113 @@ class MapLibraryPanel(QWidget):
     def _click(self, item: QTreeWidgetItem):
         fm = item.data(0, Qt.ItemDataRole.UserRole)
         if fm: self.map_selected.emit(fm)
+
+
+# ─── DTC Sidebar Panel ────────────────────────────────────────────────────────
+
+class DtcSidebarPanel(QWidget):
+    dtc_selected = pyqtSignal(int)
+
+    _GROUPS = [
+        ("P0xxx — OEM/SAE",   0x0000, 0x0FFF, "#9cdcfe"),
+        ("P1xxx — BRP/Bosch", 0x1000, 0x1FFF, "#f48771"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._dtc_eng = None
+        self._all_items: list[tuple[int, QTreeWidgetItem]] = []
+
+        lo = QVBoxLayout(self); lo.setContentsMargins(0, 0, 0, 0); lo.setSpacing(0)
+
+        hdr = QLabel("  DTC LISTA")
+        hdr.setStyleSheet(
+            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
+            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+        )
+        lo.addWidget(hdr)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("🔍  Filtriraj DTC...")
+        self._search.setFixedHeight(32)
+        self._search.setStyleSheet(
+            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
+            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
+        )
+        self._search.textChanged.connect(self._filter)
+        lo.addWidget(self._search)
+
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self.tree.setIndentation(12)
+        self.tree.itemClicked.connect(self._click)
+        lo.addWidget(self.tree, 1)
+
+        self._build_tree()
+
+    def _build_tree(self):
+        self.tree.clear()
+        self._all_items.clear()
+        groups = {}
+        for label, lo_c, hi_c, color in self._GROUPS:
+            it = QTreeWidgetItem(self.tree, [label])
+            it.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
+            it.setForeground(0, QBrush(QColor(color)))
+            it.setSizeHint(0, QSize(0, 28))
+            it.setExpanded(True)
+            groups[(lo_c, hi_c)] = it
+
+        for code, defn in sorted(DTC_REGISTRY.items()):
+            txt = f"  {defn.p_code}  {defn.name}"
+            parent_item = next(
+                (git for (lo_c, hi_c), git in groups.items() if lo_c <= code <= hi_c),
+                list(groups.values())[-1]
+            )
+            ch = QTreeWidgetItem(parent_item, [txt])
+            ch.setFont(0, QFont("Consolas", 12))
+            ch.setSizeHint(0, QSize(0, 24))
+            ch.setForeground(0, QBrush(QColor("#666666")))
+            ch.setData(0, Qt.ItemDataRole.UserRole, code)
+            self._all_items.append((code, ch))
+
+        for it in groups.values():
+            it.setHidden(it.childCount() == 0)
+
+    def set_engine(self, dtc_eng):
+        self._dtc_eng = dtc_eng
+        self.refresh_status()
+
+    def refresh_status(self):
+        for code, ch in self._all_items:
+            if self._dtc_eng:
+                status = self._dtc_eng.get_status(code)
+                ch.setForeground(0, QBrush(QColor(
+                    "#555555" if (status and status.is_off) else "#f48771"
+                )))
+            else:
+                ch.setForeground(0, QBrush(QColor("#666666")))
+
+    def refresh_one(self, code: int, is_off: bool):
+        for c, ch in self._all_items:
+            if c == code:
+                ch.setForeground(0, QBrush(QColor("#555555" if is_off else "#f48771")))
+                break
+
+    def _filter(self, txt: str):
+        for code, ch in self._all_items:
+            defn = DTC_REGISTRY.get(code)
+            visible = (not txt or
+                       txt.lower() in (defn.p_code if defn else "").lower() or
+                       txt.lower() in (defn.name if defn else "").lower())
+            ch.setHidden(not visible)
+        for i in range(self.tree.topLevelItemCount()):
+            grp = self.tree.topLevelItem(i)
+            grp.setHidden(all(grp.child(j).isHidden() for j in range(grp.childCount())))
+
+    def _click(self, item: QTreeWidgetItem):
+        code = item.data(0, Qt.ItemDataRole.UserRole)
+        if code is not None:
+            self.dtc_selected.emit(code)
 
 
 # ─── Heatmap paleta ───────────────────────────────────────────────────────────
@@ -989,6 +1097,49 @@ class PropertiesPanel(QWidget):
         ecu_lo.addStretch()
         self.tabs.addTab(ecu_w, "ECU")
 
+        # ── Tab 3: DTC detalji ─────────────────────────────────────────────
+        dtc_w = QWidget()
+        dtc_lo = QVBoxLayout(dtc_w); dtc_lo.setContentsMargins(8, 8, 8, 8); dtc_lo.setSpacing(6)
+
+        self._dtc_code_lbl = QLabel("—")
+        self._dtc_code_lbl.setFont(QFont("Consolas", 16, QFont.Weight.Bold))
+        self._dtc_code_lbl.setStyleSheet("color:#f48771; font-size:18px; font-weight:bold;")
+        dtc_lo.addWidget(self._dtc_code_lbl)
+
+        self._dtc_name_lbl = QLabel("")
+        self._dtc_name_lbl.setStyleSheet("color:#969696; font-size:12px;")
+        self._dtc_name_lbl.setWordWrap(True)
+        dtc_lo.addWidget(self._dtc_name_lbl)
+
+        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("background:#333333; max-height:1px;")
+        dtc_lo.addWidget(sep2)
+
+        cs_g = QGroupBox("Code storage (LE u16)")
+        csg = QGridLayout(cs_g); csg.setSpacing(3)
+        kl_m = QLabel("Main:"); kl_m.setStyleSheet("color:#888888;")
+        csg.addWidget(kl_m, 0, 0)
+        self._dtc_main_lbl = QLabel("—")
+        self._dtc_main_lbl.setFont(QFont("Consolas", 11))
+        self._dtc_main_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
+        csg.addWidget(self._dtc_main_lbl, 0, 1)
+        kl_mir = QLabel("Mirror:"); kl_mir.setStyleSheet("color:#888888;")
+        csg.addWidget(kl_mir, 1, 0)
+        self._dtc_mirror_lbl = QLabel("—")
+        self._dtc_mirror_lbl.setFont(QFont("Consolas", 11))
+        self._dtc_mirror_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
+        csg.addWidget(self._dtc_mirror_lbl, 1, 1)
+        csg.setColumnStretch(2, 1)
+        dtc_lo.addWidget(cs_g)
+
+        self._dtc_notes_lbl = QLabel("")
+        self._dtc_notes_lbl.setStyleSheet("color:#666666; font-size:12px;")
+        self._dtc_notes_lbl.setWordWrap(True)
+        dtc_lo.addWidget(self._dtc_notes_lbl)
+
+        dtc_lo.addStretch()
+        self._dtc_tab_idx = self.tabs.addTab(dtc_w, "DTC")
+
     # ── Public update metode ──────────────────────────────────────────────────
 
     def show_ecu(self, eng: ME17Engine):
@@ -1041,6 +1192,19 @@ class PropertiesPanel(QWidget):
         self._addr_lbl.setText(f"ADDR 0x{addr:06X}")
         self._inp.setText(f"{disp:.4f}")
         self.tabs.setCurrentIndex(0)
+
+    def show_dtc_details(self, status: "DtcStatus"):
+        defn = status.defn
+        self._dtc_code_lbl.setText(defn.p_code)
+        self._dtc_name_lbl.setText(defn.name)
+        self._dtc_main_lbl.setText(
+            f"0x{status.code_main:04X}  (addr 0x{defn.code_addr:06X})"
+        )
+        self._dtc_mirror_lbl.setText(
+            f"0x{status.code_mirror:04X}  (addr 0x{defn.mirror_addr:06X})"
+        )
+        self._dtc_notes_lbl.setText(defn.notes[:300] if defn.notes else "—")
+        self.tabs.setCurrentIndex(self._dtc_tab_idx)
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -1183,39 +1347,19 @@ class DtcPanel(QWidget):
     Prikaz i upravljanje DTC fault kodovima.
     Prikazuje se u centralnom tab widgetu kad korisnik klikne DTC u sidebaru.
     """
-    action_done = pyqtSignal(str)   # poruka za log strip
+    action_done = pyqtSignal(str)        # poruka za log strip
+    dtc_status_changed = pyqtSignal(int, bool)  # (code, is_off) — za sidebar
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._dtc_eng: DtcEngine | None = None
         self._cur_code: int | None = None
 
-        # Horizontalni split: lista lijevo, detalji desno
-        root_lo = QHBoxLayout(self)
+        root_lo = QVBoxLayout(self)
         root_lo.setContentsMargins(0, 0, 0, 0)
         root_lo.setSpacing(0)
 
-        # ── Lijeva kolona: DTC lista ───────────────────────────────────────────
-        left_w = QWidget()
-        left_w.setFixedWidth(240)
-        left_w.setStyleSheet("background:#252526; border-right:1px solid #333333;")
-        left_lo = QVBoxLayout(left_w); left_lo.setContentsMargins(0,0,0,0); left_lo.setSpacing(0)
-
-        lst_hdr = QLabel("  DTC LISTA")
-        lst_hdr.setStyleSheet(
-            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
-            "padding:6px 8px; border-bottom:1px solid #333333;"
-        )
-        left_lo.addWidget(lst_hdr)
-
-        self._dtc_list = QListWidget()
-        self._dtc_list.setFont(QFont("Consolas", 12))
-        self._dtc_list.itemClicked.connect(self._on_list_click)
-        left_lo.addWidget(self._dtc_list, 1)
-
-        root_lo.addWidget(left_w)
-
-        # ── Desna kolona: detalji odabranog DTC ───────────────────────────────
+        # ── Detalji odabranog DTC ─────────────────────────────────────────────
         right_w = QWidget()
         right_lo = QVBoxLayout(right_w)
         right_lo.setContentsMargins(16, 12, 16, 12)
@@ -1254,34 +1398,6 @@ class DtcPanel(QWidget):
         sep.setStyleSheet("background:#333333; max-height:1px;")
         right_lo.addWidget(sep)
 
-        # Enable bajti
-        grp_enable = QGroupBox("Enable bajti  (0x06=aktivno · 0x05=djelom. · 0x04=upoz. · 0x00=isključeno)")
-        grp_lo = QVBoxLayout(grp_enable)
-        self._enable_tbl = QTableWidget(1, 1)
-        self._enable_tbl.setMaximumHeight(72)
-        self._enable_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self._enable_tbl.verticalHeader().hide()
-        grp_lo.addWidget(self._enable_tbl)
-        right_lo.addWidget(grp_enable)
-
-        # Code storage
-        grp_code = QGroupBox("Code storage (LE u16)")
-        code_lo = QGridLayout(grp_code)
-        kl_main = QLabel("Main:"); kl_main.setStyleSheet("color:#888888;")
-        code_lo.addWidget(kl_main, 0, 0)
-        self._code_main_lbl = QLabel("—")
-        self._code_main_lbl.setFont(QFont("Consolas", 11))
-        self._code_main_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
-        code_lo.addWidget(self._code_main_lbl, 0, 1)
-        kl_mir = QLabel("Mirror:"); kl_mir.setStyleSheet("color:#888888;")
-        code_lo.addWidget(kl_mir, 1, 0)
-        self._code_mirror_lbl = QLabel("—")
-        self._code_mirror_lbl.setFont(QFont("Consolas", 11))
-        self._code_mirror_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
-        code_lo.addWidget(self._code_mirror_lbl, 1, 1)
-        code_lo.setColumnStretch(2, 1)
-        right_lo.addWidget(grp_code)
-
         # Notes + upozorenje
         self._notes_lbl = QLabel("")
         self._notes_lbl.setStyleSheet("color:#666666; font-size:12px;")
@@ -1304,62 +1420,44 @@ class DtcPanel(QWidget):
         self._btn_off.clicked.connect(self._do_off)
         btn_row.addWidget(self._btn_off)
 
-        self._btn_all_off = QPushButton("Svi DTC OFF")
-        self._btn_all_off.setObjectName("btn_danger")
-        self._btn_all_off.setFixedHeight(32)
-        self._btn_all_off.clicked.connect(self._do_all_off)
-        btn_row.addWidget(self._btn_all_off)
-
-        self._btn_disable_all = QPushButton("Disable All Monitor")
-        self._btn_disable_all.setObjectName("btn_danger")
-        self._btn_disable_all.setFixedHeight(32)
-        self._btn_disable_all.setToolTip(
-            "Nulira cijelu enable tablicu (0x021080–0x0210BD).\n"
-            "Najjača opcija — ECU neće detektirati niti jedan fault.\n"
-            "Koristiti oprezno: neke greške štite motor (misfire, oil pressure)."
-        )
-        self._btn_disable_all.clicked.connect(self._do_disable_all)
-        btn_row.addWidget(self._btn_disable_all)
-
-        btn_row.addStretch()
-
         self._btn_on = QPushButton("DTC ON — Vrati")
         self._btn_on.setObjectName("btn_success")
         self._btn_on.setFixedHeight(32)
         self._btn_on.clicked.connect(self._do_on)
         btn_row.addWidget(self._btn_on)
 
+        btn_row.addStretch()
+
+        # Napredne funkcije — dropdown
+        self._btn_advanced = QToolButton()
+        self._btn_advanced.setText("▾ Napredno")
+        self._btn_advanced.setFixedHeight(32)
+        self._btn_advanced.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        adv_menu = QMenu(self._btn_advanced)
+        act_all_off = adv_menu.addAction("Svi DTC OFF")
+        act_all_off.triggered.connect(self._do_all_off)
+        adv_menu.addSeparator()
+        act_dis_all = adv_menu.addAction("Disable All Monitor")
+        act_dis_all.setToolTip(
+            "Nulira cijelu enable tablicu (0x021080–0x0210BD).\n"
+            "Najjača opcija — ECU neće detektirati niti jedan fault.\n"
+            "Koristiti oprezno: neke greške štite motor (misfire, oil pressure)."
+        )
+        act_dis_all.triggered.connect(self._do_disable_all)
+        self._btn_advanced.setMenu(adv_menu)
+        self._btn_all_off = None
+        self._btn_disable_all = None
+        btn_row.addWidget(self._btn_advanced)
+
         right_lo.addLayout(btn_row)
 
-        root_lo.addWidget(right_w, 1)
+        root_lo.addWidget(right_w)
 
         self._set_buttons_enabled(False)
 
     def set_engine(self, eng: DtcEngine | None):
         self._dtc_eng = eng
         self._set_buttons_enabled(eng is not None)
-        self._populate_list()
-
-    def _populate_list(self):
-        """Napuni DTC listu sa svim poznatim kodovima iz registra."""
-        self._dtc_list.clear()
-        for code, defn in sorted(DTC_REGISTRY.items()):
-            item = QListWidgetItem(f"  {defn.p_code}  {defn.name}")
-            item.setData(Qt.ItemDataRole.UserRole, code)
-            if self._dtc_eng:
-                status = self._dtc_eng.get_status(code)
-                if status and status.is_off:
-                    item.setForeground(QBrush(QColor("#555555")))
-                else:
-                    item.setForeground(QBrush(QColor("#f48771")))
-            else:
-                item.setForeground(QBrush(QColor("#666666")))
-            self._dtc_list.addItem(item)
-
-    def _on_list_click(self, item: QListWidgetItem):
-        code = item.data(Qt.ItemDataRole.UserRole)
-        if code is not None:
-            self.show_dtc(code)
 
     def show_dtc(self, dtc_code: int):
         """Prikaži status zadanog DTC-a."""
@@ -1385,39 +1483,8 @@ class DtcPanel(QWidget):
             self._status_lbl.setText("● AKTIVAN")
             self._status_lbl.setStyleSheet("color:#f48771; font-size:12px; font-weight:bold;")
 
-        # Osvježi boju u listi
-        for i in range(self._dtc_list.count()):
-            it = self._dtc_list.item(i)
-            if it.data(Qt.ItemDataRole.UserRole) == self._cur_code:
-                it.setForeground(QBrush(QColor("#555555") if status.is_off else QColor("#f48771")))
-                break
-
-        # Enable tablica
-        n = len(status.enable_values)
-        self._enable_tbl.setColumnCount(n)
-        self._enable_tbl.setRowCount(1)
-        hdrs = [f"+{i}" for i in range(n)]
-        self._enable_tbl.setHorizontalHeaderLabels(hdrs)
-        for i, val in enumerate(status.enable_values):
-            item = QTableWidgetItem(f"0x{val:02X}")
-            if val == 0x00:
-                item.setForeground(QBrush(QColor("#4ec9b0")))
-            elif val == 0x06:
-                item.setForeground(QBrush(QColor("#f48771")))
-            else:
-                item.setForeground(QBrush(QColor("#e5c07b")))
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._enable_tbl.setItem(0, i, item)
-
-        # Code labels
-        addr_main   = defn.code_addr
-        addr_mirror = defn.mirror_addr
-        self._code_main_lbl.setText(
-            f"0x{status.code_main:04X}  (addr 0x{addr_main:06X})"
-        )
-        self._code_mirror_lbl.setText(
-            f"0x{status.code_mirror:04X}  (addr 0x{addr_mirror:06X})"
-        )
+        # Obavijesti sidebar o promjeni statusa
+        self.dtc_status_changed.emit(self._cur_code, status.is_off)
 
         self._notes_lbl.setText(defn.notes)
         self._set_buttons_enabled(True)
@@ -1448,6 +1515,7 @@ class DtcPanel(QWidget):
             status = self._dtc_eng.get_status(self._cur_code)
             if status:
                 self._refresh_display(status)
+        self.dtc_status_changed.emit(-1, True)  # -1 = sve promijenjene
 
     def _do_on(self):
         if not self._dtc_eng or self._cur_code is None:
@@ -1467,14 +1535,11 @@ class DtcPanel(QWidget):
             return
         result = self._dtc_eng.disable_all_monitoring()
         self.action_done.emit(f"Disable All Monitor: {result.get('message', '')}")
-        # Osvježi listu
-        self._populate_list()
 
     def _set_buttons_enabled(self, enabled: bool):
         self._btn_off.setEnabled(enabled)
         self._btn_on.setEnabled(enabled)
-        self._btn_all_off.setEnabled(enabled)
-        self._btn_disable_all.setEnabled(enabled)
+        self._btn_advanced.setEnabled(enabled)
 
 
 # ─── Scan worker ──────────────────────────────────────────────────────────────
@@ -1524,12 +1589,19 @@ class MainWindow(QMainWindow):
         tb = QToolBar(); tb.setMovable(False)
         self.addToolBar(tb)
 
-        self.btn_open1 = _btn("+ Fajl 1", "primary")
-        self.btn_open1.clicked.connect(self._load1); tb.addWidget(self.btn_open1)
+        self.btn_file = _btn("+ FILE", "primary")
+        self.btn_file.setToolTip("Učitaj ECU .bin  (Ctrl+1)")
+        self.btn_file.clicked.connect(self._load1); tb.addWidget(self.btn_file)
 
-        self.btn_open2 = _btn("+ Fajl 2")
-        self.btn_open2.clicked.connect(self._load2)
-        self.btn_open2.setEnabled(False); tb.addWidget(self.btn_open2)
+        self.btn_swap = _btn("↔ Swap")
+        self.btn_swap.setToolTip("Zamijeni aktivni fajl  (Ctrl+1)")
+        self.btn_swap.clicked.connect(self._load1)
+        self.btn_swap.hide(); tb.addWidget(self.btn_swap)
+
+        self.btn_compare = _btn("+ Compare")
+        self.btn_compare.setToolTip("Dodaj fajl za usporedbu  (Ctrl+2)")
+        self.btn_compare.clicked.connect(self._load2)
+        self.btn_compare.hide(); tb.addWidget(self.btn_compare)
 
         tb.addSeparator()
 
@@ -1538,10 +1610,6 @@ class MainWindow(QMainWindow):
         self.btn_save.setEnabled(False); tb.addWidget(self.btn_save)
 
         tb.addSeparator()
-
-        self.btn_scan = _btn("Skeniraj  F5", "primary")
-        self.btn_scan.clicked.connect(self.scan_maps)
-        self.btn_scan.setEnabled(False); tb.addWidget(self.btn_scan)
 
         self.btn_diff = _btn("Diff")
         self.btn_diff.clicked.connect(self._show_diff)
@@ -1575,10 +1643,15 @@ class MainWindow(QMainWindow):
         main_split = QSplitter(Qt.Orientation.Horizontal)
         root.addWidget(main_split, 1)
 
-        # ── Lijevi sidebar ─────────────────────────────────────────────────
+        # ── Lijevi sidebar (stack: MapLibrary / DtcSidebar) ────────────────
+        self._sidebar_stack = QStackedWidget()
         self.map_lib = MapLibraryPanel()
         self.map_lib.map_selected.connect(self._on_map_selected)
-        main_split.addWidget(self.map_lib)
+        self.dtc_sidebar = DtcSidebarPanel()
+        self.dtc_sidebar.dtc_selected.connect(self._on_dtc_sidebar_selected)
+        self._sidebar_stack.addWidget(self.map_lib)    # page 0
+        self._sidebar_stack.addWidget(self.dtc_sidebar) # page 1
+        main_split.addWidget(self._sidebar_stack)
 
         # ── Centar: mapa + hex + log (vertikalni split) ────────────────────
         center_vsplit = QSplitter(Qt.Orientation.Vertical)
@@ -1617,6 +1690,7 @@ class MainWindow(QMainWindow):
         _tb.setTabTextColor(self._dtc_tab, QColor("#f48771"))   # DTC Off — narandzasta
         _tb.setTabTextColor(self._can_tab, QColor("#4ec9b0"))   # CAN Network — teal
 
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         center_vsplit.addWidget(self.tabs)
 
         # Hex + Log — vertikalni split
@@ -1637,7 +1711,7 @@ class MainWindow(QMainWindow):
         self.props.edit_requested.connect(self._on_edit)
         main_split.addWidget(self.props)
 
-        main_split.setSizes([220, 950, 270])
+        main_split.setSizes([270, 900, 270])
         main_split.setStretchFactor(0, 0)
         main_split.setStretchFactor(1, 1)
         main_split.setStretchFactor(2, 0)
@@ -1686,6 +1760,32 @@ class MainWindow(QMainWindow):
         a.triggered.connect(slot)
         menu.addAction(a)
 
+    # ── Tab / Sidebar ─────────────────────────────────────────────────────────
+
+    def _on_tab_changed(self, idx: int):
+        if idx == self._dtc_tab:
+            self._sidebar_stack.setCurrentIndex(1)
+        else:
+            self._sidebar_stack.setCurrentIndex(0)
+
+    def _on_dtc_sidebar_selected(self, code: int):
+        self.dtc_panel.show_dtc(code)
+        if self.dtc_eng:
+            status = self.dtc_eng.get_status(code)
+            if status:
+                self.props.show_dtc_details(status)
+
+    def _on_dtc_status_changed(self, code: int, is_off: bool):
+        if code == -1:
+            # sve promijenjene (Svi DTC OFF)
+            self.dtc_sidebar.refresh_status()
+        else:
+            self.dtc_sidebar.refresh_one(code, is_off)
+            if self.dtc_eng:
+                status = self.dtc_eng.get_status(code)
+                if status:
+                    self.props.show_dtc_details(status)
+
     # ── Load / Save ───────────────────────────────────────────────────────────
 
     def _load1(self):
@@ -1696,7 +1796,10 @@ class MainWindow(QMainWindow):
         try:
             eng = ME17Engine(); info = eng.load(path)
             self.eng1 = eng; self.editor = MapEditor(eng)
-            self.dtc_eng = DtcEngine(eng); self.dtc_panel.set_engine(self.dtc_eng)
+            self.dtc_eng = DtcEngine(eng)
+            self.dtc_panel.set_engine(self.dtc_eng)
+            self.dtc_panel.dtc_status_changed.connect(self._on_dtc_status_changed)
+            self.dtc_sidebar.set_engine(self.dtc_eng)
             self.can_widget.set_engine(eng)
             name = Path(path).name
             self._file_lbl.setText(
@@ -1704,8 +1807,9 @@ class MainWindow(QMainWindow):
                 f"  <span style='color:#888888'>{name}</span>"
             )
             self._file_lbl.setTextFormat(Qt.TextFormat.RichText)
-            self.btn_open2.setEnabled(True); self.btn_save.setEnabled(True)
-            self.btn_scan.setEnabled(True)
+            self.btn_file.hide()
+            self.btn_swap.show(); self.btn_compare.show()
+            self.btn_save.setEnabled(True)
             self.props.show_ecu(eng)
             self.log_strip.log(f"Ucitan: {name}", "ok")
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
@@ -1790,6 +1894,8 @@ class MainWindow(QMainWindow):
             if dtc_code and self.dtc_eng:
                 self.dtc_panel.show_dtc(dtc_code)
                 self.tabs.setCurrentIndex(self._dtc_tab)
+                status = self.dtc_eng.get_status(dtc_code)
+                if status: self.props.show_dtc_details(status)
                 if self.eng1: self.hex_strip.show(self.eng1, fm.address)
                 self.status.showMessage(
                     f"DTC {fm.defn.name}  @  0x{fm.address:06X}  —  enable {fm.defn.cols}B"

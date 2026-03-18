@@ -170,7 +170,7 @@ _RPM_AXIS_DEF = MapDef(
 # ─── Rev limiter ─────────────────────────────────────────────────────────────
 
 _REV_SCALAR_DEF = MapDef(
-    name        = "rev_limiter_scalar",
+    name        = "Rev limiter — scalar",
     description = "Rev limiter — individualni prag (scalar u16 LE)",
     category    = "rpm_limiter",
     rows=1, cols=1,
@@ -185,7 +185,7 @@ _REV_SCALAR_DEF = MapDef(
 _REV_KNOWN_ADDRS = [0x02B72A, 0x02B73E]
 
 _REV_LIMIT_HEUR = MapDef(
-    name        = "rev_limiter_table",
+    name        = "Rev limiter — soft/mid/hard",
     description = "Rev limiter tabela — soft/mid/hard pragovi, stride 0x18",
     category    = "rpm_limiter",
     rows=1, cols=3,
@@ -947,7 +947,7 @@ EFF_CORR_AXIS_ADDR = 0x0259C4   # 7× u16 Q15 X-os (lambda 0.40–1.34)
 EFF_CORR_ADDR      = 0x0259D2   # 10×7 u16 Q15: col[0]=Y-os, col[1-6]=podaci
 
 _EFF_CORR_DEF = MapDef(
-    name          = "Lambda efikasnost — Q15 2D [TODO fizikalni smisao]",
+    name          = "Lambda — efikasnost ubrizgavanja (eff corr 2D)",
     description   = (
         "2D Q15 lambda-efikasnost tablica odmah iza deadtime-a. "
         "Format: 10 redova × 7 u16 (col[0]=ugradjeni Y lambda, col[1-6]=faktori). "
@@ -1825,7 +1825,6 @@ class MapFinder:
             self._scan_neutral_corr(progress_cb)
             self._scan_sc_boost_factor(progress_cb)
             self._scan_lambda_eff(progress_cb)
-            self._scan_dtc(progress_cb)
 
             # ── GTI / NA motor specifično ──────────────────────────────────
             if is_gti_na:
@@ -1869,7 +1868,7 @@ class MapFinder:
             val = int.from_bytes(data[addr:addr+2], 'little')
             if 4000 <= val <= 13000:
                 defn = MapDef(
-                    name          = f"rev_lim_0x{addr:06X}",
+                    name          = f"Rev limiter — scalar (0x{addr:06X})",
                     description   = f"Rev limiter scalar @ 0x{addr:06X} = {val} rpm",
                     category      = "rpm_limiter",
                     rows=1, cols=1,
@@ -1928,7 +1927,7 @@ class MapFinder:
 
         for base, vals in deduped[:5]:
             defn = MapDef(
-                name          = f"rev_table_0x{base:06X}",
+                name          = f"Rev limiter — soft/mid/hard (0x{base:06X})",
                 description   = f"Rev limiter tabela @ 0x{base:06X} (soft/mid/hard)",
                 category      = "rpm_limiter",
                 rows=1, cols=3,

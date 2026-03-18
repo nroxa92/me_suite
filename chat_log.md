@@ -389,3 +389,15 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 GTI 90 2020 = SW 10SW053774 (isti kao 2021), 80B hash blok razlika @ 0x017F02-0x017F73, mape identične. KNOWN_SW ažuriran na "2020-2021".
 
 ---
+**[2026-03-18]**
+👤 Implement multiple UI changes in ui/main_window.py — DtcSidebarPanel, PropertiesPanel DTC tab, DtcPanel refaktor (ukloni internu listu, Napredno dropdown), QStackedWidget sidebar, novi toolbar gumbi, tab-sidebar sinkronizacija.
+🤖 Sve 17 promjena primjenjene kirurški: nova DtcSidebarPanel klasa, DtcPanel pojednostavljen (bez interne liste, grp_enable/grp_code u PropertiesPanel), sidebar kao QStackedWidget koji se mijenja s tabovima. Sintaksa OK, nema zaostalih referenci.
+
+---
+
+---
+**[2026-03-18]**
+👤 jesamlitispomenuoda imamo novi dump 2019, spark 90
+🤖 Analizirao dumps/ folder. Spark 2019/2020/2021 = isti binarni SW 10SW039116 (novi, dodan u KNOWN_SW). 170hp 2019 = 10SW053729 isti kao 2020-2021. NPRo Spark baza je 10SW039116, 6145B CODE izmjena.
+
+---

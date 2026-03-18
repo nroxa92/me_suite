@@ -1,5 +1,40 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — Spark 2019/2020/2021 dump analiza + 170hp 2019
+
+### Findings
+- **Spark 90 2019/2020/2021**: sva tri imaju identičan binarni, SW = `10SW039116` (novi SW, dodan u KNOWN_SW)
+- **Spark 2016** (`10SW011328`) vs **Spark 2019** (`10SW039116`): 622,954 bytes razlike — potpuno drugačiji CODE layout!
+- **NPRo Spark** SW = `1037544876` (BUDS2 decimal format), baza je `10SW039116`, 6145 bytes CODE izmjena (238 blokova)
+  - NPRo izmjene: injection ~0x024EEC, ignition ~0x027EBA-0x028760 (u8 parovi), torque ~0x0295EE, lambda ~0x025F57
+  - Rev limiter kandidat: `0x014B6E/70` = 5202/5071 ticks → 7954/8159 rpm (soft/hard, nije live potvrđeno)
+- **170hp 2020** (fajl je u dumps/2019/ ali je 2020 model) = `10SW053729` (isti binarni kao 2020_130 — 0 bytes razlike), 80B hash blok razlika od 2021 (isti obrazac)
+- `dumps/` struktura: 2019/{spark90,170}, 2020/{130,gti90,spark90}, 2021/{130,170,230,300,gti90,spark90}
+
+### Promjene
+- `core/engine.py`: Dodan `10SW039116` u KNOWN_SW
+- TODO: map_finder.py SW-gating za `10SW039116` — mape na drugačijim adresama od 2016 Spark
+
+## 2026-03-18 — UI Redesign v2b: DTC Sidebar + PropertiesPanel DTC tab
+
+### Promjene u `ui/main_window.py`
+- **Imports**: Dodani `QStackedWidget`, `QMenu`, `QToolButton`
+- **DtcSidebarPanel** (nova klasa): tree-based DTC lista s filterom, grupirana po P0xxx/P1xxx, status boje (aktivan=narandzasto, off=sivo), emituje `dtc_selected` signal
+- **Lijevi sidebar**: `MapLibraryPanel` + `DtcSidebarPanel` u `QStackedWidget` — automatski se mijenja pri tab promjeni (Map Editor ↔ DTC Off)
+- **DtcPanel refaktor**:
+  - Uklonjena interna DTC lista (lijeva kolona) — zamjenjena sa `DtcSidebarPanel`
+  - Layout promjenjen iz `QHBoxLayout` u `QVBoxLayout`
+  - `grp_enable` i `grp_code` uklonjeni iz centra — premješteni u `PropertiesPanel`
+  - "Svi DTC OFF" i "Disable All Monitor" skriveni u `▾ Napredno` dropdown (`QToolButton` + `QMenu`)
+  - Dodani signali: `dtc_status_changed(int, bool)` za sidebar sinkronizaciju
+- **PropertiesPanel**: Dodan Tab 3 "DTC" s code/mirror adresama, notes; `show_dtc_details()` metoda
+- **Toolbar**: `btn_open1/btn_open2/btn_scan` zamjenjeni sa `btn_file/btn_swap/btn_compare` (dinamičko prikazivanje)
+- **MapLibraryPanel**: `setFixedWidth(220)` → `setMinimumWidth(260)`
+- **Splitter sizes**: `[220, 950, 270]` → `[270, 900, 270]`
+- **MainWindow**: Dodane metode `_on_tab_changed`, `_on_dtc_sidebar_selected`, `_on_dtc_status_changed`; wiring u `_load1`
+
+---
+
 ## 2026-03-18 — UI overhaul + GTI 90 2020 dump analiza
 
 ### UI promjene
