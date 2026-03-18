@@ -450,3 +450,33 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Konzistentno s ECU hard cut @ 8081 RPM (5120 ticks). Stock Spark propeller-limitan na ~7900. NPRo tune + modificirani impeler → 8500-8550 RPM u vodi. Vjerojatno NPRo tune uzdiže lift-pump/boost tablice, ne nužno rev limiter. Zabilježeno u work_log.
 
 ---
+**[2026-03-18]**
+👤 Pretraži 8 PDF manuala (Spark 2017-2021, GTI 900 ACE 2017) za rev limiter, max RPM, engine speed limiter. Posebno zanima Spark 900 ACE (HO) maksimalni RPM.
+🤖 Svi PDF-ovi pretraženi. Maximum HP RPM = **8000 ±100 RPM**, Engine speed limiter setting = **8300 RPM** — konzistentno u 2016/2017/2019/2021 Spark i GTI 900 ACE manualima. VEHICLE subsekca (iBR varijanta) ima odvojeni limit 8000 RPM. Detaljni nalaz ispod u chat poruci.
+
+---
+**[2026-03-18]**
+👤 prvih 200 stranica nema info specifikacije to je obicno prikraju dokumenta
+🤖 Točno — BRP manualima su Tech Specs uvijek zadnjih 20% stranica. Zabilježeno u memoriji za buduće pretrage.
+
+---
+**[2026-03-18]**
+👤 imamo sada vise od tih 13 15 mapa za spark? nije slicno gti 90, pa isti su motori iste ecu, jedino je sat drugaciji
+🤖 Spark=21 mapa sada. Razlika vs GTI90 (58) je zbog potpuno drugačijeg CODE layouta: Spark ECU je derivat Ski-Doo/Can-Am platforme, GTI90 koristi standardni Sea-Doo ME17 layout (iste adrese kao 300hp). Pokrenuti Spark map agent u pozadinu da traži ekvivalentne mape.
+
+---
+**[2026-03-18]**
+👤 aha sada kuzim... spark je drugaciji jer je spark zapravo preuzet sa skidoo i canam... tamo imaju varijante 300, 600 i 900 ccm istog motora... a gti 90 je degradirani 130...
+🤖 Točno. Spark ECU = Ski-Doo/Can-Am derivat (kompaktni layout, direktna injekcija µs, 20×30 tablice). GTI90 = degradirani 130hp (isti ME17 firmware base kao 1630, samo 900cc kalibracija).
+
+---
+**[2026-03-18]**
+👤 doc agent neka radi, mozemo uposliti drugog agenta da nam radi na definicji spark ovih mapa isto tako u pozadinu?
+🤖 Pokrenut Spark map agent u pozadini. Traži 12 nedostajućih Spark mapa (torque, lambda trim, accel enrich itd.) usporedbom s GTI90.
+
+---
+**[2026-03-18]**
+👤 mi imamo novi dump, 2019 1503, 230... to je sada prvi 230 1.5
+🤖 Provjeren: SW=10SW040008 — identičan binarni kao 130 i 155hp! 0B razlike. Isti obrazac kao 1630 NA 130/170hp. Razlika u snazi dolazi od HW (kompresor, bregaste), ne ECU mape.
+
+---

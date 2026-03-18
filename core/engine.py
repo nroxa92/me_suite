@@ -40,6 +40,8 @@ KNOWN_SW = {
     b"10SW053729": "GTI SE 130/170 2020-2021 (NA, Rotax 1630 NA — isti SW, 2020 vs 2021 = 80B razlika samo u hash bloku)",
     b"10SW053727": "GTI SE 230 / Wake Pro 230 2021 (SC, Rotax 1630 SC)",
     b"10SW054296": "300hp SC 2020 ORI (Sea-Doo RXP/RXT/GTX 300hp, 2020 model)",
+    b"10SW040008": "GTI/GTS 130/155/230hp 1503 2019 (Rotax 1503, identičan binary za sve 3 snage — razlika samo u HW)",
+    b"10SW040962": "GTI/GTS 130hp 1503 NA 2020 (Rotax 1503 NA)",
     b"10SW011328": "Spark 90 2016 (NA, HW063, Rotax 900 ACE)",
     b"10SW039116": "Spark 90 2019-2021 (NA, Rotax 900 HO ACE — isti SW za sve godine, razlicit layout od 2016)",
     b"1037544876": "NPRo Spark 900 ACE Stage 2 (decimalni SW format, BOOT djelomično promijenjen)",

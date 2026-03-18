@@ -1,5 +1,31 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — PDF pretraga rev limiter vrijednosti (Spark/GTI 900 ACE)
+
+### Pretraženi fajlovi
+- `2017 SPARK/PWC 2017 Technical Specifications_engine - SPARK- smr2017-212.pdf`
+- `2016 SPARK SERIES SHOP MANUAL/PWC Technical Specifications (Spark Series) - Shop manual supplement smr2016-112.pdf`
+- `2017 GTI_GTR_GTS_WAKE_155 900ACE/PWC 2017 Tech Spec engine - 900ACE - R900ACE_MY17-010.pdf`
+- `2017 GTI_GTR_GTS_WAKE_155 900ACE/PWC 2017 Engine Management System (900 ACE Series) - DOLPHIN-smr2017-312.pdf`
+- `2021 Spark.pdf` (83MB, 714 str.), `2019 Spark.pdf` (103MB, 677 str.), `2017 Spark.pdf` (219MB, 817 str.)
+
+### Ključni nalazi — Spark 900 ACE HO
+| Parametar | Vrijednost | Izvor |
+|-----------|-----------|-------|
+| Maximum HP RPM | **8000 ±100 RPM** | Sve Tech Spec stranica 1 (ENGINE sekcija) |
+| Engine speed limiter setting | **8300 RPM** | smr2017-211 str. 5, smr2016-112 str. 5, 2019 Spark str. 441, 2021 Spark str. 440 |
+| Engine speed limiter (VEHICLE/iBR) | **8000 RPM** | 2017/2019/2021 Spark str. 442/443 (VEHICLE subsekca, iBR varijanta) |
+| Idle speed | 1400 ±100 RPM | Sve GTI/Spark manuali |
+
+### Zaključak
+- **8000 RPM** = maksimalni RPM pri punoj snazi (Maximum HP RPM)
+- **8300 RPM** = ECU ENGINE SPEED LIMITER SETTING (hard cut ignition+fuel) — u ENGINE subsekci
+- **8000 RPM** = iBR/VEHICLE ECU limiter — posebna Tech Spec za VEHICLE (iBR varijanta Spark)
+- Naša binarno-izračunata vrijednost **8081 RPM** (5120 ticks @ 0x028E34) konzistentna s ovim — između 8000 i 8300
+- **Hipoteza**: 8300 = engine-only limit (bez opterećenja), 8081 = stvarni ECU cut (s opterećenjem/impelerom)
+
+---
+
 ## 2026-03-18 (sesija 2) — Spark deadtime fix, rev limiter, novi SW ID-ovi, ORI/STG2 parovi
 
 ### Spark deadtime ispravka

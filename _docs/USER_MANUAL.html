@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ME17Suite — User Manual</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #27273a;
+    --surface2: #313145;
+    --border: #44445a;
+    --text: #cdd6f4;
+    --text-dim: #a6adc8;
+    --accent: #89b4fa;
+    --green: #a6e3a1;
+    --yellow: #f9e2af;
+    --red: #f38ba8;
+    --orange: #fab387;
+    --teal: #94e2d5;
+    --purple: #cba6f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 0 0 60px 0;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--accent);
+    padding: 24px 40px;
+  }
+  header h1 { font-size: 2rem; color: var(--accent); }
+  header p { color: var(--text-dim); margin-top: 4px; }
+  nav {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 40px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    margin-right: 20px;
+    font-size: 0.9rem;
+  }
+  nav a:hover { color: var(--accent); }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 40px; }
+  h2 { color: var(--accent); font-size: 1.5rem; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--teal); font-size: 1.1rem; margin: 24px 0 10px; }
+  h4 { color: var(--yellow); font-size: 1rem; margin: 16px 0 8px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 12px 24px; }
+  li { margin-bottom: 4px; }
+  code, .code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.88em;
+    color: var(--orange);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.88em;
+    color: var(--text);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
+  th { background: var(--surface2); color: var(--accent); padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
+  td { padding: 7px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: rgba(40,40,60,0.3); }
+  .warn {
+    background: rgba(249, 226, 175, 0.1);
+    border-left: 4px solid var(--yellow);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .danger {
+    background: rgba(243, 139, 168, 0.1);
+    border-left: 4px solid var(--red);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .tip {
+    background: rgba(166, 227, 161, 0.1);
+    border-left: 4px solid var(--green);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    margin: 0 3px;
+  }
+  .badge-blue { background: rgba(137,180,250,0.2); color: var(--accent); }
+  .badge-orange { background: rgba(250,179,135,0.2); color: var(--orange); }
+  .badge-teal { background: rgba(148,226,213,0.2); color: var(--teal); }
+  .badge-green { background: rgba(166,227,161,0.2); color: var(--green); }
+  .step { counter-increment: step; }
+  .step::before { content: counter(step) ". "; color: var(--accent); font-weight: bold; }
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ME17Suite</h1>
+  <p>ECU Tuning Tool for Bosch ME17.8.5 / Rotax ACE — Sea-Doo PWC</p>
+  <p style="font-size:0.85em; color: var(--text-dim); margin-top:8px;">Version as of 2026-03-18 | Python 3.14 + PyQt6</p>
+</header>
+
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#loading">Loading Files</a>
+  <a href="#map-editor">Map Editor</a>
+  <a href="#editing">Editing Values</a>
+  <a href="#undo">Undo/Redo</a>
+  <a href="#export">Export</a>
+  <a href="#dtc">DTC Off</a>
+  <a href="#checksum">Checksum</a>
+  <a href="#eeprom">EEPROM</a>
+  <a href="#warnings">Warnings</a>
+</nav>
+
+<main>
+
+<h2 id="overview">1. Overview</h2>
+
+<p>ME17Suite is a professional desktop tool for ECU tuning of the Bosch ME17.8.5 electronic control unit used in Sea-Doo personal watercraft with Rotax ACE engines.</p>
+
+<h3>Supported Engines / SW Versions</h3>
+<table>
+  <tr><th>Engine</th><th>HP</th><th>SW ID</th><th>Models</th></tr>
+  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW066726, 10SW054296</td><td>RXP-X 300, RXT-X 300, GTX 300</td></tr>
+  <tr><td>Rotax 1630 SC</td><td>230hp</td><td>10SW053727</td><td>GTI SE 230, Wake Pro 230</td></tr>
+  <tr><td>Rotax 1630 NA</td><td>130/170hp</td><td>10SW053729</td><td>GTI SE 130, GTI SE 170</td></tr>
+  <tr><td>Rotax 900 HO ACE</td><td>90hp</td><td>10SW053774</td><td>GTI SE 90</td></tr>
+  <tr><td>Rotax 900 ACE</td><td>90hp</td><td>10SW039116</td><td>Sea-Doo Spark 2019–2021</td></tr>
+  <tr><td>Rotax 1503 NA</td><td>155hp</td><td>10SW025752</td><td>GTI SE 155 2018</td></tr>
+</table>
+
+<h3>Main Interface Panels</h3>
+<ul>
+  <li><span class="badge badge-blue">Map Editor</span> — Load, view, and edit ECU calibration maps</li>
+  <li><span class="badge badge-orange">DTC Off</span> — Disable diagnostic trouble codes</li>
+  <li><span class="badge badge-teal">CAN Network</span> — View CAN message IDs from the binary</li>
+</ul>
+
+<h3>Layout</h3>
+<pre>
+┌─────────────────────────────────────────────────────────────────┐
+│  [File ▾]  [Compare]  [Checksum]  [EEPROM]     Badge bar       │
+├──────────┬─────────────────────────────────┬────────────────────┤
+│  Map     │                                 │  Properties panel  │
+│ Library  │    Map table (heatmap)          │  Tab 1: Map info   │
+│ (tree)   │    with axes                    │  Tab 2: Hex view   │
+│          │                                 │  Tab 3: DTC info   │
+│  DTC     │                                 │                    │
+│ Sidebar  ├─────────────────────────────────┤                    │
+│  list    │    Hex strip + Log              │                    │
+└──────────┴─────────────────────────────────┴────────────────────┘
+</pre>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="loading">2. Loading Files</h2>
+
+<h3>Opening a Binary File</h3>
+<ol class="steps">
+  <li class="step">Click <strong>File ▾</strong> in the toolbar, then <strong>Open File 1</strong> (primary binary)</li>
+  <li class="step">Navigate to your <code>.bin</code> ECU dump file (e.g., <code>dumps/2021/1630ace/300.bin</code>)</li>
+  <li class="step">ME17Suite validates the file: checks size (1,540,096 bytes), MCU string, SW ID</li>
+  <li class="step">If valid, the SW ID and description appear in the badge bar</li>
+  <li class="step">The map library (left panel) populates with all detected maps for your SW variant</li>
+</ol>
+
+<h3>File Comparison (ORI vs Tune)</h3>
+<ol class="steps">
+  <li class="step">Open the primary file (ORI) as File 1</li>
+  <li class="step">Click <strong>File ▾ → Open File 2</strong> to load a second file (e.g., NPRo STG2)</li>
+  <li class="step">Map cells that differ between File 1 and File 2 are highlighted in the heatmap</li>
+  <li class="step">Use <strong>Compare</strong> button to see a summary of all changed regions</li>
+</ol>
+
+<div class="warn">
+  <strong>Note:</strong> Both files must have the same file size (1,540,096 bytes) and ideally the same SW layout. Comparing files with different SW IDs (e.g., 10SW066726 vs 10SW040039) is valid but be aware that NPRo also changes firmware code — not just map values.
+</div>
+
+<h3>Valid File Requirements</h3>
+<table>
+  <tr><th>Check</th><th>Expected</th></tr>
+  <tr><td>File size</td><td>1,540,096 bytes (0x178000)</td></tr>
+  <tr><td>MCU string</td><td><code>VME17 SB_V05.01.02</code> at 0x01FE50</td></tr>
+  <tr><td>SW ID</td><td>10-byte ASCII at 0x001A (e.g., <code>10SW066726</code>)</td></tr>
+</table>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="map-editor">3. Map Editor Tab</h2>
+
+<p>The Map Editor tab (blue) is the primary interface for viewing and editing calibration maps.</p>
+
+<h3>Map Library Panel (left sidebar)</h3>
+<ul>
+  <li>Tree view organized by category: <em>Injection, Ignition, Lambda, Torque, RPM Limiter, Fuel, Misc</em></li>
+  <li>Search box at top — type to filter maps by name</li>
+  <li>Click any map name to load it into the main table</li>
+  <li>Maps with differences (when File 2 is loaded) are marked</li>
+</ul>
+
+<h3>Map Table (center)</h3>
+<ul>
+  <li>Displays a 2D table (rows = Y axis / load, columns = X axis / RPM)</li>
+  <li>Color-coded heatmap: blue = low values, green = medium, orange/red = high values</li>
+  <li>Axis labels shown along edges (RPM values on top, load % on left)</li>
+  <li>When File 2 is loaded: changed cells are highlighted with a different border</li>
+</ul>
+
+<h3>Properties Panel (right sidebar)</h3>
+<p>Three tabs showing information about the selected map:</p>
+<ul>
+  <li><strong>Tab 1 — Map:</strong> Name, address, dimensions, format (u8/u16 BE/LE), scale, unit, mirror offset, full description and notes</li>
+  <li><strong>Tab 2 — Hex:</strong> Raw hex view of the map bytes in the binary</li>
+  <li><strong>Tab 3 — DTC:</strong> DTC-specific information (when DTC Off tab is active)</li>
+</ul>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="editing">4. Editing Map Values</h2>
+
+<h3>Direct Cell Editing</h3>
+<ol class="steps">
+  <li class="step">Double-click any cell in the map table</li>
+  <li class="step">Type the new value (in display units — degrees, %, lambda, etc.)</li>
+  <li class="step">Press Enter to confirm, or Escape to cancel</li>
+  <li class="step">The cell turns yellow/highlighted to indicate a pending change</li>
+  <li class="step">Mirror is automatically updated if the map has a mirror offset</li>
+</ol>
+
+<h3>Value Ranges</h3>
+<p>Each map has defined min/max limits. ME17Suite validates your input:</p>
+<ul>
+  <li>Ignition timing: 0–43.5° BTDC (raw 0–58, scale ×0.75°)</li>
+  <li>Lambda: 0.50–2.00 (Q15 format)</li>
+  <li>Torque: 80–150% (approx.)</li>
+  <li>Rev limiter: 4000–13000 RPM range</li>
+</ul>
+
+<h3>Multiple Cell Selection</h3>
+<ul>
+  <li>Click and drag to select a range of cells</li>
+  <li>Right-click for context menu: Set all selected to value, Scale selected by %</li>
+</ul>
+
+<h3>Saving Changes</h3>
+<ol class="steps">
+  <li class="step">Click <strong>File ▾ → Save</strong> (overwrites current file) or <strong>Save As…</strong></li>
+  <li class="step">A dirty flag indicator in the title bar shows unsaved changes</li>
+</ol>
+
+<div class="tip">
+  <strong>Tip:</strong> Always work from a copy of the original dump. Never overwrite your ORI baseline!
+</div>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="undo">5. Undo / Redo</h2>
+
+<ul>
+  <li>Press <kbd>Ctrl+Z</kbd> to undo the last change</li>
+  <li>Press <kbd>Ctrl+Y</kbd> or <kbd>Ctrl+Shift+Z</kbd> to redo</li>
+  <li>Undo history is maintained per session (cleared on new file load)</li>
+  <li>Multiple levels of undo are supported</li>
+</ul>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="export">6. CSV Export</h2>
+
+<p>Export any map to CSV for use in Excel, spreadsheet tools, or further analysis:</p>
+
+<ol class="steps">
+  <li class="step">Select a map in the library and load it</li>
+  <li class="step">Right-click on the map table → <strong>Export to CSV</strong></li>
+  <li class="step">Choose a file path and save</li>
+  <li class="step">The CSV includes axis labels (RPM, load%) and cell values in display units</li>
+</ol>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="dtc">7. DTC Off Function</h2>
+
+<p>The <span class="badge badge-orange">DTC Off</span> tab allows you to disable specific diagnostic trouble codes (DTCs) from the ECU firmware.</p>
+
+<div class="tip">
+  <strong>Important:</strong> Changing DTCs only modifies the CODE region. No checksum update is required.
+</div>
+
+<h3>How DTC Off Works</h3>
+<p>For each DTC, the ECU stores:</p>
+<ol>
+  <li>An <strong>enable byte</strong> — controls monitoring (0x06 = active, 0x00 = disabled)</li>
+  <li>A <strong>code storage address</strong> (main) — where fault code is stored when triggered</li>
+  <li>A <strong>mirror address</strong> = main_addr + 0x0366 — redundant storage</li>
+</ol>
+
+<p>DTC Off writes 0x00 to the enable byte, and clears both main and mirror code addresses.</p>
+
+<h3>Disabling a DTC</h3>
+<ol class="steps">
+  <li class="step">Switch to the <strong>DTC Off</strong> tab (orange)</li>
+  <li class="step">Browse the sidebar — DTCs are grouped by P0xxx and P1xxx</li>
+  <li class="step">Click a DTC to view details (code, address, enable byte address) in Properties panel</li>
+  <li class="step">Click <strong>Disable</strong> to turn off that DTC</li>
+  <li class="step">The DTC status in the sidebar changes to grey (OFF)</li>
+</ol>
+
+<h3>Disable All DTCs</h3>
+<ol class="steps">
+  <li class="step">In the DTC Off tab, click the <strong>▾ Advanced</strong> dropdown</li>
+  <li class="step">Select <strong>Disable All DTCs</strong></li>
+  <li class="step">Confirm the action</li>
+</ol>
+
+<h3>Supported SW Variants for DTC Off</h3>
+<table>
+  <tr><th>SW</th><th>Support</th><th>Notes</th></tr>
+  <tr><td>10SW066726 (300hp ORI)</td><td>✅ Full</td><td>111 codes, mirror offset 0x0366</td></tr>
+  <tr><td>10SW040039 (300hp STG2)</td><td>✅ Full</td><td>mirror offset 0x0362</td></tr>
+  <tr><td>10SW053727 (230hp)</td><td>✅ Full</td><td>same layout as 300hp</td></tr>
+  <tr><td>10SW039116 (Spark 2019+)</td><td>⚠️ Blocked</td><td>Single-storage architecture — dtc_off blocked to prevent corruption</td></tr>
+</table>
+
+<div class="danger">
+  <strong>Warning — Spark ECU:</strong> The Spark ECU (10SW039116) uses a different DTC storage architecture (single-storage, no mirror). The DTC Off function is <strong>blocked</strong> for Spark in the current implementation to prevent binary corruption.
+</div>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="checksum">8. Checksum Update</h2>
+
+<h3>When is checksum update needed?</h3>
+<table>
+  <tr><th>Change type</th><th>Checksum update?</th></tr>
+  <tr><td>Map values (CODE region 0x010000–0x05FFFF)</td><td><span class="badge badge-green">NOT needed</span></td></tr>
+  <tr><td>DTC Off</td><td><span class="badge badge-green">NOT needed</span></td></tr>
+  <tr><td>BOOT region (SW version, bootloader)</td><td><span class="badge badge-orange">YES — required</span></td></tr>
+</table>
+
+<h3>Verifying checksum</h3>
+<ol class="steps">
+  <li class="step">Click <strong>Checksum</strong> in the toolbar</li>
+  <li class="step">The dialog shows: stored checksum vs computed checksum, and whether they match</li>
+  <li class="step">For standard map tuning, both should match (green ✓)</li>
+</ol>
+
+<h3>Updating checksum</h3>
+<ol class="steps">
+  <li class="step">If BOOT was modified (unusual), click <strong>Update Checksum</strong></li>
+  <li class="step">ME17Suite uses a meet-in-the-middle inverse CRC algorithm to compute the new CS</li>
+  <li class="step">The new CS is written to address 0x0030</li>
+</ol>
+
+<div class="warn">
+  <strong>Note:</strong> The RSA signature at 0x7E7C–0x7EFF (132 bytes) cannot be recomputed — it requires the Bosch private key. Changing BOOT code that requires a new RSA signature will result in ECU rejection.
+</div>
+
+<h3>Checksum algorithm details</h3>
+<pre>
+Algorithm:  CRC32-HDLC
+Polynomial: 0xEDB88320 (reflected 0x04C11DB7)
+Init:       0xFFFFFFFF
+XorOut:     0xFFFFFFFF
+Region:     BOOT [0x0000, 0x7F00) = 32,512 bytes
+Storage:    @ 0x0030 (u32 Big-Endian)
+Residue:    0x6E23044F (fixed for all valid ECU files)
+</pre>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="eeprom">9. EEPROM Viewer</h2>
+
+<p>The EEPROM viewer reads a separate 32KB EEPROM dump from the ECU.</p>
+
+<h3>Loading an EEPROM file</h3>
+<ol class="steps">
+  <li class="step">Click <strong>EEPROM</strong> in the toolbar</li>
+  <li class="step">Load a 32KB EEPROM binary (typically obtained via KTAG/KESS programmer)</li>
+</ol>
+
+<h3>Information displayed</h3>
+<ul>
+  <li>Hull ID / VIN (e.g., <code>YDV89660E121</code>)</li>
+  <li>ECU serial number (e.g., <code>SF00HM00196</code>)</li>
+  <li>MPEM SW ID and hardware type (064/063/062)</li>
+  <li>First programming date and last update date</li>
+  <li>Programming count</li>
+  <li>Dealer name</li>
+  <li>Operating hours (from circular buffer) in HHH:MM format</li>
+</ul>
+
+<h3>Operating hours note</h3>
+<p>Hours are stored as <strong>minutes</strong> in a circular buffer. The address varies by hardware type:</p>
+<table>
+  <tr><th>HW Type</th><th>MPEM prefix</th><th>Primary address</th></tr>
+  <tr><td>064 (300hp / 230hp)</td><td>10375500xxx</td><td>0x0562</td></tr>
+  <tr><td>063 (Spark, GTI 155)</td><td>10375258xx</td><td>0x0562</td></tr>
+  <tr><td>062 (GTI older)</td><td>10375091/092xx</td><td>0x5062 → 0x4562 → 0x1062</td></tr>
+</table>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2 id="warnings">10. Important Warnings</h2>
+
+<div class="danger">
+  <strong>CAL Region (0x060000+) — READ ONLY</strong><br>
+  Despite appearing to contain calibration data, the CAL region contains TriCore AUTOSAR/ASCET compiled bytecode. Writing to this region will corrupt the ECU firmware. All tuning maps are exclusively in the CODE region (0x010000–0x05FFFF).
+</div>
+
+<div class="danger">
+  <strong>Always keep a backup</strong><br>
+  Always keep an unmodified copy of the original ECU dump. Write your modifications to a new file. Never overwrite the original.
+</div>
+
+<div class="warn">
+  <strong>Injector deadtime — DO NOT MODIFY</strong><br>
+  The injector deadtime table at 0x025900 is a hardware calibration constant specific to the physical injectors. Changing it will cause incorrect fuel injection timing and may damage the engine.
+</div>
+
+<div class="warn">
+  <strong>CTS NTC lookup — DO NOT MODIFY</strong><br>
+  The NTC ADC lookup table at 0x0258AA contains hardware calibration for the coolant temperature sensor. Changing it will cause incorrect temperature readings and may trigger false fault codes or prevent overtemp protection.
+</div>
+
+<div class="warn">
+  <strong>SC bypass map — which copy to modify</strong><br>
+  There are 3 copies of the SC bypass map. Only modify 0x0205A8 (active copy) and 0x029993 (extra copy). Do NOT modify 0x020534 (shadow copy) independently — NPRo's tune keeps it at the original value.
+</div>
+
+<div class="tip">
+  <strong>Lambda sensor note</strong><br>
+  Rotax ACE 1630 and 900 HO engines do NOT have a physical lambda (O2) sensor. The lambda map in the ECU (0x0266F0) is an open-loop AFR target table. Changes directly affect the fuel mixture without any feedback correction.
+</div>
+
+<hr style="border-color: var(--border); margin: 30px 0;">
+
+<h2>11. Running ME17Suite</h2>
+
+<pre>
+# From the me_suite folder:
+python main.py
+
+# Running tests:
+python test/test_core.py
+</pre>
+
+<h3>Requirements</h3>
+<ul>
+  <li>Python 3.14+</li>
+  <li>PyQt6</li>
+  <li>Minimum resolution: 1280×720</li>
+</ul>
+
+<h3>File structure</h3>
+<table>
+  <tr><th>File/Folder</th><th>Purpose</th></tr>
+  <tr><td><code>core/engine.py</code></td><td>Binary load/save, read/write primitives</td></tr>
+  <tr><td><code>core/map_finder.py</code></td><td>Map definitions, scanner (30+ confirmed maps)</td></tr>
+  <tr><td><code>core/map_editor.py</code></td><td>Validated cell editing with range checks</td></tr>
+  <tr><td><code>core/checksum.py</code></td><td>CRC32-HDLC verification and update</td></tr>
+  <tr><td><code>core/eeprom.py</code></td><td>EEPROM parser (HW type, ODO, VIN)</td></tr>
+  <tr><td><code>core/dtc.py</code></td><td>DTC registry (111 codes) and DTC Off logic</td></tr>
+  <tr><td><code>ui/main_window.py</code></td><td>Main PyQt6 GUI</td></tr>
+  <tr><td><code>ui/can_network_widget.py</code></td><td>CAN Network tab</td></tr>
+  <tr><td><code>dumps/</code></td><td>ECU binary files (not included in repo)</td></tr>
+  <tr><td><code>_docs/</code></td><td>Technical documentation</td></tr>
+</table>
+
+</main>
+
+<footer style="text-align:center; color: var(--text-dim); padding: 30px; font-size: 0.85em; border-top: 1px solid var(--border); margin-top: 40px;">
+  ME17Suite — ECU Tuning Tool for Bosch ME17.8.5 / Rotax ACE (Sea-Doo) &nbsp;|&nbsp; 2026-03-18
+</footer>
+
+</body>
+</html>
