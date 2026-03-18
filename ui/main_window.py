@@ -29,10 +29,11 @@ from PyQt6.QtWidgets import (
     QProgressBar, QFrame, QPushButton, QHeaderView, QScrollArea,
     QLineEdit, QToolBar, QTextEdit, QGroupBox, QSizePolicy,
     QListWidget, QListWidgetItem, QSlider, QDialog,
-    QStackedWidget, QMenu, QToolButton,
+    QStackedWidget, QMenu, QToolButton, QComboBox, QDoubleSpinBox,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence
+from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence, QIcon, QPixmap, QPainter
 
 from core.engine import ME17Engine
 from core.map_finder import MapFinder, FoundMap, MapDef
@@ -306,6 +307,140 @@ QProgressBar::chunk { background: #0e639c; border-radius: 4px; }
 """
 
 
+# ─── Category color map ───────────────────────────────────────────────────────
+
+CATEGORY_COLORS: dict[str, str] = {
+    "injection":   "#4ec9b0",   # teal
+    "ignition":    "#f97316",   # orange
+    "torque":      "#a855f7",   # purple
+    "lambda":      "#22d3ee",   # cyan
+    "rpm_limiter": "#ef4444",   # red
+    "axis":        "#6b7280",   # gray
+    "misc":        "#84cc16",   # lime
+    "dtc":         "#f59e0b",   # amber
+}
+
+# ─── SW variant accent colors ─────────────────────────────────────────────────
+
+def _sw_accent_color(sw_id: str) -> str:
+    """Return accent bar color for the given SW ID."""
+    if not sw_id:
+        return "#333333"
+    if "066726" in sw_id or "054296" in sw_id or "040039" in sw_id:
+        return "#f97316"   # 300hp SC — orange
+    if "053727" in sw_id:
+        return "#f59e0b"   # 230hp SC — amber
+    if "053729" in sw_id:
+        return "#4ec9b0"   # 130/170hp NA — teal
+    if "039116" in sw_id or "011328" in sw_id or "544876" in sw_id:
+        return "#a855f7"   # Spark 900 — purple
+    if "053774" in sw_id:
+        return "#22d3ee"   # GTI 90 — cyan
+    if "025752" in sw_id or "040008" in sw_id or "040962" in sw_id:
+        return "#84cc16"   # GTI 155 — lime
+    return "#333333"
+
+
+def _sw_badge_color(sw_id: str) -> str:
+    """Return bold label color for the SW ID badge in status bar."""
+    col = _sw_accent_color(sw_id)
+    return col if col != "#333333" else "#9cdcfe"
+
+
+def _category_icon(category: str) -> QIcon:
+    """Return a 12×12 filled circle QIcon in the category color."""
+    color_hex = CATEGORY_COLORS.get(category, "#888888")
+    pix = QPixmap(12, 12)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(color_hex))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(1, 1, 10, 10)
+    painter.end()
+    return QIcon(pix)
+
+
+# ─── Category-aware heatmap palettes ──────────────────────────────────────────
+
+# Each palette: list of (bg_QColor, fg_QColor) from coldest to hottest
+_PAL_INJECTION = [
+    (QColor("#0d0d1a"), QColor("#9999cc")),
+    (QColor("#1a0d2e"), QColor("#b07fcc")),
+    (QColor("#2e0d2e"), QColor("#cc7fcc")),
+    (QColor("#3e1010"), QColor("#e08080")),
+    (QColor("#5a1a10"), QColor("#f09070")),
+    (QColor("#7a2008"), QColor("#f0b060")),
+    (QColor("#963010"), QColor("#f5c840")),
+    (QColor("#b04010"), QColor("#ffd60a")),
+    (QColor("#c85010"), QColor("#ffe060")),
+]
+
+_PAL_IGNITION = [
+    (QColor("#0d0d2e"), QColor("#8888cc")),
+    (QColor("#0d1a3e"), QColor("#8899dd")),
+    (QColor("#0d2a5a"), QColor("#7ab0ee")),
+    (QColor("#0d3a70"), QColor("#7ac0f8")),
+    (QColor("#1a4a80"), QColor("#9cd4f8")),
+    (QColor("#2a5a90"), QColor("#c0e0f8")),
+    (QColor("#3a6aa0"), QColor("#d8ecf8")),
+    (QColor("#4a80c0"), QColor("#eef6fc")),
+    (QColor("#6090e0"), QColor("#f8fafd")),
+]
+
+_PAL_TORQUE = [
+    (QColor("#0d1a0d"), QColor("#80b080")),
+    (QColor("#0d2a0d"), QColor("#80c880")),
+    (QColor("#0d3a0d"), QColor("#80e080")),
+    (QColor("#1a4a10"), QColor("#a0f090")),
+    (QColor("#2a5a10"), QColor("#c0f080")),
+    (QColor("#4a6a10"), QColor("#d8f060")),
+    (QColor("#6a7010"), QColor("#f0e840")),
+    (QColor("#8a6808"), QColor("#f8c820")),
+    (QColor("#a06010"), QColor("#f8a820")),
+]
+
+_PAL_LAMBDA = [
+    (QColor("#0d1a2e"), QColor("#6699bb")),
+    (QColor("#0d2240"), QColor("#55aacc")),
+    (QColor("#0d2e52"), QColor("#44bbdd")),
+    (QColor("#0d3a64"), QColor("#33ccee")),
+    (QColor("#0d4876"), QColor("#22ddee")),
+    (QColor("#0d5588"), QColor("#44eef0")),
+    (QColor("#0d6490"), QColor("#77eff4")),
+    (QColor("#0d70a0"), QColor("#aaf0f8")),
+    (QColor("#0d80b8"), QColor("#caf0f8")),
+]
+
+_PAL_DEFAULT = [
+    (QColor("#1c3461"), QColor("#7eb8f7")),
+    (QColor("#1a4a6a"), QColor("#7ec8f7")),
+    (QColor("#0d6b5c"), QColor("#7ef7e0")),
+    (QColor("#1a6b2a"), QColor("#7ef79e")),
+    (QColor("#4a6b0a"), QColor("#d0f77e")),
+    (QColor("#7a6000"), QColor("#f7d87e")),
+    (QColor("#8a3800"), QColor("#f7b07e")),
+    (QColor("#8a1800"), QColor("#f77e7e")),
+    (QColor("#7a0020"), QColor("#f77ea8")),
+]
+
+_CATEGORY_PALETTES: dict[str, list] = {
+    "injection":   _PAL_INJECTION,
+    "ignition":    _PAL_IGNITION,
+    "torque":      _PAL_TORQUE,
+    "lambda":      _PAL_LAMBDA,
+}
+
+
+def _cell_colors_cat(raw_val: int, raw_min: int, raw_max: int,
+                     category: str = "") -> tuple[QColor, QColor]:
+    """Return (bg, fg) QColor pair using category-specific heatmap palette."""
+    palette = _CATEGORY_PALETTES.get(category, _PAL_DEFAULT)
+    p = (raw_val - raw_min) / max(raw_max - raw_min, 1)
+    idx = min(int(p * len(palette)), len(palette) - 1)
+    return palette[idx]
+
+
 # ─── Undo/Redo komanda ────────────────────────────────────────────────────────
 
 @dataclass
@@ -341,11 +476,23 @@ class MapLibraryPanel(QWidget):
         "misc":        ("  Other",         "#9cdcfe"),
     }
 
+    # SW variant filter opcije — (label, sw_id_substring ili "all")
+    SW_FILTERS = [
+        ("Sve varijante",       "all"),
+        ("300hp SC",            "066726"),
+        ("230hp SC",            "053727"),
+        ("130/170hp NA",        "053729"),
+        ("GTI 90",              "053774"),
+        ("Spark 900",           "039116"),
+        ("GTI 130/155",         "025752"),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(260)
         self._all: list[FoundMap] = []
         self._compare: list[FoundMap] = []
+        self._sw_filter = "all"
 
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
 
@@ -355,6 +502,18 @@ class MapLibraryPanel(QWidget):
             "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
         )
         lo.addWidget(self._hdr)
+
+        # ── SW variant filter dropdown ────────────────────────────────────────
+        self._sw_combo = QComboBox()
+        self._sw_combo.setFixedHeight(28)
+        self._sw_combo.setStyleSheet(
+            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
+            "border-radius:0; padding:2px 10px; color:#9cdcfe; font-size:12px;"
+        )
+        for label, _ in self.SW_FILTERS:
+            self._sw_combo.addItem(label)
+        self._sw_combo.currentIndexChanged.connect(self._on_sw_filter_changed)
+        lo.addWidget(self._sw_combo)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("🔍  Pretraži mape...")
@@ -378,15 +537,38 @@ class MapLibraryPanel(QWidget):
         self._compare = compare or []
         n = len(maps)
         self._hdr.setText(f"  MAP LIBRARY — {n}")
-        self._render(maps)
+        self._render(self._filtered_maps())
 
     def mark_diff(self, compare: list[FoundMap]):
         """Označi mape koje se razlikuju od fajla 2 (žuta boja stavke)."""
         self._compare = compare
-        self._render(self._all)
+        self._render(self._filtered_maps())
+
+    def auto_set_sw_filter(self, sw_id: str):
+        """Automatski odaberi odgovarajući SW filter na osnovu učitanog sw_id."""
+        for i, (label, key) in enumerate(self.SW_FILTERS):
+            if key != "all" and key in sw_id:
+                self._sw_combo.setCurrentIndex(i)
+                return
+        self._sw_combo.setCurrentIndex(0)
+
+    def _on_sw_filter_changed(self, idx: int):
+        _, key = self.SW_FILTERS[idx]
+        self._sw_filter = key
+        self._render(self._filtered_maps())
+
+    def _filtered_maps(self) -> list[FoundMap]:
+        """Vrati mape filtrirane po SW varijanti i search tekstu."""
+        maps = self._all
+        if self._sw_filter != "all":
+            maps = [m for m in maps if self._sw_filter in m.sw_id]
+        t = self.search.text()
+        if t:
+            maps = [m for m in maps if t.lower() in m.defn.name.lower()]
+        return maps
 
     def _filter(self, t: str):
-        self._render([m for m in self._all if t.lower() in m.defn.name.lower()] if t else self._all)
+        self._render(self._filtered_maps())
 
     def _render(self, maps: list[FoundMap]):
         self.tree.clear()
@@ -412,6 +594,8 @@ class MapLibraryPanel(QWidget):
             name_txt = f"  {'● ' if is_diff else ''}{fm.defn.name}"
             ch.setText(0, name_txt)
             ch.setFont(0, QFont("Segoe UI", 13))
+            # Category color badge icon (12×12 filled circle)
+            ch.setIcon(0, _category_icon(fm.defn.category))
             if is_diff:
                 ch.setForeground(0, QBrush(QColor("#e5c07b")))   # žuta = razlika
                 ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n"
@@ -639,31 +823,52 @@ class CanSidebarPanel(QWidget):
             self.id_selected.emit(can_id)
 
 
-# ─── Heatmap paleta ───────────────────────────────────────────────────────────
+# ─── Heatmap paleta (legacy alias — koristi _cell_colors_cat) ─────────────────
 
-MAP_COLORS_IGN = [
-    (QColor("#1c3461"), QColor("#7eb8f7")),  # c0 — najhladniji
-    (QColor("#1a4a6a"), QColor("#7ec8f7")),  # c1
-    (QColor("#0d6b5c"), QColor("#7ef7e0")),  # c2
-    (QColor("#1a6b2a"), QColor("#7ef79e")),  # c3
-    (QColor("#4a6b0a"), QColor("#d0f77e")),  # c4 — sredina
-    (QColor("#7a6000"), QColor("#f7d87e")),  # c5
-    (QColor("#8a3800"), QColor("#f7b07e")),  # c6
-    (QColor("#8a1800"), QColor("#f77e7e")),  # c7
-    (QColor("#7a0020"), QColor("#f77ea8")),  # c8 — najvrući
-]
+def _cell_colors(raw_val: int, raw_min: int, raw_max: int, category: str = ""):
+    """Vrati (bg, fg) QColor par prema category-aware heatmap paleti."""
+    return _cell_colors_cat(raw_val, raw_min, raw_max, category)
 
-def _cell_colors(raw_val: int, raw_min: int, raw_max: int):
-    """Vrati (bg, fg) QColor par prema heatmap paleti."""
-    p = (raw_val - raw_min) / max(raw_max - raw_min, 1)
-    idx = min(int(p * len(MAP_COLORS_IGN)), len(MAP_COLORS_IGN) - 1)
-    return MAP_COLORS_IGN[idx]
+
+# ─── Axis label formatter ─────────────────────────────────────────────────────
+
+def _format_axis_labels(axis, count: int, fallback_prefix: str = "") -> list[str]:
+    """
+    Formatiraj labele za header tablice na osnovu AxisDef.
+    - RPM os (unit="rpm"): prikaži kao "512", "1024"...
+    - Load os (unit sadrži "load" ili "%"): prikaži kao "0%", "2%", "20%"...
+    - Ostalo: prikaži skaliranu vrijednost
+    - Bez AxisDef: fallback na indeks
+    """
+    from core.map_finder import AxisDef
+    if not axis or not axis.values:
+        if fallback_prefix:
+            return [f"{fallback_prefix}{i}" for i in range(count)]
+        return [str(i) for i in range(count)]
+
+    vals = axis.values[:count]
+    unit = (axis.unit or "").lower()
+    scale = axis.scale if axis.scale not in (0.0, 1.0) else 1.0
+
+    if "rpm" in unit or unit == "rpm":
+        # RPM: prikaži kao cijeli broj
+        return [str(int(v)) for v in vals]
+    elif "load" in unit or "%" in unit:
+        # Load (relative air charge): raw ÷ 64 = %
+        return [f"{v/64:.0f}%" for v in vals]
+    elif scale != 1.0:
+        # Skalirane vrijednosti — 1 decimala
+        return [f"{v * scale:.1f}" for v in vals]
+    else:
+        # Raw vrijednosti kao int
+        return [str(int(v)) for v in vals]
 
 
 # ─── Map Table View ───────────────────────────────────────────────────────────
 
 class MapTableView(QWidget):
-    cell_clicked = pyqtSignal(int, int, object)
+    cell_clicked       = pyqtSignal(int, int, object)
+    bulk_edit_requested = pyqtSignal(list, str, float)   # [(row,col),...], op, val
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -811,10 +1016,62 @@ class MapTableView(QWidget):
         _sync(self.table.horizontalScrollBar(), self.table2.horizontalScrollBar())
         _sync(self.table2.horizontalScrollBar(),self.table.horizontalScrollBar())
 
+        # ── Bulk Edit Toolbar (vidljiv samo pri višestrukoj selekciji) ──────────
+        self._bulk_bar = QWidget()
+        self._bulk_bar.setStyleSheet(
+            "background:#1a2a1a; border-top:1px solid #333333; border-bottom:1px solid #333333;"
+        )
+        bulk_lo = QHBoxLayout(self._bulk_bar)
+        bulk_lo.setContentsMargins(8, 3, 8, 3)
+        bulk_lo.setSpacing(6)
+
+        lbl_bulk = QLabel("Selektirano:")
+        lbl_bulk.setStyleSheet("color:#4ec9b0; font-size:11px; font-family:Consolas;")
+        bulk_lo.addWidget(lbl_bulk)
+
+        self._lbl_sel_count = QLabel("0")
+        self._lbl_sel_count.setStyleSheet(
+            "color:#4ec9b0; font-size:11px; font-family:Consolas; font-weight:bold;"
+        )
+        bulk_lo.addWidget(self._lbl_sel_count)
+
+        bulk_lo.addSpacing(8)
+
+        self._btn_scale = _btn("× Scale")
+        self._btn_scale.setToolTip("Množi selektirane ćelije s postotkom (npr. 105%)")
+        self._btn_scale.setFixedHeight(22)
+        self._btn_scale.clicked.connect(self._bulk_scale)
+        bulk_lo.addWidget(self._btn_scale)
+
+        self._btn_offset_bulk = _btn("+ Offset")
+        self._btn_offset_bulk.setToolTip("Dodaj konstantu svim selektiranim ćelijama")
+        self._btn_offset_bulk.setFixedHeight(22)
+        self._btn_offset_bulk.clicked.connect(self._bulk_offset)
+        bulk_lo.addWidget(self._btn_offset_bulk)
+
+        self._btn_smooth = _btn("~ Smooth")
+        self._btn_smooth.setToolTip("Linearna interpolacija između prvih i zadnjih selektiranih")
+        self._btn_smooth.setFixedHeight(22)
+        self._btn_smooth.clicked.connect(self._bulk_smooth)
+        bulk_lo.addWidget(self._btn_smooth)
+
+        self._btn_copy_ref = _btn("↕ Copy REF")
+        self._btn_copy_ref.setToolTip("Kopiraj vrijednosti iz referentnog (ORI) fajla za selektirane ćelije")
+        self._btn_copy_ref.setFixedHeight(22)
+        self._btn_copy_ref.clicked.connect(self._bulk_copy_ref)
+        bulk_lo.addWidget(self._btn_copy_ref)
+
+        bulk_lo.addStretch()
+        self._bulk_bar.hide()
+        lo.addWidget(self._bulk_bar)
+
         lo.addWidget(self._tables_split, 1)
 
         self._fm:  FoundMap | None = None
         self._fm2: FoundMap | None = None
+
+        # Prati selekciju za bulk toolbar
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
 
     @staticmethod
     def _make_badge(text: str, style: str = "blue") -> QLabel:
@@ -872,10 +1129,8 @@ class MapTableView(QWidget):
         if compare:
             self.table2.setRowCount(rows); self.table2.setColumnCount(cols)
 
-        x_labels = ([str(v) for v in defn.axis_x.values[:cols]]
-                    if defn.axis_x and defn.axis_x.values else [str(c) for c in range(cols)])
-        y_labels  = ([str(v) for v in defn.axis_y.values[:rows]]
-                    if defn.axis_y and defn.axis_y.values else [f"r{r}" for r in range(rows)])
+        x_labels = _format_axis_labels(defn.axis_x, cols)
+        y_labels  = _format_axis_labels(defn.axis_y, rows, fallback_prefix="r")
         self.table.setHorizontalHeaderLabels(x_labels)
         self.table.setVerticalHeaderLabels(y_labels)
         if compare:
@@ -923,7 +1178,7 @@ class MapTableView(QWidget):
                     item.setBackground(QBrush(QColor("#3a3010")))
                     item.setForeground(QBrush(QColor("#e5c07b")))
                 else:
-                    bg, fg = _cell_colors(raw, mn, mx)
+                    bg, fg = _cell_colors(raw, mn, mx, defn.category)
                     item.setBackground(QBrush(bg))
                     item.setForeground(QBrush(fg))
                 self.table.setItem(r, c, item)
@@ -938,7 +1193,7 @@ class MapTableView(QWidget):
                         item2.setBackground(QBrush(QColor("#3a1000")))
                         item2.setForeground(QBrush(QColor("#f48771")))
                     else:
-                        bg2, fg2 = _cell_colors(raw2, mn2, mx2)
+                        bg2, fg2 = _cell_colors(raw2, mn2, mx2, defn.category)
                         item2.setBackground(QBrush(bg2))
                         item2.setForeground(QBrush(fg2))
                     self.table2.setItem(r, c, item2)
@@ -1039,7 +1294,7 @@ class MapTableView(QWidget):
         if not item: return
         item.setText(txt); item.setData(Qt.ItemDataRole.UserRole, new_raw)
         mn = min(self._fm.data); mx = max(self._fm.data)
-        bg, fg = _cell_colors(new_raw, mn, mx)
+        bg, fg = _cell_colors(new_raw, mn, mx, self._fm.defn.category)
         item.setBackground(QBrush(bg))
         item.setForeground(QBrush(fg))
 
@@ -1054,6 +1309,179 @@ class MapTableView(QWidget):
                   self._zoom_sep, self._zoom_slider, self._zoom_lbl, self.btn_3d]:
             b.hide()
         self._zoom_slider.setValue(100)
+        self._bulk_bar.hide()
+
+    # ── Selekcija — bulk toolbar ───────────────────────────────────────────────
+
+    def _on_selection_changed(self):
+        sel = self.table.selectedItems()
+        n = len(sel)
+        if n > 1:
+            self._lbl_sel_count.setText(str(n))
+            self._bulk_bar.show()
+        else:
+            self._bulk_bar.hide()
+
+    def _get_selected_cells(self) -> list[tuple[int, int]]:
+        """Vrati listu (row, col) selektiranih ćelija."""
+        seen = set()
+        cells = []
+        for item in self.table.selectedItems():
+            rc = (item.row(), item.column())
+            if rc not in seen:
+                seen.add(rc)
+                cells.append(rc)
+        return sorted(cells)
+
+    def _bulk_scale(self):
+        """Dialog: unesi postotak, primijeni na sve selektirane ćelije."""
+        if not self._fm: return
+        cells = self._get_selected_cells()
+        if not cells: return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Scale ×%")
+        dlg.setFixedSize(300, 130)
+        dlg.setStyleSheet("background:#252526; color:#cccccc;")
+        lo = QVBoxLayout(dlg); lo.setContentsMargins(16, 12, 16, 12); lo.setSpacing(8)
+        lo.addWidget(QLabel(f"Scale {len(cells)} ćelija (postotak):"))
+        spin = QDoubleSpinBox()
+        spin.setRange(1.0, 500.0); spin.setValue(100.0); spin.setSingleStep(1.0)
+        spin.setSuffix(" %"); spin.setDecimals(1)
+        lo.addWidget(spin)
+        btn_row = QHBoxLayout()
+        ok_btn = _btn("Primijeni", "primary"); ok_btn.setFixedHeight(26)
+        ca_btn = _btn("Odustani");             ca_btn.setFixedHeight(26)
+        ok_btn.clicked.connect(dlg.accept); ca_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch(); btn_row.addWidget(ca_btn); btn_row.addWidget(ok_btn)
+        lo.addLayout(btn_row)
+        if dlg.exec() != QDialog.DialogCode.Accepted: return
+        pct = spin.value() / 100.0
+        self.bulk_edit_requested.emit(cells, "scale", pct)
+
+    def _bulk_offset(self):
+        """Dialog: unesi konstantu, dodaj svim selektiranim ćelijama."""
+        if not self._fm: return
+        cells = self._get_selected_cells()
+        if not cells: return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Offset +")
+        dlg.setFixedSize(300, 130)
+        dlg.setStyleSheet("background:#252526; color:#cccccc;")
+        lo = QVBoxLayout(dlg); lo.setContentsMargins(16, 12, 16, 12); lo.setSpacing(8)
+        lo.addWidget(QLabel(f"Dodaj offset {len(cells)} ćelijama:"))
+        spin = QDoubleSpinBox()
+        spin.setRange(-9999.0, 9999.0); spin.setValue(0.0); spin.setSingleStep(0.1)
+        spin.setDecimals(4)
+        lo.addWidget(spin)
+        btn_row = QHBoxLayout()
+        ok_btn = _btn("Primijeni", "primary"); ok_btn.setFixedHeight(26)
+        ca_btn = _btn("Odustani");             ca_btn.setFixedHeight(26)
+        ok_btn.clicked.connect(dlg.accept); ca_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch(); btn_row.addWidget(ca_btn); btn_row.addWidget(ok_btn)
+        lo.addLayout(btn_row)
+        if dlg.exec() != QDialog.DialogCode.Accepted: return
+        self.bulk_edit_requested.emit(cells, "offset", spin.value())
+
+    def _bulk_smooth(self):
+        """Linearna interpolacija između prvih i zadnjih selektiranih po retku."""
+        if not self._fm: return
+        cells = self._get_selected_cells()
+        if len(cells) < 3: return
+        self.bulk_edit_requested.emit(cells, "smooth", 0.0)
+
+    def _bulk_copy_ref(self):
+        """Kopiraj vrijednosti iz referentnog (Fajl 2) za selektirane ćelije."""
+        if not self._fm or not self._fm2: return
+        cells = self._get_selected_cells()
+        if not cells: return
+        self.bulk_edit_requested.emit(cells, "copy_ref", 0.0)
+
+    # ── Delta overlay (Diff prikaz) ────────────────────────────────────────────
+
+    def show_map_diff(self, fm_ori: "FoundMap", fm_new: "FoundMap"):
+        """
+        Prikaži novu mapu s delta overlay: "37 (+3)" format.
+        Ćelije bez promjene — normalna boja.
+        Ćelije s porastom — zelena nijansa.
+        Ćelije s padom — crvena nijansa.
+        """
+        self._fm  = fm_new
+        self._fm2 = fm_ori
+        defn = fm_new.defn
+
+        self._lbl_name.setText(f"Δ {defn.name}")
+        self._badge_dim.setText(f"{defn.rows}×{defn.cols} · {defn.dtype}")
+        self._badge_unit.setText(f"×{defn.scale} · {defn.unit}" if defn.unit else f"×{defn.scale}")
+        self._badge_addr.setText(f"@ 0x{fm_new.address:06X}")
+        for b in [self._badge_dim, self._badge_unit, self._badge_addr,
+                  self.btn_copy, self.btn_csv]:
+            b.show()
+        self.btn_reset.hide()
+
+        rows, cols = defn.rows, defn.cols
+        self.table.setRowCount(rows); self.table.setColumnCount(cols)
+
+        x_labels = _format_axis_labels(defn.axis_x, cols)
+        y_labels  = _format_axis_labels(defn.axis_y, rows, fallback_prefix="r")
+        self.table.setHorizontalHeaderLabels(x_labels)
+        self.table.setVerticalHeaderLabels(y_labels)
+
+        data_new = fm_new.data
+        data_ori = fm_ori.data
+        mn = min(data_new) if data_new else 0
+        mx = max(data_new) if data_new else 1
+
+        # Max delta za normalizaciju intenziteta boje
+        max_delta = max(abs(data_new[i] - data_ori[i])
+                        for i in range(min(len(data_new), len(data_ori)))
+                        ) if data_ori else 1
+        max_delta = max(max_delta, 1)
+
+        def _fmt_delta(raw_n, raw_o, d):
+            disp_n = raw_n * d.scale + d.offset_val if d.scale else float(raw_n)
+            delta  = raw_n - raw_o
+            if d.dtype == "u8":
+                base = f"{disp_n:.1f}"
+            elif d.scale != 0:
+                base = f"{disp_n:.3f}"
+            else:
+                base = f"0x{raw_n:04X}"
+            if delta > 0:
+                return f"{base} (+{delta})"
+            elif delta < 0:
+                return f"{base} ({delta})"
+            return base
+
+        for r in range(rows):
+            for c in range(cols):
+                idx = r * cols + c
+                if idx >= len(data_new): break
+                raw_n = data_new[idx]
+                raw_o = data_ori[idx] if idx < len(data_ori) else raw_n
+                delta = raw_n - raw_o
+
+                txt  = _fmt_delta(raw_n, raw_o, defn)
+                item = QTableWidgetItem(txt)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                item.setData(Qt.ItemDataRole.UserRole, raw_n)
+
+                if delta == 0:
+                    bg, fg = _cell_colors(raw_n, mn, mx)
+                    item.setBackground(QBrush(bg))
+                    item.setForeground(QBrush(fg))
+                elif delta > 0:
+                    intensity = min(int(delta / max_delta * 160), 160)
+                    item.setBackground(QBrush(QColor(0, 30 + intensity, 10)))
+                    item.setForeground(QBrush(QColor("#7ef79e")))
+                else:
+                    intensity = min(int(abs(delta) / max_delta * 160), 160)
+                    item.setBackground(QBrush(QColor(30 + intensity, 10, 10)))
+                    item.setForeground(QBrush(QColor("#f77e7e")))
+
+                self.table.setItem(r, c, item)
+
+        self._lbl_f1.hide()
+        self._t2_pane.hide()
 
 
 # ─── Properties panel — 3 taba ────────────────────────────────────────────────
@@ -1242,6 +1670,34 @@ class PropertiesPanel(QWidget):
         dtc_lo.addStretch()
         self._dtc_tab_idx = self.tabs.addTab(dtc_w, "DTC")
 
+        # ── Tab 4: History (undo history) ──────────────────────────────────
+        hist_w = QWidget()
+        hist_lo = QVBoxLayout(hist_w); hist_lo.setContentsMargins(4, 4, 4, 4); hist_lo.setSpacing(4)
+
+        hist_hdr = QLabel("UNDO HISTORY")
+        hist_hdr.setStyleSheet(
+            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1px; padding:2px 4px;"
+        )
+        hist_lo.addWidget(hist_hdr)
+
+        self._hist_list = QListWidget()
+        self._hist_list.setFont(QFont("Consolas", 11))
+        self._hist_list.setStyleSheet(
+            "background:#1e1e1e; border:none; font-size:11px;"
+        )
+        self._hist_list.setToolTip("Klik na stavku = undo do te točke")
+        self._hist_list.itemClicked.connect(self._hist_item_clicked)
+        hist_lo.addWidget(self._hist_list, 1)
+
+        hist_btn_row = QHBoxLayout()
+        self._btn_hist_clear = _btn("Obriši history"); self._btn_hist_clear.setFixedHeight(24)
+        self._btn_hist_clear.clicked.connect(self._hist_clear)
+        hist_btn_row.addStretch(); hist_btn_row.addWidget(self._btn_hist_clear)
+        hist_lo.addLayout(hist_btn_row)
+
+        self._hist_tab_idx = self.tabs.addTab(hist_w, "History")
+        self._hist_undo_ref: list = []   # referenca na MainWindow._undo (postavlja se izvana)
+
     # ── Public update metode ──────────────────────────────────────────────────
 
     def show_ecu(self, eng: ME17Engine):
@@ -1307,6 +1763,63 @@ class PropertiesPanel(QWidget):
         )
         self._dtc_notes_lbl.setText(defn.notes[:300] if defn.notes else "—")
         self.tabs.setCurrentIndex(self._dtc_tab_idx)
+
+    # ── History tab ───────────────────────────────────────────────────────────
+
+    def push_history(self, cmd: "UndoCmd"):
+        """Dodaj unos u History listu (poziva se nakon svake promjene)."""
+        ts = datetime.now().strftime("%H:%M:%S")
+        defn = cmd.fm.defn
+        old_disp = cmd.old_raw * defn.scale + defn.offset_val if defn.scale else float(cmd.old_raw)
+        new_disp = cmd.new_raw * defn.scale + defn.offset_val if defn.scale else float(cmd.new_raw)
+        txt = (f"{ts}  [{cmd.row},{cmd.col}]  "
+               f"{old_disp:.3g} → {new_disp:.3g}  {defn.unit}  |  {defn.name}")
+        item = QListWidgetItem(txt)
+        item.setForeground(QBrush(QColor("#9cdcfe")))
+        item.setData(Qt.ItemDataRole.UserRole, id(cmd))
+        # Dodaj na vrh (najnovije na vrhu)
+        self._hist_list.insertItem(0, item)
+        # Maks 100 stavki
+        while self._hist_list.count() > 100:
+            self._hist_list.takeItem(self._hist_list.count() - 1)
+        # Pohrani referencu na cmd za undo do točke
+        item.setData(Qt.ItemDataRole.UserRole + 1, cmd)
+
+    def _hist_item_clicked(self, item: QListWidgetItem):
+        """Undo do kliknute točke u historiji — emitira signal prema MainWindow."""
+        cmd = item.data(Qt.ItemDataRole.UserRole + 1)
+        if cmd is not None:
+            self.undo_to_cmd_requested.emit(cmd)
+
+    def _hist_clear(self):
+        self._hist_list.clear()
+
+    undo_to_cmd_requested = pyqtSignal(object)
+
+    # ── Delta prikaz u Cell tabu ──────────────────────────────────────────────
+
+    def show_cell_with_delta(self, row: int, col: int, fm: "FoundMap", fm_ori: "FoundMap | None" = None):
+        """Prikaži cell info s delta ako je dostupna referentna mapa."""
+        self.show_cell(row, col, fm)
+        if fm_ori:
+            defn = fm.defn
+            idx  = row * defn.cols + col
+            raw_new = fm.data[idx] if idx < len(fm.data) else 0
+            raw_ori = fm_ori.data[idx] if idx < len(fm_ori.data) else raw_new
+            delta_raw = raw_new - raw_ori
+            if delta_raw != 0:
+                delta_disp = delta_raw * defn.scale if defn.scale else float(delta_raw)
+                sign = "+" if delta_disp >= 0 else ""
+                self._addr_lbl.setText(
+                    f"ADDR 0x{fm.address + idx * defn.cell_bytes:06X}  "
+                    f"Δ {sign}{delta_disp:.3g} {defn.unit}"
+                )
+                self._addr_lbl.setStyleSheet(
+                    "color:#4ec9b0; font-family:Consolas; font-size:11px;" if delta_raw > 0
+                    else "color:#f48771; font-family:Consolas; font-size:11px;"
+                )
+            else:
+                self._addr_lbl.setStyleSheet("")
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -1666,10 +2179,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.eng1:    ME17Engine | None = None
         self.eng2:    ME17Engine | None = None
+        self.eng_ref: ME17Engine | None = None   # referentni (ORI) fajl za side-by-side
         self.editor:  MapEditor  | None = None
         self.dtc_eng: DtcEngine  | None = None
         self.maps1:   list[FoundMap]    = []
         self.maps2:   list[FoundMap]    = []
+        self.maps_ref: list[FoundMap]   = []
         self._cur:    FoundMap   | None = None
 
         # Undo / Redo
@@ -1708,6 +2223,12 @@ class MainWindow(QMainWindow):
         self._act_compare = tb.addWidget(self.btn_compare)
         self._act_compare.setVisible(False)
 
+        self.btn_ref = _btn("+ REF")
+        self.btn_ref.setToolTip("Učitaj referentni (ORI) fajl za side-by-side prikaz")
+        self.btn_ref.clicked.connect(self._load_ref)
+        self._act_ref = tb.addWidget(self.btn_ref)
+        self._act_ref.setVisible(False)
+
         tb.addSeparator()
 
         self.btn_save = _btn("Spremi")
@@ -1743,6 +2264,13 @@ class MainWindow(QMainWindow):
         # Central
         central = QWidget(); self.setCentralWidget(central)
         root = QVBoxLayout(central); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
+
+        # ── Accent bar (2px color line under toolbar, changes per SW variant) ─
+        self._accent_bar = QFrame()
+        self._accent_bar.setFixedHeight(2)
+        self._accent_bar.setStyleSheet("background:#333333; border:none;")
+        root.addWidget(self._accent_bar)
+
         root.addWidget(self.progress)
 
         main_split = QSplitter(Qt.Orientation.Horizontal)
@@ -1772,6 +2300,7 @@ class MainWindow(QMainWindow):
         self.map_view = MapTableView()
         self.map_view.cell_clicked.connect(self._on_cell_click)
         self.map_view.btn_csv.clicked.connect(self._export_csv)
+        self.map_view.bulk_edit_requested.connect(self._on_bulk_edit)
         self.tabs.addTab(self.map_view, "Map Editor")
 
         self.dtc_panel = DtcPanel()
@@ -1820,6 +2349,7 @@ class MainWindow(QMainWindow):
         # ── Desni properties panel ─────────────────────────────────────────
         self.props = PropertiesPanel()
         self.props.edit_requested.connect(self._on_edit)
+        self.props.undo_to_cmd_requested.connect(self._undo_to_cmd)
         main_split.addWidget(self.props)
 
         main_split.setSizes([270, 900, 270])
@@ -1827,9 +2357,93 @@ class MainWindow(QMainWindow):
         main_split.setStretchFactor(1, 1)
         main_split.setStretchFactor(2, 0)
 
-        # Status bar
+        # Status bar — with gauge labels
         self.status = QStatusBar(); self.setStatusBar(self.status)
         self.status.showMessage("ME17Suite — Ucitaj .bin fajl  (Ctrl+1)")
+
+        # Permanent gauge labels (right side of status bar)
+        self._sb_sw_lbl = QLabel("")
+        self._sb_sw_lbl.setStyleSheet(
+            "font-family:Consolas; font-size:12px; font-weight:bold; "
+            "padding:0 10px; color:#9cdcfe;"
+        )
+        self._sb_sw_lbl.hide()
+        self.status.addPermanentWidget(self._sb_sw_lbl)
+
+        self._sb_maps_lbl = QLabel("")
+        self._sb_maps_lbl.setStyleSheet(
+            "font-family:Consolas; font-size:11px; "
+            "background:#004466; color:#9cdcfe; border-radius:8px; "
+            "padding:1px 8px; margin:0 4px;"
+        )
+        self._sb_maps_lbl.hide()
+        self.status.addPermanentWidget(self._sb_maps_lbl)
+
+        self._sb_region_lbl = QLabel("")
+        self._sb_region_lbl.setStyleSheet(
+            "font-family:Consolas; font-size:11px; "
+            "background:#2a2a00; color:#e5c07b; border-radius:8px; "
+            "padding:1px 8px; margin:0 4px;"
+        )
+        self._sb_region_lbl.hide()
+        self.status.addPermanentWidget(self._sb_region_lbl)
+
+        # Scan progress animation state
+        self._scan_dots = 0
+        self._scan_timer = QTimer(self)
+        self._scan_timer.timeout.connect(self._scan_progress_tick)
+        self._scan_msg_base = "Skeniranje"
+
+    # ── Accent bar + status gauge helpers ─────────────────────────────────────
+
+    def _update_accent_bar(self, sw_id: str):
+        """Update the 2px accent bar color based on SW variant."""
+        color = _sw_accent_color(sw_id)
+        self._accent_bar.setStyleSheet(f"background:{color}; border:none;")
+
+    def _update_sb_sw(self, sw_id: str, n_maps: int | None = None):
+        """Update the status bar SW ID badge and optionally maps count."""
+        if sw_id:
+            color = _sw_badge_color(sw_id)
+            self._sb_sw_lbl.setStyleSheet(
+                f"font-family:Consolas; font-size:12px; font-weight:bold; "
+                f"padding:0 10px; color:{color};"
+            )
+            self._sb_sw_lbl.setText(sw_id)
+            self._sb_sw_lbl.show()
+        if n_maps is not None:
+            self._sb_maps_lbl.setText(f"  {n_maps} mapa  ")
+            self._sb_maps_lbl.show()
+
+    def _update_sb_region(self, addr: int | None):
+        """Show BOOT/CODE/CAL region badge when a map is selected."""
+        if addr is None:
+            self._sb_region_lbl.hide()
+            return
+        if addr < 0x010000:
+            region, bg, fg = "BOOT", "#3a2a00", "#e5c07b"
+        elif addr < 0x060000:
+            region, bg, fg = "CODE", "#0e3a5c", "#9cdcfe"
+        else:
+            region, bg, fg = "CAL", "#0d3321", "#4ec9b0"
+        self._sb_region_lbl.setStyleSheet(
+            f"font-family:Consolas; font-size:11px; "
+            f"background:{bg}; color:{fg}; border-radius:8px; "
+            f"padding:1px 8px; margin:0 4px;"
+        )
+        self._sb_region_lbl.setText(f"  {region}  ")
+        self._sb_region_lbl.show()
+
+    def _scan_progress_cb(self, msg: str):
+        """Progress callback during map scan — animated dots in status bar."""
+        self._scan_msg_base = msg
+        # Timer already running if scan is in progress
+
+    def _scan_progress_tick(self):
+        """QTimer slot — cycles 1/2/3 dots on the status bar message."""
+        self._scan_dots = (self._scan_dots % 3) + 1
+        dots = "." * self._scan_dots
+        self.status.showMessage(f"{self._scan_msg_base}{dots}")
 
     def _build_menus(self):
         mb = self.menuBar()
@@ -1936,8 +2550,15 @@ class MainWindow(QMainWindow):
             )
             self._file_lbl.setTextFormat(Qt.TextFormat.RichText)
             self._act_file.setVisible(False)
-            self._act_swap.setVisible(True); self._act_compare.setVisible(True)
+            self._act_swap.setVisible(True)
+            self._act_compare.setVisible(True)
+            self._act_ref.setVisible(True)
             self.btn_save.setEnabled(True)
+            # Auto-postavi SW variant filter u Map Library
+            self.map_lib.auto_set_sw_filter(info.sw_id)
+            # Update accent bar and SW badge
+            self._update_accent_bar(info.sw_id)
+            self._update_sb_sw(info.sw_id)
             self.props.show_ecu(eng)
             self.log_strip.log(f"Ucitan: {name}", "ok")
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
@@ -1967,10 +2588,63 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Greska", str(e))
 
+    def _load_ref(self):
+        """Učitaj referentni fajl za ORI/REF side-by-side prikaz."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Otvori referentni (ORI) fajl", str(Path.home()),
+            "Binary (*.bin);;Svi fajlovi (*)"
+        )
+        if not path: return
+        try:
+            eng = ME17Engine(); info = eng.load(path)
+            self.eng_ref = eng; name = Path(path).name
+            self.log_strip.log(f"REF: {name}", "ok")
+            self.log_strip.log(f"REF SW: {info.sw_id} — {info.sw_desc}", "info")
+            w = ScanWorker(eng); w.finished.connect(self._done_ref); w.start(); self._w_ref = w
+        except Exception as e:
+            QMessageBox.critical(self, "Greska ucitavanja REF", str(e))
+
+    def _done_ref(self, maps: list["FoundMap"]):
+        self.maps_ref = maps
+        self.log_strip.log(f"REF: {len(maps)} mapa.", "ok")
+        # Ako je trenutno prikazana mapa, osvježi s REF
+        if self._cur and self._cur.defn.category != "dtc":
+            self._on_map_selected(self._cur)
+        # Ažuriraj REF label u tablici
+        if self.eng_ref:
+            info = self.eng_ref.info
+            self.map_view._lbl_f2.setText(
+                f"  REF  —  {info.sw_id}  (read-only)"
+            )
+
     def _save(self):
         if not self.eng1: return
         if not self.eng1.dirty:
             self.status.showMessage("Nema izmjena."); return
+
+        # Auto-checksum provjera pri save
+        try:
+            cs_eng = ChecksumEngine(self.eng1)
+            old_cs = self.eng1.get_bytes()[0x30:0x34]
+            old_cs_val = int.from_bytes(old_cs, "little")
+            # Provjeri promjenu checksuma
+            cs_result = cs_eng.verify()
+            cs_status = cs_result.get("sw_id", {}).get("status", "")
+            if cs_status != "OK":
+                reply = QMessageBox.question(
+                    self, "Checksum",
+                    f"Checksum nije ispravan (status: {cs_status}).\n"
+                    f"Trenutni: 0x{old_cs_val:08X}\n\n"
+                    "Napomena: Promjena CODE mapa ne zahtijeva promjenu CS.\n"
+                    "CS je potreban samo za promjene u BOOT regiji.\n\n"
+                    "Spremi svejedno?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+        except Exception:
+            pass  # checksum provjera nije kritična
+
         self.eng1.save()
         self.log_strip.log("Fajl snimljen.", "ok")
         self.status.showMessage("Snimljeno.")
@@ -1988,17 +2662,26 @@ class MainWindow(QMainWindow):
 
     def scan_maps(self):
         if not self.eng1: return
-        self.progress.show(); self.status.showMessage("Skeniranje...")
+        self.progress.show()
+        self._scan_msg_base = "Skeniranje"
+        self._scan_dots = 0
+        self._scan_timer.start(400)
+        self.status.showMessage("Skeniranje...")
         self.log_strip.log("Skeniranje mapa...", "info")
         w = ScanWorker(self.eng1)
-        w.progress.connect(self.status.showMessage)
+        w.progress.connect(self._scan_progress_cb)
         w.finished.connect(self._done1); w.start(); self._w1 = w
 
     def _done1(self, maps):
-        self.maps1 = maps; self.progress.hide()
+        self.maps1 = maps
+        self._scan_timer.stop()
+        self.progress.hide()
         self.map_lib.populate(maps)
         self.log_strip.log(f"Pronadjeno {len(maps)} mapa.", "ok")
-        self.status.showMessage(f"{len(maps)} mapa pronadjeno.")
+        self.status.showMessage(f"✓ {len(maps)} mapa učitano.")
+        # Update maps count badge in status bar
+        if self.eng1:
+            self._update_sb_sw(self.eng1.info.sw_id, len(maps))
 
     def _done2(self, maps):
         self.maps2 = maps
@@ -2030,18 +2713,36 @@ class MainWindow(QMainWindow):
                 )
             return
 
-        fm2 = next((m for m in self.maps2 if m.defn.name == fm.defn.name), None)
-        self.map_view.show_map(fm, fm2)
+        # Pronađi compare mapu — prioritet: REF fajl, zatim Fajl 2
+        fm_ref = next((m for m in self.maps_ref if m.defn.name == fm.defn.name), None)
+        fm2    = next((m for m in self.maps2    if m.defn.name == fm.defn.name), None)
+        compare = fm_ref or fm2
+
+        self.map_view.show_map(fm, compare)
+        # Ažuriraj label za REF vs Fajl 2
+        if compare:
+            src = "REF" if fm_ref else "Fajl 2"
+            self.map_view._lbl_f2.setText(
+                f"  {src}  —  {compare.sw_id}  @ 0x{compare.address:06X}  (read-only)"
+            )
         self.props.show_map_stats(fm)
         if self.eng1: self.hex_strip.show(self.eng1, fm.address)
         self.tabs.setCurrentIndex(0)
-        cmp = "  |  Fajl 2 aktivna" if fm2 else ""
+        cmp = "  |  REF aktivna" if fm_ref else ("  |  Fajl 2 aktivna" if fm2 else "")
         self.status.showMessage(f"{fm.defn.name}  @  0x{fm.address:06X}  {fm.defn.rows}×{fm.defn.cols}  {fm.defn.unit}{cmp}")
+        # Region badge in status bar
+        self._update_sb_region(fm.address)
 
     # ── Cell click ────────────────────────────────────────────────────────────
 
     def _on_cell_click(self, row: int, col: int, fm: FoundMap):
-        self.props.show_cell(row, col, fm)
+        # Pronađi referentnu mapu za delta prikaz
+        fm_ref = next((m for m in self.maps_ref if m.defn.name == fm.defn.name), None)
+        fm_cmp = fm_ref or next((m for m in self.maps2 if m.defn.name == fm.defn.name), None)
+        if fm_cmp:
+            self.props.show_cell_with_delta(row, col, fm, fm_cmp)
+        else:
+            self.props.show_cell(row, col, fm)
         addr = fm.address + (row * fm.defn.cols + col) * fm.defn.cell_bytes
         if self.eng1: self.hex_strip.show(self.eng1, addr)
         raw = fm.data[row * fm.defn.cols + col]
@@ -2077,14 +2778,86 @@ class MainWindow(QMainWindow):
         self._cur.data[idx] = new_raw
 
         # Undo stack
-        self._undo.append(UndoCmd(self._cur, row, col, old_raw, new_raw))
+        cmd = UndoCmd(self._cur, row, col, old_raw, new_raw)
+        self._undo.append(cmd)
         self._redo.clear(); self._upd_undo_btns()
+
+        # History panel
+        self.props.push_history(cmd)
 
         self.map_view.refresh_cell(row, col, new_raw)
         self.props.show_cell(row, col, self._cur)
         self.props.show_map_stats(self._cur)
         self.log_strip.log(result.message, "warn")
         self.status.showMessage(result.message)
+
+    def _on_bulk_edit(self, cells: list, op: str, val: float):
+        """Bulk operacija na selektiranim ćelijama s Undo podrškom."""
+        if not self.editor or not self._cur: return
+        defn = self._cur.defn
+
+        cmds = []
+        for row, col in cells:
+            idx = row * defn.cols + col
+            if idx >= len(self._cur.data): continue
+            old_raw = self._cur.data[idx]
+            disp_old = old_raw * defn.scale + defn.offset_val if defn.scale else float(old_raw)
+
+            if op == "scale":
+                new_disp = disp_old * val
+            elif op == "offset":
+                new_disp = disp_old + val
+            elif op == "copy_ref":
+                if self._fm2_for_cur():
+                    fm2 = self._fm2_for_cur()
+                    new_raw = fm2.data[idx] if idx < len(fm2.data) else old_raw
+                    new_disp = new_raw * defn.scale + defn.offset_val if defn.scale else float(new_raw)
+                else:
+                    continue
+            elif op == "smooth":
+                # Smooth: obradi po retku
+                row_cells = [(r, c) for r, c in cells if r == row]
+                if len(row_cells) < 2: continue
+                row_cells.sort(key=lambda x: x[1])
+                first_c = row_cells[0][1]
+                last_c  = row_cells[-1][1]
+                n_span  = last_c - first_c
+                if n_span == 0: continue
+                idx_first = row * defn.cols + first_c
+                idx_last  = row * defn.cols + last_c
+                d_first = self._cur.data[idx_first] * defn.scale + defn.offset_val if defn.scale else float(self._cur.data[idx_first])
+                d_last  = self._cur.data[idx_last]  * defn.scale + defn.offset_val if defn.scale else float(self._cur.data[idx_last])
+                t = (col - first_c) / n_span
+                new_disp = d_first + t * (d_last - d_first)
+            else:
+                continue
+
+            # Primijeni promjenu kroz editor
+            result = self.editor.write_cell(self._cur, row, col, new_disp)
+            if result.ok:
+                new_raw = round((new_disp - defn.offset_val) / defn.scale) if defn.scale else int(new_disp)
+                # Clamp na raw_max
+                raw_max = 0xFF if defn.dtype == "u8" else defn.raw_max
+                new_raw = max(defn.raw_min, min(raw_max, new_raw))
+                self._cur.data[idx] = new_raw
+                self.map_view.refresh_cell(row, col, new_raw)
+                cmds.append(UndoCmd(self._cur, row, col, old_raw, new_raw))
+
+        if cmds:
+            # Dodaj sve promjene u undo stack
+            self._undo.extend(cmds)
+            self._redo.clear()
+            self._upd_undo_btns()
+            for cmd in cmds:
+                self.props.push_history(cmd)
+            self.log_strip.log(f"Bulk {op}: {len(cmds)} ćelija promijenjeno.", "ok")
+            self.status.showMessage(f"Bulk {op}: {len(cmds)} ćelija.")
+
+    def _fm2_for_cur(self) -> "FoundMap | None":
+        """Vrati referentnu mapu (REF ili Fajl 2) za trenutnu mapu."""
+        if not self._cur: return None
+        return (next((m for m in self.maps_ref if m.defn.name == self._cur.defn.name), None)
+                or next((m for m in self.maps2  if m.defn.name == self._cur.defn.name), None))
 
     def _undo_action(self):
         if not self._undo or not self.editor: return
@@ -2108,6 +2881,19 @@ class MainWindow(QMainWindow):
         if cmd.fm is self._cur:
             self.map_view.refresh_cell(cmd.row, cmd.col, target_raw)
             self.props.show_cell(cmd.row, cmd.col, cmd.fm)
+
+    def _undo_to_cmd(self, target_cmd):
+        """Undo do (i uključujući) zadanu komandu iz History liste."""
+        if not self.editor: return
+        while self._undo:
+            cmd = self._undo[-1]
+            self._undo.pop()
+            self._apply_cmd(cmd, cmd.old_raw)
+            self._redo.append(cmd)
+            self._upd_undo_btns()
+            self.log_strip.log(f"Undo: [{cmd.row},{cmd.col}] {cmd.new_raw} → {cmd.old_raw}", "info")
+            if cmd is target_cmd:
+                break
 
     def _upd_undo_btns(self):
         self.btn_undo.setEnabled(bool(self._undo))

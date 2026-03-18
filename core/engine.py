@@ -32,7 +32,7 @@ EMPTY_START     = 0x160000
 # Poznati SW stringovi (na adresi 0x001A, 10 bajtova)
 KNOWN_SW = {
     b"10SW066726": "ORI baseline (Sea-Doo 300hp SC, stock)",
-    b"10SW040039": "NPRo Stage 2 baseline (300hp SC)",
+    b"10SW040039": "300hp SC 2019 ORI / NPRo STG2 base (SW string nepromijenjen u NPRo tunu — 4482B CODE razlika između 2019 ORI i NPRo verzije)",
     b"10SW004672": "RXP/RXT 300hp SC (2016)",
     b"10SW082806": "300hp SC variant (backup_flash)",
     b"10SW025752": "GTI SE 155 2018 (NA, 10SW025752)",

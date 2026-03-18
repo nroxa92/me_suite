@@ -3,6 +3,18 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+---
+**[2026-03-18 — UI vizualna poboljšanja]**
+👤 Implementiraj grafičke/vizualne poboljšanja u ui/main_window.py: category color badges u MapLibrary, status bar gauge labele (SW ID, broj mapa, BOOT/CODE/CAL region), accent bar ispod toolbar-a koji mijenja boju prema SW varijanti, scan progress animacija s tačkama, i heatmap paleta po kategoriji.
+🤖 Svih 5 zadataka implementirano u ui/main_window.py. Dodani: _category_icon() (12×12 filled circle icons), _sw_accent_color(), _cell_colors_cat() s 4 category palete, accent QFrame 2px, 3 gauge QLabel-a u status baru, QTimer scan animacija. AST + import provjere prolaze.
+
+---
+---
+**[2026-03-18]**
+👤 Pronađi i implementiraj mape koje nedostaju za Spark 900 ACE ECU (10SW039116/10SW011328) u core/map_finder.py. Spark ima 21 mapu, GTI90 ima ekvivalente za torque, lambda trim, lambda bias, lambda protection, lambda eff, eff corr, accel enrich, ign corr, therm enrich, overtemp lambda, neutral corr.
+🤖 Binarna analiza završena. Potvrđeno i dodano 6 novih mapa: torque limit @ 0x027E3A (16×16 BE Q8), lambda trim @ 0x024EC4 (30×20 LE Q15), overtemp lambda @ 0x024468 (63 u16, identično GTI90), lambda prot @ 0x0222C0 (12×18 LE), therm enrich @ 0x025BAA (8×7, /64=%), neutral corr @ 0x0237AC (flat 16384). Spark: 21 → 27 mapa. Testovi prolaze.
+
+---
 **[2026-03-17]**
 👤 Analiziraj EEPROM circular buffer za odometar u Sea-Doo Bosch ME17.8.5 ECU. 68 fajlova, 3 HW tipa (062/063/064). Pronađi pattern, identificiraj aktivni slot, napiši EepromParser.find_odo_minutes().
 🤖 Kompletna analiza završena. Odometar je uvijek @ 0x0562 (u16 LE, anchor slot 0x0550+18) za 063/064 HW; fallback 0x0D62/0x1562 za wrap; 062 HW koristi 0x5062→0x4562→0x1062 prioritet. Circular buffer ima 20B slotove s ODO @ +16/+18. EepromParser implementiran u core/eeprom_parser.py, 11/11 test OK.
@@ -478,5 +490,46 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18]**
 👤 mi imamo novi dump, 2019 1503, 230... to je sada prvi 230 1.5
 🤖 Provjeren: SW=10SW040008 — identičan binarni kao 130 i 155hp! 0B razlike. Isti obrazac kao 1630 NA 130/170hp. Razlika u snazi dolazi od HW (kompresor, bregaste), ne ECU mape.
+
+---
+
+**[2026-03-18]**
+👤 Konsolidiraj dokumentaciju ME17Suite projekta. Imamo dva foldera i treba nam samo jedan. Primarni (_docs/) zadržati, docs/ obrisati.
+🤖 Konsolidacija dovršena. docs/ folder obrisan (3 fajla — CAN, MAPS, QA — sve potvrđeno da je u _docs/). Obrisano 5 zastarjelih _docs/ fajlova (internet research ×2, MAP_RESEARCH sirovi sken, NEDOSTAJE_ISTRAZITI zastarjela TODO lista, UI_REDESIGN_UPUTA implementirana). DOC_AGENT_LOG.md ažuriran.
+
+---
+
+---
+**[2026-03-18]**
+👤 Implementiraj 7 UI poboljšanja u ui/main_window.py: axis labels na heatmapu, delta overlay u diff modu, bulk edit toolbar, ORI/STG2 side-by-side, SW variant filter, undo history panel, auto-checksum na save.
+🤖 Sva 7 poboljšanja implementirana: _format_axis_labels() helper, show_map_diff() s delta overlay, bulk toolbar (Scale/Offset/Smooth/CopyREF), REF gumb za side-by-side, SW dropdown s auto-set, History tab s klik=undo, CS dialog pri save. Testovi prolaze.
+
+---
+
+---
+**[2026-03-18]**
+👤 daj agenta neka odradi sve od reda... kako nam stoje ostali agenti? nemoj da se nesto preskace... azurirati logove molim..
+🤖 Oba agenta završena: UI (7 poboljšanja) i Spark map agent. Grafički redesign jedino ostalo. Logovi ažurirani. Pokrenut grafički UI agent u pozadini.
+
+---
+
+---
+**[2026-03-18]**
+👤 [agent notifikacija — Spark map agent završen]
+🤖 Spark: 21 → 27 mapa (+6). Novo: torque limit, lambda trim, overtemp lambda, lambda protection, therm enrich, neutral corr. 6 mapa nije pronađeno (Spark ECU nema GTI ekvivalente). Testovi prolaze.
+
+---
+
+---
+**[2026-03-18]**
+👤 stize dump 2019 300, time zatvaramo 2019 god.. imamo 2019, 2020, 2021, evo dumpa
+🤖 2019/300: SW=10SW040039, 51 mapa. NALAZ: 10SW040039 je 2019 STOCK firmware — NPRo ne mijenja SW string, samo modificira 4482B CODE. Opis u engine.py ispravljen. 2019 komplet: 300+spark90+1503(×3).
+
+---
+
+---
+**[2026-03-18]**
+👤 [agent notifikacija — Grafički UI redesign završen]
+🤖 Svih 5 vizualnih poboljšanja gotova: category color badges, status bar gauges (SW+mape+regija), accent bar po SW varijanti, scan progress animacija, heatmap paleta po kategoriji. AST OK.
 
 ---

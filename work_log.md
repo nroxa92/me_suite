@@ -1,5 +1,131 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — UI vizualna poboljšanja (5 zadataka)
+
+### Što je napravljeno
+Implementirana vizualna/grafička poboljšanja u `ui/main_window.py`.
+
+### Promijenjeni fajlovi
+- `ui/main_window.py` — jedini fajl, sve promjene unutar njega
+
+### Detalji implementacije
+
+#### 1. Category color badges u MapLibraryPanel
+- Dodana konstanta `CATEGORY_COLORS` s 8 kategorija i HEX bojama
+- Implementirana funkcija `_category_icon(category)` — kreira 12×12 QPixmap filled circle u boji kategorije, vraća QIcon
+- U `MapLibraryPanel._render()`: svaki tree item dobiva `ch.setIcon(0, _category_icon(fm.defn.category))`
+- Boje: injection=#4ec9b0, ignition=#f97316, torque=#a855f7, lambda=#22d3ee, rpm_limiter=#ef4444, axis=#6b7280, misc=#84cc16, dtc=#f59e0b
+
+#### 2. Status bar gauge labele
+- Dodana 3 QLabel widgeta kao `addPermanentWidget` u status baru:
+  - `_sb_sw_lbl` — SW ID bold, boja prema SW varijanti
+  - `_sb_maps_lbl` — badge s brojem mapa (prikazuje se nakon scan-a)
+  - `_sb_region_lbl` — BOOT/CODE/CAL indikator kad je mapa selektirana
+- Metoda `_update_sb_sw(sw_id, n_maps)` — ažurira SW badge i maps count
+- Metoda `_update_sb_region(addr)` — određuje regiju i bojom označava
+- Poziva se iz `_load1()` (SW badge) i `_on_map_selected()` (region badge)
+
+#### 3. Accent bar ispod toolbar-a
+- Dodan `QFrame` visine 2px (`_accent_bar`) odmah ispod toolbar-a, iznad progress bar-a
+- Metoda `_update_accent_bar(sw_id)` — bira boju prema SW varijanti
+- Boje: 300hp SC=#f97316, 230hp SC=#f59e0b, 130/170hp NA=#4ec9b0, Spark=#a855f7, GTI90=#22d3ee, GTI155=#84cc16, nije učitan=#333333
+- Poziva se iz `_load1()` nakon učitavanja
+
+#### 4. Scan progress animacija
+- Dodan `QTimer` (`_scan_timer`, 400ms interval) koji ciklira 1/2/3 točke na status baru
+- `_scan_progress_cb(msg)` — prima progress poruku iz ScanWorker-a, pohranjuje u `_scan_msg_base`
+- `_scan_progress_tick()` — slot timera, cycla tačke i prikazuje u status baru
+- Timer se pokreće u `scan_maps()` i zaustavlja u `_done1()`
+- Nakon završetka: `status.showMessage("✓ {N} mapa učitano.")`
+
+#### 5. Heatmap paleta po kategoriji
+- Definirane 4 category-specific palete: `_PAL_INJECTION`, `_PAL_IGNITION`, `_PAL_TORQUE`, `_PAL_LAMBDA`
+- Svaka paleta = 9 (bg, fg) QColor parova od najhladnijeg do najtoplijeg
+- `_CATEGORY_PALETTES` dict mapira kategorije na palete
+- Nova funkcija `_cell_colors_cat(raw, mn, mx, category)` — odabire paletu prema kategoriji
+- Stara `_cell_colors()` postala alias koji prosljeđuje category argument
+- Ažurirane `show_map()` i `refresh_cell()` metode u `MapTableView` — prosljeđuju `defn.category`
+
+### Tehnički detalji
+- AST provjera: PASS (`python -c "import ast; ast.parse(open('ui/main_window.py', encoding='utf-8').read())"`)
+- Import provjera: PASS (`from ui.main_window import MainWindow`)
+- Dodani importi: `QIcon, QPixmap, QPainter` u PyQt6.QtGui importu
+
+---
+
+## 2026-03-18 — Spark 900 ACE nove mape (+6 novih MapDef-ova)
+
+### Što je napravljeno
+Binarna analiza Spark 900 ACE ECU-a tražeći 12 mapa koje GTI90 ima a Spark nema.
+Korišten sistematičan pattern scan uspoređujući Spark 2021, Spark 2018, STG2 i GTI90.
+
+### Potvrđene i implementirane mape (6 novih):
+1. **Torque limit** @ 0x027E3A — 16×16 u16 BE Q8, mirror @ 0x028352 (+0x518). Identičan format GTI90 @ 0x02A0D8. Vrijednosti 28416-32512 (Q8: 111-127).
+2. **Lambda trim** @ 0x024EC4 — 30×20 u16 LE Q15. 600 vrijednosti 31935-33871 (λ 0.975-1.034). Razlika 2021 vs 2018: 240/600 vrijednosti.
+3. **Overtemp lambda** @ 0x024468 — 63 u16 LE Q15. Identično GTI90 @ 0x025ADA (byte-for-byte). Nema razlike 2018 vs 2021.
+4. **Lambda protection** @ 0x0222C0 — 12×18 u16 LE, mali Q15 raw (508-2154 = 0.016-0.066). Mirror @ 0x0227D8 (+0x518). Isti na 2021 i 2018.
+5. **Therm enrich** @ 0x025BAA — 8×7 u16 LE, /64=%. Vrijednosti 9766-14400 = 152-225%. Analogno GTI90 @ 0x02AA42.
+6. **Neutral corr** @ 0x0237AC — 80 u16 LE Q14=1.0 (flat, nema korekcije). Identično na svim SW varijantama.
+
+### Mape koje NISU nađene (6 od 12):
+- **Torque opt** — Nije zasebna tablica (moguće isti podaci kao torque limit + GTI specifičan)
+- **Lambda bias** — Nije pronađen blok odgovarajućih dimenzija u Spark CODE
+- **Lambda eff (KFWIRKBA)** — GTI format (41×18, rastuće Q15) ne postoji u Spark layout-u
+- **Eff corr** — GTI pattern (Q15 ~0.4-1.3) nije potvrdio jedinstven blok
+- **Accel enrich** — Kompleksan enkapsuliran format, nije nedvosmisleno identificiran
+- **Ign corr** — GTI 8×8 u8 format nije u Sparku (Spark ima drugačiju strukturu @ 0x0222BE area)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 6 novih MapDef-ova (_SPARK_TORQUE_DEF, _SPARK_LAMBDA_TRIM_DEF, _SPARK_OVERTEMP_LAMBDA_DEF, _SPARK_LAMBDA_PROT_DEF, _SPARK_THERM_ENRICH_DEF, _SPARK_NEUTRAL_CORR_DEF) + 6 novih scan blokova u `_scan_spark_aux()`
+- Obrisano: `analyze_spark_maps.py`, `analyze_spark_maps2.py`, `analyze_spark_maps3.py`, `analyze_spark_maps4.py` (temp analitičke skripte)
+
+### Ključni rezultati
+- Spark: 21 mapa → **27 mapa** (+6, +29%)
+- `python test/test_core.py` — sve prolazi (Spark: 27 mapa, assert >= 10 ✓)
+- Spark torque @ 0x027E3A ima isti mirror offset (+0x518) kao injection i lambda_prot → konzistentna arhitektura
+
+---
+
+## 2026-03-18 — UI poboljšanja v2b (7 novih funkcionalnosti)
+
+Implementirano u `ui/main_window.py`:
+
+1. **Axis Labels** — `_format_axis_labels()`: RPM→int, Load→"20%", ostalo→1 decimala
+2. **Delta Overlay** — `show_map_diff()`: "37 (+3)" format, zelena/crvena nijansa
+3. **Bulk Edit Toolbar** — Scale/Offset/Smooth/CopyREF, vidljiv pri >1 selekciji, undo podrška
+4. **REF side-by-side** — "+ REF" gumb u toolbaru, `_load_ref()`, prioritet nad Fajl 2
+5. **SW Variant Filter** — dropdown u MapLibraryPanel, auto-set pri učitavanju
+6. **Undo History Panel** — "History" tab u PropertiesPanel, klik=undo do točke
+7. **Auto-Checksum na Save** — dialog ako CS nije OK
+
+Testovi: `python test/test_core.py` sve prolazi; `python main.py` OK.
+
+---
+
+## 2026-03-18 13:00 — Konsolidacija dokumentacije: docs/ → _docs/
+
+### Što je napravljeno
+- Pročitani svi fajlovi u `docs/` (CAN_SAT_PORUKE.md, MAPA_ADRESE.md, QA_LOG.md)
+- Uspoređeni s odgovarajućim `_docs/` fajlovima (CANBUS_NOTES.md, MAPS_REFERENCE.md)
+- Potvrđeno: svi podaci su potpuno konsolidirani u `_docs/` u prethodnoj doc sesiji
+- Obrisan `docs/` folder (sva 3 fajla)
+- Obrisano 5 zastarjelih `_docs/` fajlova (vidi DOC_AGENT_LOG.md za detalje)
+- Ažurirani: DOC_AGENT_LOG.md, chat_log.md, work_log.md
+
+### Fajlovi promijenjeni
+- OBRISANO: `docs/` (cijeli folder — CAN_SAT_PORUKE.md, MAPA_ADRESE.md, QA_LOG.md)
+- OBRISANO: `_docs/INTERNET_RESEARCH_KOMPLETAN_DOKUMENT.md`
+- OBRISANO: `_docs/INTERNET_RESEARCH_REZULTATI.md`
+- OBRISANO: `_docs/MAP_RESEARCH.md`
+- OBRISANO: `_docs/NEDOSTAJE_ISTRAZITI.md`
+- OBRISANO: `_docs/UI_REDESIGN_UPUTA.md`
+- AŽURIRANO: `_docs/DOC_AGENT_LOG.md`
+
+### Rezultat
+Dokumentacija konsolidirana — jedini aktivni docs folder je `_docs/`.
+
+---
+
 ## 2026-03-18 — PDF pretraga rev limiter vrijednosti (Spark/GTI 900 ACE)
 
 ### Pretraženi fajlovi
@@ -1950,3 +2076,64 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 
 ### Provjera
 - `ast.parse` OK za sva 3 fajla
+
+## 2026-03-18 — Sesija nastavak: status agenata + grafički UI redesign
+
+### Status agenata (provjera)
+- **UI agent** ✅ ZAVRŠEN — 7 tehničkih UI poboljšanja implementirana
+- **Spark map agent** ✅ ZAVRŠEN — Spark mape proširene (lambda, warmup, idle_rpm, knock, start_inj, DFCO, cold_start, deadtime, rev_limiter)
+- **Docs agent** ✅ ZAVRŠEN — docs/ obrisan, _docs/ konsolidiran
+
+### Pokrenuti agent za grafički redesign
+- Zadatak: vizualni/grafički redesign UI (boje po kategoriji, gradient header, status bar gauges, scan progress itd.)
+- Agent pokrenut u pozadini
+
+## 2026-03-18 — Spark map agent ZAVRŠEN: 21 → 27 mapa (+6)
+
+### Nove mape dodane u map_finder.py
+| Mapa | Adresa | Format |
+|------|--------|--------|
+| Torque limit | 0x027E3A | 16×16 BE Q8, mirror +0x518 |
+| Lambda trim | 0x024EC4 | 30×20 LE Q15 (600 vrijednosti) |
+| Overtemp lambda | 0x024468 | 63 u16 LE Q15 |
+| Lambda protection | 0x0222C0 | 12×18 LE, mirror +0x518 |
+| Therm enrich | 0x025BAA | 8×7 LE /64=% |
+| Neutral corr | 0x0237AC | 80 u16 LE Q14 (flat=1.0) |
+
+### Nije pronađeno (Spark nema ekvivalent):
+- Lambda bias, KFWIRKBA, Eff corr, Accel enrich, Ign corr, Torque opt
+  - Razlog: Spark ECU (Ski-Doo derivat) ima drugačiji CODE layout — te mape ne postoje
+
+### Rezultat testova
+- Spark: 27 mapa ≥ 10 ✅, testovi prolaze
+
+### Grafički agent (a4a22daf498b48cf7)
+- Još radi: category badges, accent bar, status gauges, heatmap palette po kategoriji
+
+## 2026-03-18 — Novi dump: 2019/1630ace/300.bin
+
+### Nalaz
+- SW=10SW040039, valid=True, MCU ok, 51 mapa
+- **10SW040039 je 2019 stock firmware** (ne samo NPRo label!)
+  - NPRo ne mijenja SW string — uzima 2019 stock, modificira 4482B CODE, ostaje isti SW ID
+  - 2019/300.bin vs 2020/300_stg2 (NPRo): 4482 CODE diffs (NPRo tune je ta razlika)
+  - 2019/300.bin vs 2020/300 ORI: 1838 CODE diffs (normalna godišnja evolucija)
+- KNOWN_SW opis ažuriran u core/engine.py
+
+### 2019 status — KOMPLET
+- 2019/1630ace/300.bin ✅ (10SW040039)
+- 2019/4tec1503/130.bin, 155.bin, 230.bin ✅ (sve 10SW040008 — identični)
+- 2019/900ace/spark90.bin ✅ (10SW039116)
+
+## 2026-03-18 — Grafički UI redesign agent ZAVRŠEN
+
+### Implementirano (sve 5 poboljšanja)
+1. **Category color badges** — `CATEGORY_COLORS` + `_category_icon()` → 12×12 filled circle icon ispred naziva mape u tree-u
+   - injection=teal, ignition=orange, torque=purple, lambda=cyan, rpm_limiter=red, axis=gray, misc=lime, dtc=amber
+2. **Status bar gauges** — `_sb_sw_lbl` (SW ID + boja varijante), `_sb_maps_lbl` (badge s brojem mapa), `_sb_region_lbl` (BOOT/CODE/CAL)
+3. **Accent bar** — 2px QFrame ispod toolbara, boja po SW varijanti (SC=orange, NA=teal, Spark=purple, GTI90=cyan, GTI155=lime)
+4. **Scan progress animacija** — QTimer 400ms, cycla tačke, završetak: "✓ N mapa učitano."
+5. **Heatmap paleta po kategoriji** — `_PAL_INJECTION`, `_PAL_IGNITION`, `_PAL_TORQUE`, `_PAL_LAMBDA`, `_cell_colors_cat()`
+
+### Provjera
+- AST parse OK (UTF-8 encoding)

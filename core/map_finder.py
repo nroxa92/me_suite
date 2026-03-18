@@ -1689,6 +1689,155 @@ _SPARK_LAMBDA_DEF = MapDef(
 )
 
 
+# ── Spark NOVE mape (binarni scan 2026-03-18) ─────────────────────────────────
+# Adrese verificirane na Spark 2021 (10SW039116), Spark 2018 (10SW011328) i STG2.
+# Uspoređeno s GTI90 (10SW053774) koji dijeli isti fizički motor.
+
+_SPARK_TORQUE_DEF = MapDef(
+    name        = "Spark — Momenti ograničenje (torque limit)",
+    description = (
+        "Spark 900 ACE torque limit mapa. 16×16 u16 BE, Q8 format (/256). "
+        "Vrijednosti 111–127 = ~87–99% nominalna snaga. "
+        "Identičan format kao GTI90 torque (@ 0x02A0D8). "
+        "Adresa: 0x027E3A. Mirror: 0x028352 (+0x518 = 1304B)."
+    ),
+    category    = "torque",
+    rows=16, cols=16,
+    byte_order  = "BE", dtype = "u16",
+    scale       = 1.0 / 256.0,
+    offset_val  = 0.0,
+    unit        = "Nm (rel.)",
+    raw_min     = 28000, raw_max = 33000,
+    mirror_offset = 0x518,
+    notes       = (
+        "Spark 900 ACE. @ 0x027E3A, mirror @ 0x028352 (+0x518). "
+        "Q8: raw/256. 2021 vs 2018: neke razlike u vrijednostima. "
+        "Format identičan GTI90 @ 0x02A0D8. ISPRED blok 0x8000 (dummy os)."
+    ),
+)
+
+_SPARK_LAMBDA_TRIM_DEF = MapDef(
+    name        = "Spark — Lambda korekcija po RPM×Load (trim)",
+    description = (
+        "Spark 900 ACE lambda trim mapa — korekcija otvorene petlje. "
+        "30×20 u16 LE Q15. Q15=32768 → 1.0 (stoich). "
+        "Vrijednosti 31935–32903 = λ 0.975–1.004. "
+        "2021 vs 2018: 240/600 razlika (ECU specifično podešavanje). "
+        "Adresa: 0x024EC4."
+    ),
+    category    = "lambda",
+    rows=30, cols=20,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "λ korekcija",
+    raw_min     = 31000, raw_max = 34000,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x024EC4. 30×20=600 u16 LE. "
+        "Q15 korekcija lambda cilja. 2021 vs 2018 razlika: 240/600 vrijednosti. "
+        "Lambda (RPM,load) × trim = efektivna ciljana lambda. "
+        "Identičan raspon kao GTI lambda trim @ 0x026DB8."
+    ),
+)
+
+_SPARK_OVERTEMP_LAMBDA_DEF = MapDef(
+    name        = "Spark — Overtemp lambda zaštita",
+    description = (
+        "Spark 900 ACE lambda korekcija pri visokoj temperaturi. "
+        "63 u16 LE Q15. Vrijednosti 5398–46613 = 0.165–1.423 λ (bogaćenje pri prehrijavanju). "
+        "IDENTIČNE vrijednosti kao GTI90 overtemp lambda @ 0x025ADA. "
+        "Adresa: 0x024468. Jednako 2018 i 2021."
+    ),
+    category    = "lambda",
+    rows=63, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "λ",
+    raw_min     = 5000, raw_max = 50000,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x024468. 63 u16 LE Q15. "
+        "Identično GTI90 @ 0x025ADA (byte-for-byte iste vrijednosti). "
+        "Nema razlike 2021 vs 2018. "
+        "Bogati smjesu pri prehrijavanju (zaštita klipa)."
+    ),
+)
+
+_SPARK_LAMBDA_PROT_DEF = MapDef(
+    name        = "Spark — Lambda zaštitni prag (protection)",
+    description = (
+        "Spark 900 ACE lambda zaštita — donji pragovi lambda korekcije. "
+        "12×18 u16 LE. Mali Q15 raw vrijednosti (508–2154 = 0.015–0.066). "
+        "Identično na Spark 2021 i 2018. Mirror kopija @ 0x0227D8 (+0x518). "
+        "Adresa: 0x0222C0."
+    ),
+    category    = "lambda",
+    rows=12, cols=18,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "λ prag",
+    raw_min     = 400, raw_max = 2500,
+    mirror_offset = 0x518,
+    notes       = (
+        "Spark 900 ACE. @ 0x0222C0, mirror @ 0x0227D8 (+0x518=1304B). "
+        "12×18=216 u16 LE. Mali Q15 raw (508-2154 = 0.015-0.066). "
+        "Isti na 2021 i 2018 Sparku. "
+        "Donji threshold lambda korekcije."
+    ),
+)
+
+_SPARK_THERM_ENRICH_DEF = MapDef(
+    name        = "Spark — Toplinska korekcija goriva (therm enrich)",
+    description = (
+        "Spark 900 ACE korekcija goriva pri različitim temperaturama hladnjaka. "
+        "8×7 u16 LE. Dijeljeno s 64 = %. Vrijednosti 9766–14400 = 152–225%. "
+        "Slično GTI90 therm enrich @ 0x02AA42. "
+        "Adresa: 0x025BAA. Nema mirrora."
+    ),
+    category    = "fuel",
+    rows=8, cols=7,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 64.0,
+    offset_val  = 0.0,
+    unit        = "%",
+    raw_min     = 9000, raw_max = 15000,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x025BAA. 8×7=56 u16 LE. "
+        "/64 = faktor obogaćivanja (%). 152-225% = bogata pri zagrijavanju. "
+        "Slično GTI90 @ 0x02AA42 ali Spark vrijednosti nešto drugačije. "
+        "Razlika 2021 vs 2018: 3/56 vrijednosti."
+    ),
+)
+
+_SPARK_NEUTRAL_CORR_DEF = MapDef(
+    name        = "Spark — Korekcija u neutralu (neutral corr)",
+    description = (
+        "Spark 900 ACE korekcija goriva/napona u neutralnom položaju. "
+        "80 u16 LE Q14. Sve vrijednosti = 16384 (Q14=1.0 = nema korekcije). "
+        "Identično na 2021, 2018 i STG2. "
+        "Adresa: 0x0237AC."
+    ),
+    category    = "misc",
+    rows=80, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 16384.0,
+    offset_val  = 0.0,
+    unit        = "faktor",
+    raw_min     = 16000, raw_max = 16500,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x0237AC. 80 u16 LE Q14=1.0. "
+        "Sve vrijednosti = 16384 (neutral = nema korekcije). "
+        "GTI90 koristi 16448 (1.004) na svojoj adresi. "
+        "Identično na svim Spark SW varijantama."
+    ),
+)
+
+
 # ─── GTI 155 / NA motor mape ──────────────────────────────────────────────────
 #
 # GTI SE 155 (1.5L ATM, SW 10SW025752) i srodnih NA motornih varijanti.
@@ -3215,6 +3364,81 @@ class MapFinder:
             if cb: cb(f"  Spark rev limiter @ 0x{addr:06X}  {v} ticks = {rpm} RPM")
         else:
             if cb: cb(f"  Spark rev limiter @ 0x{addr:06X}: neočekivana vrijednost {v}")
+
+        # ─ Torque limit @ 0x027E3A (16×16 u16 BE Q8, mirror +0x518) ─
+        addr   = 0x027E3A
+        n_torq = _SPARK_TORQUE_DEF.rows * _SPARK_TORQUE_DEF.cols  # 256
+        if addr + n_torq * 2 <= len(data):
+            vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'big') for i in range(n_torq)]
+            if all(_SPARK_TORQUE_DEF.raw_min <= v <= _SPARK_TORQUE_DEF.raw_max for v in vals):
+                _add(_SPARK_TORQUE_DEF, addr, vals)
+                if cb: cb(f"  Spark torque @ 0x{addr:06X}  16×16 BE Q8  [{min(vals)}–{max(vals)}]")
+            else:
+                if cb: cb(f"  Spark torque @ 0x{addr:06X}: validacija pala [{min(vals)}–{max(vals)}]")
+
+        # ─ Lambda trim @ 0x024EC4 (30×20 u16 LE Q15) ─
+        addr   = 0x024EC4
+        n_lt   = _SPARK_LAMBDA_TRIM_DEF.rows * _SPARK_LAMBDA_TRIM_DEF.cols  # 600
+        if addr + n_lt * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_lt)
+            if all(_SPARK_LAMBDA_TRIM_DEF.raw_min <= v <= _SPARK_LAMBDA_TRIM_DEF.raw_max for v in vals):
+                _add(_SPARK_LAMBDA_TRIM_DEF, addr, vals)
+                if cb: cb(f"  Spark lambda trim @ 0x{addr:06X}  30×20 LE Q15  "
+                           f"[{min(vals)/32768:.3f}–{max(vals)/32768:.3f}]λ")
+            else:
+                if cb: cb(f"  Spark lambda trim @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}–{max(vals)}]")
+
+        # ─ Overtemp lambda @ 0x024468 (63 u16 LE Q15) ─
+        addr  = 0x024468
+        n_ovt = _SPARK_OVERTEMP_LAMBDA_DEF.rows * _SPARK_OVERTEMP_LAMBDA_DEF.cols  # 63
+        if addr + n_ovt * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_ovt)
+            if all(_SPARK_OVERTEMP_LAMBDA_DEF.raw_min <= v <= _SPARK_OVERTEMP_LAMBDA_DEF.raw_max for v in vals):
+                _add(_SPARK_OVERTEMP_LAMBDA_DEF, addr, vals)
+                if cb: cb(f"  Spark overtemp λ @ 0x{addr:06X}  n=63 Q15  "
+                           f"[{min(vals)/32768:.3f}–{max(vals)/32768:.3f}]λ")
+            else:
+                if cb: cb(f"  Spark overtemp λ @ 0x{addr:06X}: validacija pala")
+
+        # ─ Lambda protection @ 0x0222C0 (12×18 u16 LE, mirror +0x518) ─
+        addr  = 0x0222C0
+        n_lp  = _SPARK_LAMBDA_PROT_DEF.rows * _SPARK_LAMBDA_PROT_DEF.cols  # 216
+        if addr + n_lp * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_lp)
+            if all(_SPARK_LAMBDA_PROT_DEF.raw_min <= v <= _SPARK_LAMBDA_PROT_DEF.raw_max for v in vals):
+                _add(_SPARK_LAMBDA_PROT_DEF, addr, vals)
+                if cb: cb(f"  Spark lambda prot @ 0x{addr:06X}  12×18 LE  "
+                           f"[{min(vals)}–{max(vals)}]")
+            else:
+                if cb: cb(f"  Spark lambda prot @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}–{max(vals)}]")
+
+        # ─ Therm enrich @ 0x025BAA (8×7 u16 LE, /64=%) ─
+        addr   = 0x025BAA
+        n_therm = _SPARK_THERM_ENRICH_DEF.rows * _SPARK_THERM_ENRICH_DEF.cols  # 56
+        if addr + n_therm * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_therm)
+            if all(_SPARK_THERM_ENRICH_DEF.raw_min <= v <= _SPARK_THERM_ENRICH_DEF.raw_max for v in vals):
+                _add(_SPARK_THERM_ENRICH_DEF, addr, vals)
+                if cb: cb(f"  Spark therm enrich @ 0x{addr:06X}  8×7 LE  "
+                           f"[{min(vals)/64:.1f}%–{max(vals)/64:.1f}%]")
+            else:
+                if cb: cb(f"  Spark therm enrich @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}–{max(vals)}]")
+
+        # ─ Neutral corr @ 0x0237AC (80 u16 LE Q14, flat=1.0) ─
+        addr   = 0x0237AC
+        n_neut = _SPARK_NEUTRAL_CORR_DEF.rows * _SPARK_NEUTRAL_CORR_DEF.cols  # 80
+        if addr + n_neut * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_neut)
+            if all(_SPARK_NEUTRAL_CORR_DEF.raw_min <= v <= _SPARK_NEUTRAL_CORR_DEF.raw_max for v in vals):
+                _add(_SPARK_NEUTRAL_CORR_DEF, addr, vals)
+                if cb: cb(f"  Spark neutral corr @ 0x{addr:06X}  n=80 Q14  "
+                           f"flat={vals[0]/16384:.4f}")
+            else:
+                if cb: cb(f"  Spark neutral corr @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}–{max(vals)}]")
 
         if cb: cb("  Spark aux tablice: skeniranje završeno")
 
