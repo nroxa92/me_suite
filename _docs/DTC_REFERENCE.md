@@ -1,5 +1,7 @@
 # DTC Reference — Bosch ME17.8.5 / Sea-Doo
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `core/dtc.py` (111 ECM codes), binary analysis
 **Coverage:** ori_300 (10SW066726) as primary reference
@@ -48,6 +50,10 @@ Enable table @ 0x021080+ (min. 253 bytes, slots 0–252):
 ---
 
 ## 2. DTC Code List (111 ECM codes, ori_300)
+
+**Distribucija po kategoriji:** P0xxx = 65 kodova | P1xxx = 35 kodova | P2xxx = 11 kodova
+
+**GUI organizacija:** DTC Off tab prikazuje kodove grupirane u P0 / P1 / P2 podgrupe. Zelena ikona = aktivno praćenje, crvena = DTC OFF.
 
 ### MAP Sensor (Intake Manifold Pressure)
 

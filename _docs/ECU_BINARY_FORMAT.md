@@ -1,5 +1,7 @@
 # ECU Binary Format — Bosch ME17.8.5 / TC1762
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `core/engine.py`, `core/checksum.py`, `_docs/_BRIEFING.md`, binary analysis
 
@@ -49,16 +51,20 @@ Offset       Size         Region   Contents
 0x160000   96KB (0x18000)  EMPTY   0x00 fill, unused flash space.
 ```
 
+> **BOOT region stvarna granica:** BOOT završava na 0x7EFF (ne 0xFFFF!). Gap 0x7F00–0xFFFF sadrži DEADBEEF terminator i TC1762 BROM startup kod. Checksum pokriva samo 0x0000–0x7EFF.
+
 ### Python constants (core/engine.py):
 ```python
 BOOT_START  = 0x000000
-BOOT_END    = 0x00FFFF
+BOOT_END    = 0x00FFFF   # konstantna granica regije u kodu
 CODE_START  = 0x010000
 CODE_END    = 0x05FFFF
 CAL_START   = 0x060000
 CAL_END     = 0x15FFFF
 EMPTY_START = 0x160000
 ```
+
+> Napomena: BOOT_END u kodu = 0x00FFFF (64KB blok), ali checksum regija = 0x0000–0x7EFF (32,512B). RSA potpis je @ 0x7E7C–0x7EFF.
 
 ---
 

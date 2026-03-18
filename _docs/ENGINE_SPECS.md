@@ -1,5 +1,7 @@
 # Engine Specifications — Rotax Engines (Sea-Doo)
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** 2021 BRP Service Manual (str. 185), Tech Spec PDFs, binary analysis
 

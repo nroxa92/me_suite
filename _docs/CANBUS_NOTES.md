@@ -1,5 +1,7 @@
 # CAN Bus Notes — Bosch ME17.8.5 / Sea-Doo
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `docs/CAN_SAT_PORUKE.md` (consolidated), binary analysis of 5 ECU files
 
@@ -134,11 +136,60 @@ GTI/230/300:    108 110 12C 138 13C 15B 15C 17C 214  +  148 (2×15C)
 
 ---
 
-## 9. ME17Suite CAN Network Tab
+## 9. CAN Payload Formats (potvrđeno iz ECU CODE)
+
+Payload formati verifirani binarnom analizom ECU flash-a (CODE region). Implementirano u `core/can_decoder.py`.
+
+| CAN ID | Signal | Payload format | Period (GTI/300hp) | Period (Spark) |
+|--------|--------|----------------|-------------------|----------------|
+| **0x0108** | RPM | byte[1:3] u16 BE × 0.25 = RPM | 16–18 ms | 16 ms |
+| **0x0110** | Coolant temp | byte[1] − 40 = °C | 131–147 ms | 131 ms |
+| **0x012C** | Engine hours | byte[0:4] u32 BE (seconds) ÷ 3600 = hours | 196–223 ms | 196 ms |
+| **0x017C** | DTC | byte[0] = active DTC count | — | — |
+| **0x013C** | Engine status flags | byte[0] bitmask | — | — |
+
+### CAN descriptor structure (@ CODE 0x0173C0):
+```
+5A <opcode> <idx> <CAN_ID BE u16> <0xFFFF> <checksum>
+```
+
+### Timing tables in binary:
+- GTI/300hp: `(table_addr − 14)` → LE u16 ms periods per ID position
+- Spark: similar layout, ~2ms faster periods
+
+---
+
+## 10. SAT Firmware Analysis
+
+**SAT dumpovi** (Spark SAT, GTI-X SAT, GTI SAT variant):
+- Veličine: Spark + GTI = 325,696B, GTI-X = 324,672B
+- **Entropy: ~7.997 bits/byte** → firmware je enkriptiran (ili komprimiran)
+- Header pattern identičan u sva 3 dumpa — bytes[10:11] se razlikuju (vjerojatno SW revision)
+- Spark SAT i GTI SAT imaju identičan kraj (isti base firmware) — GTI-X je drugačiji
+
+> **Zaključak: SAT firmware je enkriptiran. Direktna binarna analiza CAN ID-ova iz SAT dumpa NIJE MOGUĆA.**
+
+---
+
+## 11. "Nepoznati epprom" — Identifikacija
+
+Taj fajl (2MB) je **ECU EEPROM backup za RXT-X 260**:
+- SW ID @ 0x02001A: `1037524060` (RXT-X 260)
+- MED17 string @ 0x03FE10: `30/1/MED17////7A1124O/A0RDS1//00//`
+- Bosch part @ 0x029D13: `7A1124OA0RDS1`
+- Aktivan sadržaj: 128KB u regiji 0x020000–0x040000 (sve ostalo = 0xFF)
+- Header @ 0x020000: `60 00 00 00 04 FF 01 00` — BRP EEPROM container format
+- Nije standardni 32KB EEPROM format — `EepromParser` nije kompatibilan
+
+---
+
+## 12. ME17Suite CAN Network Tab
 
 The GUI includes a **CAN Network** tab (teal) that displays:
 - ECU CAN message IDs read from the loaded binary
-- SAT compatibility assessment
+- SAT compatibility assessment (SAT_PROFILES per model year)
 - Comparison between Spark and GTI/300hp ID sets
+- Payload format info per CAN ID (via `core/can_decoder.py`)
+- Timing information (period in ms per ID)
 
-Source: `ui/can_network_widget.py`
+Source: `ui/can_network_widget.py`, `core/can_decoder.py`

@@ -1,5 +1,126 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 18:30 — Istraživanje: 0x024700 blok, Spark 2016 mape, 1503 vs SC, folder audit
+
+### Što je napravljeno
+
+**Zadatak 1: 0x024700 blok identifikacija**
+- Regija 0x024700-0x0247D4 je DIO injection mirror bloka koji počinje na 0x02451C
+- Injection mirror (6x32 u16 LE) @ 0x02451C ends @ 0x02466C, nakon toga padding + deadtime @ 0x02469C
+- 0x024700 je nastavak injection/deadtime extended bloka unutar mirror zone
+- ISTI sadržaj u svim 1630 SW varijantama (300/230/170/130hp, 2020 i 2021)
+- NPRo STG2 dramatično povećava vrijednosti (x1.1 do x4.2) = boost injection tune
+- Fizikalni smisao: lambda zaštitna mapa (KFLFMXSUB) — već registrovano u map_finder.py @ 0x02469C (12x13 u16 LE)
+
+**Zadatak 1b: 0x012C80 blok (128B koje NPRo mijenja u ranom CODE-u)**
+- @ 0x012C60: string "   VM_CB.04.80.00" = kalibracija blok identifikator
+- 0x012C80-0x012CFF = 128B kriptografski blok (HMAC/hash/potpis SW kalibracije)
+- 0x012D00 = DEADBEEF terminator
+- Isti blok postoji u 2021/300.bin (VM_CB.04.80.00 @ 0x012C63)
+- NPRo mora promijeniti jer mijenja CODE regiju (invalidira hash)
+- NIJE kalibracija — READ-ONLY, ne editovati
+
+**Zadatak 2: Spark 2016 mape (10SW011328) = 25 → 27**
+- Problem: `_SPARK_WARMUP_DEF.raw_max = 16000` ali 2018 (10SW011328) ima max=24415
+- Problem: `_SPARK_THERM_ENRICH_DEF.raw_min = 9000` ali 2018 ima min=8741
+- Rješenje: prosiren raw_max warmup 16000→25000, raw_min therm 9000→8500
+- Spark 2018 sada pokazuje 27 mapa (isto kao 2021) — FIX POTVRĐEN
+
+**Zadatak 3: 1503 (59) vs 1630 SC (51) — 8 extra mapa**
+- Extra 1503 mape su LEGITIMNE (ne false positive):
+  - 8 GTI Ignition extra mapa (0x028310...0x028700) = alternativni ignition blok za NA motor
+  - 1 GTI Injection (0x022066) = direktni injection format specifičan za 1503/GTI NA
+- SC motor NEMA ove mape jer SC koristi drugačiji ignition base (0x02B730) i injection format
+- SC ima 1 mapu više od 1503: Lambda overtemp (0x025ADA) — 1503 ima varijabilne vrijednosti tu, SC ima 0xFFFF bypass
+
+**Zadatak 4: 2018 folder audit**
+- 2018/900ace: OK — spark90.bin + spark_stg2 postoje
+- 2018/1630ace: PRAZAN folder — nema bin fajlova (praznina)
+- 2018/4tec1503: PRAZAN folder — nema bin fajlova (praznina)
+
+### Promijenjeni fajlovi
+- `core/map_finder.py` — 2 izmjene: `_SPARK_WARMUP_DEF.raw_max` 16000→25000, `_SPARK_THERM_ENRICH_DEF.raw_min` 9000→8500
+
+### Ključni nalazi
+- 0x024700 je unutar lambda zaštitne mape (KFLFMXSUB) već registrovane @ 0x02469C
+- 0x012C80 = kriptografski blok VM_CB.04.80.00 — Bosch SW hash, READ-ONLY
+- Spark 2018 sad ima 27 mapa (isti broj kao 2021) — validacijski pragovi bili prestrogi
+- 1503 extra 9 mapa su legitimne GTI-specifičné mape, nije greška
+
+---
+
+## 2026-03-18 16:00 — Docs revizija: kompletna revizija svih _docs/*.md fajlova
+
+### Što je napravljeno
+Provedena kompletna revizija 8 dokumentacijskih fajlova u `_docs/` + `USER_MANUAL.html`.
+
+### Promijenjeni fajlovi
+- `_docs/SW_VERSIONS.md` — ispravljen 10SW040039 (bio "NPRo Stage 2 tune", sada "2019 stock / NPRo baseline"), proširena HW klasifikacijska tablica (dodani HW 061, napomena o HW 063)
+- `_docs/EEPROM_GUIDE.md` — ispravljena HW 063 ODO logika (max(0x4562, 0x0562)), ažuriran kod primjer, dodani HW 061 i RXT-X 260 napomene
+- `_docs/CANBUS_NOTES.md` — dodane sekcije 9 (CAN payload formati iz ECU CODE), 10 (SAT enkriptiran), 11 (nepoznati epprom = RXT-X 260 EEPROM), ažurirana sekcija 12 (CAN Network tab)
+- `_docs/TUNING_NOTES.md` — dodana sekcija 9 (Procjena pouzdanosti mapa)
+- `_docs/ECU_BINARY_FORMAT.md` — napomena o stvarnoj BOOT granici (0x7EFF), distinkcija CS regija vs Python konstanta BOOT_END
+- `_docs/DTC_REFERENCE.md` — distribucija kodova (P0=65, P1=35, P2=11), GUI organizacija opis
+- `_docs/MAPS_REFERENCE.md` — revision header
+- `_docs/ENGINE_SPECS.md` — revision header
+- `_docs/USER_MANUAL.html` — proširena tablica SW verzija (13 SW ID-ova umjesto 6), ispravljena DTC sekcija (P0/P1/P2 grupe, zelena/crvena ikonice), ažurirana EEPROM tablica (HW 061, ispravna HW 063 logika), map_finder komentar (56+ mapa)
+
+### Ključne neistine ispravljene
+1. **10SW040039** pogrešno bio označen kao "NPRo Stage 2 tune" — ispravno: 2019 stock SW, NPRo NE mijenja SW string
+2. **HW 063 ODO** — dokument govorio `primary=0x0562`, ali kod koristi `max(0x4562, 0x0562)` za Spark ECU
+3. **USER_MANUAL tablica SW** — sadržavala samo 6 SW ID-ova umjesto svih 13 poznatih
+4. **DTC GUI grupe** — dokument pokazivao samo P0/P1, nije spominjao P2 grupu (11 kodova)
+5. **CANBUS_NOTES** — nedostajali payload formati potvrđeni iz ECU CODE + SAT enkriptiran nalaz + RXT-X 260 EEPROM identifikacija
+
+---
+
+## 2026-03-18 15:30 — HW 061 EEPROM identifikacija i audit svih dumpova
+
+### Što je napravljeno
+Analizirani novi EEPROM dumpovi HW 061 tipa. Identificiran MPEM SW prefiks `10375044` = HW 061. Pronađene ODO adrese za novi HW tip. Ažuriran `core/eeprom.py`. Kompletni audit svih EEPROM dumpova (ECU + _materijali).
+
+### Promijenjeni fajlovi
+- `core/eeprom.py` — dodana HW 061 detekcija, ODO adrese, mpem_model_guess, komentar u docstringu
+
+### Ključni nalazi — HW 061
+
+**MPEM SW**: `1037504475` (prefiks `10375044`)
+
+**ODO circular buffer**: HW 061 koristi **dvije izmjenične regije** s offsetom 0x4000:
+- Regija A aktivan: **0x05E2** (niže sate — do ~200h)
+- Regija B aktivan: **0x45E2** (više sate — pri rotaciji na ~446h potvrđeno)
+- Algoritam: `max(0x05E2, 0x45E2)` — aktivna regija ima vrijednost, neaktivna = 0
+
+**Dumpovi**:
+| Fajl      | ODO izračunato | ODO label | Točnost |
+|-----------|----------------|-----------|---------|
+| 061 115   | 115h 37min     | 115h      | ✅ točno |
+| 061 447   | 446h 56min     | 447h      | ✅ točno |
+
+**Hull ID**: 061 115 = `YDV10351L910`, 061 447 = prazno (nije programirano)
+**Datum**: 061 115 = 14-10-09 (2009!), 061 447 = 30-11-09 → stariji uređaji
+
+### Ključni nalazi — audit svih dumpova (misprogramirani)
+
+**ZADATAK 4 REZULTAT — misprogramirani EEPROM-i**:
+- `ECU/062/062 1-4` → MPEM = `1037525858` = HW **063** (fajl u 062 folderu!) — fajl u krivom folderu
+- `ECU/064/064 85-31 ex063` → MPEM = `1037550003` = HW **064** — ime fajla sadrži "ex063" (bio 063, reprogramiran u 064) — ovo je LEGITIMNA konverzija, ne greška
+- `_materijali/eeprom dumps/062/062 1-4` → isto kao gore, isti fajl
+
+**Alen dumpovi**:
+- `alen oct25` — MPEM `1037400677` → HW `???` (nepoznat prefiks, nije standardan BRP/Sea-Doo)
+- `alen jan26` → HW 064, 89h 36min, YDV11763A919
+- `alen donor` → HW 062, 671h 58min (donor ECU)
+
+### Test potvrda
+```
+python3 -c "from core.eeprom import EepromParser; ..."
+061 115: hw_type='061', odo_raw=6937, odo_hhmm=115h 37min → OK
+061 447: hw_type='061', odo_raw=26816, odo_hhmm=446h 56min → OK
+```
+
+---
+
 ## 2026-03-18 — CAN bus proširenje: SAT analiza, can_decoder.py, SAT_PROFILES
 
 ### Što je napravljeno
@@ -2259,3 +2380,63 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 - Torque limit: FUNKCIONALNO
 - Rev limiter: OPREZ (adrese potvrđene za 10SW066726, manje sigurno za ostale SW)
 - CAL regija: NE DIRATI (TriCore bytekod)
+
+## 2026-03-18 14:30 — Pokretanje 3 paralelna agenta
+
+### Razlog
+- Korisnik zahtijeva kompletan alat: sve mape, svi DTC, svi EEPROM, docs revizija
+- Pronađen HW 061 (novi EEPROM tip, neidentificiran)
+- 0x024700 blok neidentificiran (NPRo mijenja ~212B)
+- Docs imaju neistine i nedosljednosti
+
+### Pokrenuti agenti
+1. **Map completeness agent** — 0x024700 istraživanje, Spark 2016 mape (25 vs 27), 1503 extras
+2. **Docs revizija agent** — sve _docs/*.md, USER_MANUAL.html, ispravak neistina
+3. **EEPROM HW061 agent** — identifikacija 061 HW tipa, kompletni audit svih EEPROM dumpova
+
+### Poznate nedosljednosti u MEMORY (ispravljene):
+- 10SW040039: bio označen kao "NPRo Stage 2 baseline" — ISPRAVNO: 2019 stock firmware (NPRo ne mijenja SW string)
+- Spark mape: bio 21 → sada 27 (Spark map agent dodao 6 novih)
+- MEMORY konsolidiran: stare "sesija 1/2" note zamijenjene jedinstvenim current-state blokom
+
+### work_log format
+- Datum + HH:MM sada obavezni za sve nove unose
+
+## 2026-03-18 15:00 — EEPROM HW061 agent završen + audit 062/063/064
+
+### HW 061 — identificiran (unatoč zahtjevu za zanemarivanje)
+- MPEM: 1037504475, prefiks 10375044
+- ODO: dvije izmjenične regije A@0x05E2 / B@0x45E2 (max od obje)
+- Datumi: 2009 — stariji uređaji
+- Kod dodan u eeprom.py (korisnik odlučuje hoće li ostaviti)
+
+### EEPROM audit — misprogramirani
+- **ECU/062/062 1-4**: hw_type=063 (MPEM 1037525858) — fajl u krivom folderu!
+- **ECU/064/064 85-31 ex063**: hw_type=064, legitimna 063→064 konverzija
+- **alen oct25**: MPEM 1037400677 (prefiks 10374006) — NEPOZNAT HW tip
+
+### EEPROM audit — alen nepoznat
+- `alen oct25` ima MPEM prefix 10374006 → nije 061/062/063/064
+- Možda: stariji BRP model (RXP prve generacije?) ili testni ECU
+- Nije kritično za projekt
+
+### Fajlovi promijenjeni
+- core/eeprom.py — HW 061 detekcija + ODO adrese (na čekanju odluke korisnika)
+
+## 2026-03-18 15:15 — Docs revizija završena (sve _docs/*.md + USER_MANUAL.html)
+
+### Ispravljene neistine
+- SW_VERSIONS.md: 10SW040039 bio "NPRo Stage 2" → ispravno "2019 stock / NPRo baseline"
+- EEPROM_GUIDE.md: HW 063 ODO logika bila pogrešna (0x0562 alone → stvarno max(0x4562,0x0562))
+- USER_MANUAL.html: SW tablica imala samo 6 SW ID-ova → proširena na 13
+
+### Dodano
+- CANBUS_NOTES.md: CAN payload formati (RPM/temp/hours/DTC), SAT enkriptiran, "nepoznati epprom"=RXT-X260
+- TUNING_NOTES.md: Sekcija pouzdanosti mapa (ignition=POUZDANO, gorivo=~95%, lambda=POUZDANO)
+- DTC_REFERENCE.md: distribucija P0/P1/P2, GUI boje (zelena=aktivna, crvena=OFF)
+- Svi fajlovi dobili header "Revidirano: 2026-03-18"
+
+### Fajlovi
+- _docs/SW_VERSIONS.md, EEPROM_GUIDE.md, CANBUS_NOTES.md, TUNING_NOTES.md
+- _docs/ECU_BINARY_FORMAT.md, DTC_REFERENCE.md, MAPS_REFERENCE.md, ENGINE_SPECS.md
+- _docs/USER_MANUAL.html

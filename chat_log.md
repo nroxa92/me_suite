@@ -4,6 +4,22 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-18 18:30 — Istraživanje: 0x024700, Spark 2016, 1503 vs SC, folder audit]**
+👤 4 istraživačka zadatka: (1) identificiraj 0x024700 blok (NPRo mijenja ~212B), (2) zašto Spark 2016 ima 25 umjesto 27 mapa, (3) zašto 1503 ima 59 mapa a SC samo 51, (4) provjeri 2018/4tec1503 i 2018/1630ace foldere.
+🤖 (1) 0x024700 je dio lambda zaštitne mape @ 0x02469C (već registrovano); 0x012C80 = kriptografski blok VM_CB.04.80.00 (READ-ONLY). (2) Spark 2016 sad ima 27 mapa — prošireni validacijski pragovi (warmup max 16000→25000, therm min 9000→8500). (3) 1503 extra 9 mapa su legitimne GTI-specifičné (ignition blok 0x028310, direktni injection). (4) 2018/1630ace i 2018/4tec1503 su PRAZNI folderi.
+
+---
+---
+**[2026-03-18 16:00 — Kompletna revizija _docs/*.md]**
+👤 Kompletna revizija svih _docs/*.md fajlova — ispravi neistine, nedosljednosti, ažuriraj s najnovijim nalazima. Čitanje work_log, MEMORY.md, engine.py, map_finder.py, dtc.py, eeprom.py kao izvora istine.
+🤖 Revidirano 8 MD fajlova + USER_MANUAL.html. Ključne ispravke: 10SW040039 pogrešno bio "NPRo tune" (sada "2019 stock baseline"), HW 063 ODO logika kriva u EEPROM_GUIDE (ispravno max(0x4562,0x0562)), USER_MANUAL imao samo 6 od 13 SW ID-ova, CANBUS_NOTES nije imao payload formate ni SAT enkriptiran nalaz.
+
+---
+**[2026-03-18 15:30 — HW 061 identifikacija, eeprom.py ažuriranje, audit svih dumpova]**
+👤 Identificiraj HW 061 EEPROM tip (2 dumpa: 115h i 447h), ažuriraj core/eeprom.py, kompletni audit svih EEPROM dumpova, provjeri misprogramirane (063 vs 064).
+🤖 HW 061 = MPEM prefiks `10375044` (SW `1037504475`). ODO u dvjema izmjeničnim regijama: 0x05E2 (regija A) i 0x45E2 (regija B, shift 0x4000). Mismatch pronađen: `062/062 1-4` je zapravo HW 063. `064 85-31 ex063` je legitimna konverzija (ima HW 064). alen oct25 ima nepoznat prefiks `10374006`.
+
+---
 **[2026-03-18 — CAN bus proširenje: SAT analiza + can_decoder.py]**
 👤 Proširiti CAN bus podršku analizom SAT firmware dumpova i dekodiranjem CAN payload strukture. Analiza 3 SAT dumpa, nepoznatog EEPROM-a, implementacija core/can_decoder.py i proširenje can_network_widget.py.
 🤖 SAT firmware dumpovi su enkriptirani (entropy 7.997) — direktna binarna analiza CAN ID-ova nije moguća. Nepoznati 2MB EEPROM identificiran kao RXT-X 260 ECU EEPROM (SW 1037524060, MED17 string potvrđen). CAN payload formati dekodirani iz ECU CODE regije. Kreiran can_decoder.py s punim decoderima (RPM/temp/hours/DTC/flags). Ažuriran can_network_widget.py s payload info u opisu i SAT_PROFILES dictom.
@@ -558,5 +574,19 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18]**
 👤 sto dalje? reci ti meni, jesmo pokrili sve mape definicijama? jesmo sigurni da je alat pouzdan za osraditi tuning? daj da grupriramo stablo dtc, u, p, b, c kodovi pa pocinki sa 0, 1,2?? izbaciti opise iz stabla staviti ih samo u srednji eprozor, boka da su aktivne zelen ugasene crvene?
 🤖 DTC stablo: P/C/B/U → P0/P1/P2 podgrupe, samo p_code u stablu, opis u sredini, zelena=aktivna, crvena=OFF. Procjena: paljenje i lambda POUZDANI, gorivo 80-85% (~200B korekcija neidentificirano), rev limiter s oprezom.
+
+---
+
+---
+**[2026-03-18 14:30]**
+👤 da, molim te pokreni agente, koliko ih trebas, trebamo komplet alat za ove ecu... proveriti sve dumpove, sve dtc, sve mape, sve can... svi dumpovi u folderu mcu su folderima sa imenom chipa odakle su procitani... mogu ti definirati sta je sta... pokrenuti agente, neka rade, ti prati i vodi logove... neka se docs totalno revizira... ima neistine i nedosljednosti... volio bih da u work logu imamo vrijeme dopune uz datum...
+🤖 Pokrenuta 3 agenta paralelno: mape/0x024700, docs revizija, EEPROM HW061 audit. MEMORY.md konsolidiran i ažuriran. work_log format sada datum+HH:MM. HW 061 otkriven kao novi EEPROM tip.
+
+---
+
+---
+**[2026-03-18 — Korekcija: HW 060 i HW 061 zanemariti]**
+👤 VAŽNA KOREKCIJA: Korisnik je potvrdio da HW 060 i HW 061 su NEVAŽNI — potpuno ih zanemariti. Ne istraži HW 061, ne dodavaj podršku za 061 u eeprom.py. Fokusiraj se samo na 062/063/064.
+🤖 Potvrđeno. eeprom.py je provjeren — nema HW 061 koda. Nema potrebe za promjenama. Podržani HW tipovi ostaju: 062, 063, 064.
 
 ---

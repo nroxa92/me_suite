@@ -1,5 +1,7 @@
 # Maps Reference — Bosch ME17.8.5 / Rotax ECU
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `core/map_finder.py` (complete), binary analysis
 **Coverage:** All confirmed maps in CODE region 0x010000–0x05FFFF

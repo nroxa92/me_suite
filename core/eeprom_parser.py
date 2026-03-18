@@ -256,40 +256,65 @@ class EepromParser:
         """
         Pronađi odometar za 063/064 HW.
 
-        Potvrđene adrese (istraživanje 2026-03-17):
+        Potvrđene adrese (istraživanje 2026-03-17/18):
 
-        Primarni (063 i 064, sve minute < ~65000):
+        STANDARDNI LAYOUT (MPEM kopija @ 0x05B0-0x05C0):
           @ 0x0562 (u16 LE) — anchor slot @ 0x0550, offset +18
           Potvrđeno na: 064 9-5, 064 86-31, 064 99-50, 064 163,
                         063 85-31, 063 92-51, 064 85-31 ex063
 
-          NAPOMENA: @ 0x0562 je uvijek najnovije (zadnje upisano) u normalnom radu.
-          Koristimo 0x0562 kao primarni izvor.
+        STARI/NOVI LAYOUT (0x05B0 = 0x00, MPEM samo u headeru @ 0x0032):
+          @ 0x4562 (u16 LE) — anchor @ 0x4550 (+0x4000 pomak)
+          Potvrđeno na: 063 0-55, 063 77-16, 063 121-55, 063 167,
+                        064 13 (i 064 1-7 = N/A, premalo podataka)
+          @ 0x0490 (u16 LE) — anchor @ 0x047E + 18 (stariji 064)
+          Potvrđeno na: 064 58 (3370 min), 064 211.bin (12667 min)
 
-        Fallback 1 (ako je primarni = 0):
+        Fallback (wrapping layout, stariji 064):
           @ 0x0D62 (u16 LE) — potvrđeno za 064 211-07 (12667 min)
           @ 0x1562 (u16 LE) — mirror od 0x0D62, stride 0x0800
+          @ 0x0DE2 (u16 LE) — 063 visoke minute (063 585-42 = 35142 min)
 
-        Fallback 2 (visoke minute, 063 HW):
-          @ 0x0DE2 (u16 LE) — potvrđeno za 063 585-42 (35142 min)
+        Strategija:
+          Prioritetni redosljed po layoutu:
+          1. Standardni anchor @ 0x0562 (063/064 standardni firmware)
+          2. Stari layout @ 0x4562 (stariji firmware, anchor pomaknut za +0x4000)
+          3. Wrapping layout @ 0x0D62 (064 stariji firmver, stride 0x0800)
+             - Ako je jednak @ 0x1562, potvrđeno (mirror)
+          4. Još stariji 064 @ 0x0490 (anchor @ 0x047E + 18)
+          5. Visoke minute @ 0x0DE2 (063 visoke minute, 063 585-42)
 
-        Strategija: primarni prioritet (0x0562), fallback samo ako je 0
+          NAPOMENA: 0x1562 se koristi SAMO kao mirror potvrda za 0x0D62,
+          nikad samostalno (može biti slučajni podatak u standardnom layoutu).
         """
-        # Primarni izvor (anchor slot)
-        v_primary = self._u16le(0x0562)
-        if 1 <= v_primary <= 65000:
-            return v_primary
+        # 1. Standardni anchor
+        v = self._u16le(0x0562)
+        if 1 <= v <= 65000:
+            return v
 
-        # Fallback: alternativne adrese ako je primarni = 0
-        FALLBACK_ADDRS = [
-            0x0D62,   # 064 211-07 layout
-            0x1562,   # mirror
-            0x0DE2,   # 063 visoke minute
-        ]
-        for addr in FALLBACK_ADDRS:
-            v = self._u16le(addr)
-            if 1 <= v <= 65000:
-                return v
+        # 2. Stari layout (anchor pomaknut za +0x4000)
+        v = self._u16le(0x4562)
+        if 1 <= v <= 65000:
+            return v
+
+        # 3. Wrapping layout (064 211-07 i slični)
+        v_0d62 = self._u16le(0x0D62)
+        if 1 <= v_0d62 <= 65000:
+            # Provjeri mirror — ako postoji i 0x1562 s istom/sličnom vrijednošću, potvrđeno
+            v_1562 = self._u16le(0x1562)
+            if 1 <= v_1562 <= 65000 and abs(v_1562 - v_0d62) <= 100:
+                return max(v_0d62, v_1562)
+            return v_0d62
+
+        # 4. Još stariji 064 anchor (064 58, 064 211.bin)
+        v = self._u16le(0x0490)
+        if 1 <= v <= 65000:
+            return v
+
+        # 5. 063 visoke minute
+        v = self._u16le(0x0DE2)
+        if 1 <= v <= 65000:
+            return v
 
         return None
 

@@ -1,5 +1,7 @@
 # SW Versions — Bosch ME17.8.5 Sea-Doo / Rotax
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `core/engine.py` (KNOWN_SW), `work_log.md`, binary analysis
 
@@ -27,7 +29,7 @@
 | **10SW054296** | 300hp SC 2020 ORI | RXP/RXT/GTX 300, 2020 model | Confirmed: `dumps/2020/1630ace/300.bin` |
 | **10SW082806** | 300hp SC variant (newer) | RXP-X 300 (2022+?) | `_materijali/backup_flash_082806.bin`, 11462 changed regions vs ori_300 |
 | **10SW004672** | 300hp SC (2016) | RXP-X 300 / RXT-X 300 | Older variant |
-| **10SW040039** | NPRo Stage 2 tune 300hp | RXP-X 300 (tuned) | CODE diff vs ori_300: 7087B |
+| **10SW040039** | 2019 stock / NPRo baseline 300hp | RXP-X 300 (tuned) | SW string nije promijenjen u NPRo tunu — isti SW ID. CODE diff vs ori_300: 7087B (2021) / 6038B (2020) |
 | **10SW053727** | GTI SE 230 / Wake Pro 230 (2021) | GTI SE 230, Wake Pro 230 | SC motor, hard cut ~8158 RPM |
 
 ### Rotax 1630 NA (Sea-Doo 130hp / 170hp)
@@ -122,13 +124,17 @@
 
 | HW Type | MPEM SW Prefix | Vehicles |
 |---------|---------------|----------|
-| **064** | 10375500xxx | 300hp SC, 230hp SC (1.6L SC and turbo) |
-| **063** | 10375258xx | Spark 90/115hp, GTI SE 155 (1.5L) |
-| **062** | 10375091xx / 10375092xx | GTI 130/155 older (2015–16) |
+| **064** | 10375500xxx | 300hp SC, 230hp SC (Rotax 1630 SC) |
+| **063** | 10375258xx | Spark 90/115hp, GTI SE 155 (1.5L NA) |
+| **062** | 10375091xx / 10375092xx | GTI 130/155 older (2015–16), RXT-X 260 |
+| **061** | (neidentificiran prefiks) | Prisutan u ECU folder-u — još neidentificiran u parseru |
+
+> **Napomena:** HW 063 = i Spark i GTI SE 155 koriste ISTI MPEM prefiks, ali imaju RAZLIČITU DTC arhitekturu (Spark = single-storage, GTI155 = main+mirror).
 
 HW type affects:
 1. EEPROM ODO circular buffer addresses (see EEPROM_GUIDE.md)
-2. DTC architecture (064 = main+mirror, 063 = single-storage in some variants)
+2. DTC architecture (064 = main+mirror, 063 = single-storage in Spark variants)
+3. Ignition map layout (GTI155 has 8 extra maps @ 0x028310)
 
 ---
 

@@ -123,7 +123,7 @@
 <header>
   <h1>ME17Suite</h1>
   <p>ECU Tuning Tool for Bosch ME17.8.5 / Rotax ACE — Sea-Doo PWC</p>
-  <p style="font-size:0.85em; color: var(--text-dim); margin-top:8px;">Version as of 2026-03-18 | Python 3.14 + PyQt6</p>
+  <p style="font-size:0.85em; color: var(--text-dim); margin-top:8px;">Version as of 2026-03-18 | Python 3.14 + PyQt6 | <em>Revidirano: 2026-03-18</em></p>
 </header>
 
 <nav>
@@ -147,14 +147,24 @@
 
 <h3>Supported Engines / SW Versions</h3>
 <table>
-  <tr><th>Engine</th><th>HP</th><th>SW ID</th><th>Models</th></tr>
-  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW066726, 10SW054296</td><td>RXP-X 300, RXT-X 300, GTX 300</td></tr>
-  <tr><td>Rotax 1630 SC</td><td>230hp</td><td>10SW053727</td><td>GTI SE 230, Wake Pro 230</td></tr>
-  <tr><td>Rotax 1630 NA</td><td>130/170hp</td><td>10SW053729</td><td>GTI SE 130, GTI SE 170</td></tr>
-  <tr><td>Rotax 900 HO ACE</td><td>90hp</td><td>10SW053774</td><td>GTI SE 90</td></tr>
-  <tr><td>Rotax 900 ACE</td><td>90hp</td><td>10SW039116</td><td>Sea-Doo Spark 2019–2021</td></tr>
-  <tr><td>Rotax 1503 NA</td><td>155hp</td><td>10SW025752</td><td>GTI SE 155 2018</td></tr>
+  <tr><th>Engine</th><th>HP</th><th>SW ID</th><th>Models</th><th>Notes</th></tr>
+  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW066726</td><td>RXP-X 300, RXT-X 300, GTX 300 (2021)</td><td>Primary reference binary</td></tr>
+  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW054296</td><td>RXP/RXT/GTX 300 (2020)</td><td></td></tr>
+  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW040039</td><td>RXP-X 300 (NPRo STG2 baseline)</td><td>2019 stock SW — NPRo ne mijenja SW string</td></tr>
+  <tr><td>Rotax 1630 SC</td><td>300hp</td><td>10SW082806</td><td>RXP-X 300 (2022+?)</td><td>11462 promijenjenih regija vs ori_300</td></tr>
+  <tr><td>Rotax 1630 SC</td><td>230hp</td><td>10SW053727</td><td>GTI SE 230, Wake Pro 230 (2021)</td><td></td></tr>
+  <tr><td>Rotax 1630 NA</td><td>130/170hp</td><td>10SW053729</td><td>GTI SE 130, GTI SE 170 (2020–2021)</td><td>Identičan binarni za obje varijante!</td></tr>
+  <tr><td>Rotax 900 HO ACE</td><td>90hp</td><td>10SW053774</td><td>GTI SE 90 (2020–2021)</td><td>GTI map layout, drugačija rev limiter adresa</td></tr>
+  <tr><td>Rotax 900 ACE</td><td>90hp</td><td>10SW039116</td><td>Sea-Doo Spark 90 (2019–2021)</td><td>Različit CODE layout od 1630 varijanti</td></tr>
+  <tr><td>Rotax 900 ACE</td><td>90hp</td><td>10SW011328</td><td>Sea-Doo Spark 90 (2016/2018)</td><td>Potpuno drugačiji layout — 622,954B diff</td></tr>
+  <tr><td>Rotax 900 ACE</td><td>90hp</td><td>1037544876</td><td>Sea-Doo Spark NPRo STG2</td><td>Decimal BUDS2 format ID</td></tr>
+  <tr><td>Rotax 1503 NA</td><td>155hp</td><td>10SW025752</td><td>GTI SE 155 (2018)</td><td>Hard cut 7700 RPM</td></tr>
+  <tr><td>Rotax 1503 NA</td><td>130/155hp</td><td>10SW040008</td><td>GTI SE 130/155 (2019)</td><td>Isti SW za obje varijante!</td></tr>
+  <tr><td>Rotax 1503 NA</td><td>130hp</td><td>10SW040962</td><td>GTI SE 130 (2020)</td><td></td></tr>
 </table>
+<div class="warn">
+  <strong>NPRo STG2 napomena:</strong> 10SW040039 je 2019 stock firmware. NPRo koristi isti SW ID string bez promjene — razlikuje se samo CODE sadržaj (7087B vs ori_300 2021, 6038B vs ori_300 2020).
+</div>
 
 <h3>Main Interface Panels</h3>
 <ul>
@@ -326,10 +336,10 @@
 <h3>Disabling a DTC</h3>
 <ol class="steps">
   <li class="step">Switch to the <strong>DTC Off</strong> tab (orange)</li>
-  <li class="step">Browse the sidebar — DTCs are grouped by P0xxx and P1xxx</li>
+  <li class="step">Browse the sidebar — DTCs are grouped by <strong>P0xxx</strong> (65 codes), <strong>P1xxx</strong> (35 codes), <strong>P2xxx</strong> (11 codes)</li>
   <li class="step">Click a DTC to view details (code, address, enable byte address) in Properties panel</li>
   <li class="step">Click <strong>Disable</strong> to turn off that DTC</li>
-  <li class="step">The DTC status in the sidebar changes to grey (OFF)</li>
+  <li class="step">The DTC status in the sidebar changes: green = active monitoring, red = DTC OFF</li>
 </ol>
 
 <h3>Disable All DTCs</h3>
@@ -419,11 +429,15 @@ Residue:    0x6E23044F (fixed for all valid ECU files)
 <h3>Operating hours note</h3>
 <p>Hours are stored as <strong>minutes</strong> in a circular buffer. The address varies by hardware type:</p>
 <table>
-  <tr><th>HW Type</th><th>MPEM prefix</th><th>Primary address</th></tr>
-  <tr><td>064 (300hp / 230hp)</td><td>10375500xxx</td><td>0x0562</td></tr>
-  <tr><td>063 (Spark, GTI 155)</td><td>10375258xx</td><td>0x0562</td></tr>
-  <tr><td>062 (GTI older)</td><td>10375091/092xx</td><td>0x5062 → 0x4562 → 0x1062</td></tr>
+  <tr><th>HW Type</th><th>MPEM prefix</th><th>Primary address(es)</th><th>Notes</th></tr>
+  <tr><td>064 (300hp / 230hp SC)</td><td>10375500xxx</td><td>0x0562 (primary), 0x0D62, 0x1562 (backup)</td><td></td></tr>
+  <tr><td>063 (Spark 90, GTI SE 155)</td><td>10375258xx</td><td>max(0x4562, 0x0562) — uzima se veća vrijednost</td><td>0x0DE2 za visoke sate (>~30,000 min)</td></tr>
+  <tr><td>062 (GTI older, RXT-X 260)</td><td>10375091/092xx</td><td>0x5062 → 0x4562 → 0x1062 (rotacijski, najnoviji prvo)</td><td></td></tr>
+  <tr><td>061 (neidentificiran)</td><td>Nepoznat prefiks</td><td>—</td><td>ECU folder postoji; parser vraća hw_type="" za ovaj tip</td></tr>
 </table>
+<div class="warn">
+  <strong>HW 063 napomena:</strong> Spark i GTI SE 155 koriste isti MPEM prefiks (063), ali imaju različitu DTC arhitekturu. ODO za Spark čita se iz dva buffer mjesta (0x4562 i 0x0562) — parser uzima veću vrijednost.
+</div>
 
 <hr style="border-color: var(--border); margin: 30px 0;">
 
@@ -482,7 +496,7 @@ python test/test_core.py
 <table>
   <tr><th>File/Folder</th><th>Purpose</th></tr>
   <tr><td><code>core/engine.py</code></td><td>Binary load/save, read/write primitives</td></tr>
-  <tr><td><code>core/map_finder.py</code></td><td>Map definitions, scanner (30+ confirmed maps)</td></tr>
+  <tr><td><code>core/map_finder.py</code></td><td>Map definitions, scanner (56+ confirmed maps across all variants)</td></tr>
   <tr><td><code>core/map_editor.py</code></td><td>Validated cell editing with range checks</td></tr>
   <tr><td><code>core/checksum.py</code></td><td>CRC32-HDLC verification and update</td></tr>
   <tr><td><code>core/eeprom.py</code></td><td>EEPROM parser (HW type, ODO, VIN)</td></tr>

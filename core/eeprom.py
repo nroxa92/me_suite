@@ -17,7 +17,7 @@ Potvrđena struktura (3 uzorka: RXP 300 2021, Spark 18, RXP 20):
 
 Circular buffer — radni sati u minutama (potvrdjeno 2026-03-18):
   HW 064 (1037550003): primarno @ 0x0562 (u16 LE), backup: 0x0D62, 0x1562
-  HW 063 (1037525858): primarno @ 0x0562, visoke minute: 0x0DE2
+  HW 063 (1037525858): max(0x4562, 0x0562), fallback: 0x0DE2
   HW 062 (1037509210): rotacija 0x5062 -> 0x4562 -> 0x1062
 """
 
@@ -57,7 +57,7 @@ class EepromInfo:
 
     # Odometar / radni sati (circular buffer, u minutama)
     odo_raw: int = 0            # Vrijednost iz circular buffera (u16 LE, minute)
-    hw_type: str = ""           # HW tip: "062", "063", "064" ili ""
+    hw_type: str = ""           # HW tip: "062", "063", "064", ili ""
 
     # Meta
     file_size: int = 0

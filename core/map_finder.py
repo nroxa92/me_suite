@@ -1630,8 +1630,9 @@ _SPARK_WARMUP_DEF = MapDef(
     scale       = 1.0 / 16384.0,
     offset_val  = 0.0,
     unit        = "%",
-    raw_min     = 10000, raw_max = 16000,
+    raw_min     = 10000, raw_max = 25000,
     notes       = "Spark 900 ACE. @ 0x024786. Q14 format (~13364/16384=0.816 → 81.6%). "
+                  "2018 (10SW011328) max=24415, 2021 max=13364 — prosiren raw_max na 25000. "
                   "Analogno GTI90 @ 0x025E50.",
 )
 
@@ -1803,11 +1804,12 @@ _SPARK_THERM_ENRICH_DEF = MapDef(
     scale       = 1.0 / 64.0,
     offset_val  = 0.0,
     unit        = "%",
-    raw_min     = 9000, raw_max = 15000,
+    raw_min     = 8500, raw_max = 15000,
     mirror_offset = 0,
     notes       = (
         "Spark 900 ACE. @ 0x025BAA. 8×7=56 u16 LE. "
         "/64 = faktor obogaćivanja (%). 152-225% = bogata pri zagrijavanju. "
+        "2018 (10SW011328) min=8741 (53.4%) — prosiren raw_min na 8500. "
         "Slično GTI90 @ 0x02AA42 ali Spark vrijednosti nešto drugačije. "
         "Razlika 2021 vs 2018: 3/56 vrijednosti."
     ),

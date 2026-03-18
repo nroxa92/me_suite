@@ -1,5 +1,7 @@
 # EEPROM Guide — BRP/Bosch ME17 Sea-Doo
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** `core/eeprom.py`, binary analysis (3 samples: RXP 300 2021, Spark 18, RXP 20)
 
@@ -76,10 +78,15 @@ The odometer (operating hours) is stored as **minutes** in a u16 LE circular buf
 
 ### HW 063 (Spark 90, some GTI 155)
 
+Spark ECU ima dva aktivna buffer mjesta — uzima se veća (novija) vrijednost:
+
 | Address | Role |
 |---------|------|
-| **0x0562** | Primary — same as 064 |
+| **0x4562** | Primary Spark ODO buffer |
+| **0x0562** | Fallback — kada buffer wrapa (počne ispunjavati od početka) |
 | 0x0DE2 | High minutes overflow (>~30,000 minutes) |
+
+> Stvarna logika: `best = max(val_at_0x4562, val_at_0x0562)` — koristi se viša vrijednost iz ova dva mjesta. Ako obje nisu valjane, fallback je 0x0DE2.
 
 ### HW 062 (GTI 130/155, older RXT 260)
 
@@ -91,25 +98,35 @@ Rotational scheme — newest value is in the highest numbered slot:
 | **0x4562** | Second | |
 | **0x1062** | Oldest | |
 
-### Reading logic:
+### Reading logic (iz core/eeprom.py):
 ```python
-# For HW 062: try slots in order, use first with value 1–65000
-# For HW 063/064: read primary @ 0x0562, fallback to alternates
-
 def _u16le(off):
     return int.from_bytes(data[off:off+2], 'little')
 
 if hw_type == "062":
+    # Rotacijski buffer — probaj od najnovijeg prema najstarijem
     for addr in (0x5062, 0x4562, 0x1062):
         v = _u16le(addr)
         if 1 <= v <= 65000:
             odo_raw = v; break
+elif hw_type == "063":
+    # Spark: uzmi max od dva aktivna mjesta
+    v_a = _u16le(0x4562)  # primary (niske/srednje sate)
+    v_b = _u16le(0x0562)  # fallback (kada buffer wrapa)
+    best = max(v if 1 <= v <= 65000 else 0 for v in (v_a, v_b))
+    if best:
+        odo_raw = best
+    else:
+        v = _u16le(0x0DE2)  # visoke minute >~30000
+        if 1 <= v <= 65000:
+            odo_raw = v
 else:
+    # 064 / nepoznat HW
     v = _u16le(0x0562)
     if 1 <= v <= 65000:
         odo_raw = v
     else:
-        for addr in (0x0D62, 0x1562, 0x0DE2):
+        for addr in (0x0D62, 0x1562):
             v = _u16le(addr)
             if 1 <= v <= 65000:
                 odo_raw = v; break
@@ -189,3 +206,5 @@ print(info.mpem_model_guess()) # "300hp (RXP-X / GTX 300 / RXT-X 300)"
 - EEPROM is read/written separately from the main ECU flash dump
 - The dealer name field (0x0102) can be up to 16 ASCII characters
 - Service SW ID (0x0040) is always `1037500313` across all known samples — hardcoded by BUDS2
+- **HW 061** ECU folder postoji (viđen u ECU dump kolekciji), ali MPEM prefix za HW 061 još nije identificiran — `eeprom.py` parser vraća `hw_type=""` za taj tip
+- **RXT-X 260 "nepoznati epprom"**: 2MB container dump, aktivan sadržaj 128KB @ offset 0x020000. SW=1037524060, Bosch part `7A1124OA0RDS1`. Nije standard 32KB format — EepromParser nije kompatibilan.

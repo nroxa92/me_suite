@@ -1,5 +1,7 @@
 # Tuning Notes — ME17.8.5 / Rotax Sea-Doo
 
+> *Revidirano: 2026-03-18*
+
 **Last updated:** 2026-03-18
 **Source:** Binary analysis (ORI vs NPRo STG2), work_log.md, service manuals
 
@@ -221,3 +223,25 @@ cs = ChecksumEngine(engine)
 result = cs.update_all()  # Only updates if BOOT was changed
 print(result["status"])   # "OK" (no change needed) or "UPDATED"
 ```
+
+---
+
+## 9. Procjena pouzdanosti mapa (Tool Confidence Assessment)
+
+Koliko je svaka kategorija mapa pouzdano identificirana, bazirano na NPRo diff verifikaciji i binarnoj analizi:
+
+| Kategorija | Pouzdanost | Osnova |
+|------------|-----------|--------|
+| **Paljenje (ignition)** | POUZDANA | 20 mapa potvrđeno NPRo difom — adrese, dimenzije i skaliranje 100% verificirani |
+| **Gorivo (injection main)** | ~95% | KFTIPMF @ 0x02436C potvrđen, ~200B regija @ 0x024700 još neidentificirana |
+| **Lambda/AFR** | POUZDANA | Potvrđeno: target map, trim, bias, KFWIRKBA — sve Q15 LE adrese verificirane |
+| **Moment (torque)** | POUZDANA | 0x02A0D8 + mirror Q8 BE — potvrđeno NA vs SC razlika |
+| **Rev limiter** | POUZDANA | Period encoding formula verificirana, adrese po variantama potvrđene |
+| **SC bypass** | POUZDANA | 3 kopije identificirane, NPRo potvrđuje shadow vs active razliku |
+| **GTI injection (0x022066)** | POUZDANA | GTI-specifična direktna tablica, NEMA mirrora — potvrđeno full CODE scan-om |
+| **Thermal enrichment** | ~85% | 0x02AA42 identificiran NPRo difom, OS adrese potvrđene; fizikalni smisao logičan |
+| **KFWIRKBA (0x02AE5E)** | ~80% | Format identificiran, ali parser markiran TODO — lambda os i dimenzije još se verifikuju |
+| **Eff. corr. (0x0259D2)** | ~60% | Adresa identificirana, dimenzije confirmirane (~10×7), ali fizikalni smisao nije potvrđen |
+
+> **KRITIČNO: CAL regija (0x060000+) = NE DIRATI**
+> Izgleda kao kalibracija, ali je TriCore AUTOSAR/ASCET kompajlirani bytekod. 754 pokazivača u CODE regiji upućuju na CAL. Pisanje u CAL = korupcija firmware-a.
