@@ -4,6 +4,12 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-18 — CAN bus proširenje: SAT analiza + can_decoder.py]**
+👤 Proširiti CAN bus podršku analizom SAT firmware dumpova i dekodiranjem CAN payload strukture. Analiza 3 SAT dumpa, nepoznatog EEPROM-a, implementacija core/can_decoder.py i proširenje can_network_widget.py.
+🤖 SAT firmware dumpovi su enkriptirani (entropy 7.997) — direktna binarna analiza CAN ID-ova nije moguća. Nepoznati 2MB EEPROM identificiran kao RXT-X 260 ECU EEPROM (SW 1037524060, MED17 string potvrđen). CAN payload formati dekodirani iz ECU CODE regije. Kreiran can_decoder.py s punim decoderima (RPM/temp/hours/DTC/flags). Ažuriran can_network_widget.py s payload info u opisu i SAT_PROFILES dictom.
+
+---
+---
 **[2026-03-18 — UI vizualna poboljšanja]**
 👤 Implementiraj grafičke/vizualne poboljšanja u ui/main_window.py: category color badges u MapLibrary, status bar gauge labele (SW ID, broj mapa, BOOT/CODE/CAL region), accent bar ispod toolbar-a koji mijenja boju prema SW varijanti, scan progress animacija s tačkama, i heatmap paleta po kategoriji.
 🤖 Svih 5 zadataka implementirano u ui/main_window.py. Dodani: _category_icon() (12×12 filled circle icons), _sw_accent_color(), _cell_colors_cat() s 4 category palete, accent QFrame 2px, 3 gauge QLabel-a u status baru, QTimer scan animacija. AST + import provjere prolaze.
@@ -531,5 +537,26 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18]**
 👤 [agent notifikacija — Grafički UI redesign završen]
 🤖 Svih 5 vizualnih poboljšanja gotova: category color badges, status bar gauges (SW+mape+regija), accent bar po SW varijanti, scan progress animacija, heatmap paleta po kategoriji. AST OK.
+
+---
+
+---
+**[2026-03-18]**
+👤 okej, daj ci analizu svega sto imamo, sto trebamo jos, i sto nije definirano... dodao sam u materijalima dumps eeprom itxt file sa uputom... mozemo li se malo oko toga poigrati? i nekakvog agenta u pozadini za can bus... ranije sam te uputio gdje ces naci dumpove satova i ibr...
+🤖 Puna analiza data. 063 ODO fix napravljen (0x4562 primary, sve 7 dumpova rade). Pronađeni SAT firmware dumpovi (325KB ×3) i nepoznati 2MB EEPROM. CAN/SAT agent pokrenut. Analiza: ✅ core/maps/DTC/EEPROM, ⚠️ CAN payload/SAT format/IBR.
+
+---
+
+---
+**[2026-03-18]**
+👤 [agent notifikacija — CAN/SAT agent završen]
+🤖 SAT firmware enkriptiran (entropy ~8, nije direktno čitljiv). "Nepoznati epprom" = RXT-X 260 ECU EEPROM backup (2MB container, SW=1037524060). CAN payload formati potvrđeni iz ECU CODE. can_decoder.py kreiran.
+
+---
+
+---
+**[2026-03-18]**
+👤 sto dalje? reci ti meni, jesmo pokrili sve mape definicijama? jesmo sigurni da je alat pouzdan za osraditi tuning? daj da grupriramo stablo dtc, u, p, b, c kodovi pa pocinki sa 0, 1,2?? izbaciti opise iz stabla staviti ih samo u srednji eprozor, boka da su aktivne zelen ugasene crvene?
+🤖 DTC stablo: P/C/B/U → P0/P1/P2 podgrupe, samo p_code u stablu, opis u sredini, zelena=aktivna, crvena=OFF. Procjena: paljenje i lambda POUZDANI, gorivo 80-85% (~200B korekcija neidentificirano), rev limiter s oprezom.
 
 ---

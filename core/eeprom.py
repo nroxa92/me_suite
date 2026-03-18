@@ -107,9 +107,11 @@ class EepromParser:
     # ODO_OFFSET  = 0x0125  # NE koristiti! SW konstanta, ne odometar
 
     # Circular buffer ODO adrese po HW tipu (istraivanje 2026-03-18)
-    _ODO_064_PRIMARY  = 0x0562   # 064/063 primarni
-    _ODO_064_ALT1     = 0x0D62   # 064 backup (stariji layout, visoke minute)
+    _ODO_064_PRIMARY  = 0x0562   # 064 primarni
+    _ODO_064_ALT1     = 0x0D62   # 064 backup (stariji layout)
     _ODO_064_ALT2     = 0x1562   # 064 backup mirror
+    _ODO_063_REGION   = (0x4400, 0x5000)  # 063 Spark: buffer raste od ~0x4500 naviše
+    _ODO_063_FALLBACK = 0x0562   # 063 fallback (visoki sati, buffer prešao 0x5000)
     _ODO_063_HIGH     = 0x0DE2   # 063 visoke minute (>~30000)
     _ODO_062_HIGH_B   = 0x5062   # 062 rotacija: najnoviji
     _ODO_062_HIGH_A   = 0x4562   # 062 rotacija: drugi
@@ -167,13 +169,24 @@ class EepromParser:
                 v = _u16le(addr)
                 if 1 <= v <= 65000:
                     info.odo_raw = v; break
+        elif info.hw_type == "063":
+            # Spark ECU ima dva aktivna buffer mjesta; uzimamo veće (novije)
+            v_a = _u16le(0x4562)  # primary (niske/srednje sate)
+            v_b = _u16le(self._ODO_063_FALLBACK)  # 0x0562 (kada buffer wrapa)
+            best = max(v if 1 <= v <= 65000 else 0 for v in (v_a, v_b))
+            if best:
+                info.odo_raw = best
+            else:
+                v = _u16le(self._ODO_063_HIGH)
+                if 1 <= v <= 65000:
+                    info.odo_raw = v
         else:
-            # 063 / 064 (ili nepoznat HW)
+            # 064 / nepoznat HW
             v = _u16le(self._ODO_064_PRIMARY)
             if 1 <= v <= 65000:
                 info.odo_raw = v
             else:
-                for addr in (self._ODO_064_ALT1, self._ODO_064_ALT2, self._ODO_063_HIGH):
+                for addr in (self._ODO_064_ALT1, self._ODO_064_ALT2):
                     v = _u16le(addr)
                     if 1 <= v <= 65000:
                         info.odo_raw = v; break

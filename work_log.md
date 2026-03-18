@@ -1,5 +1,56 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — CAN bus proširenje: SAT analiza, can_decoder.py, SAT_PROFILES
+
+### Što je napravljeno
+Provedena binarna analiza SAT firmware dumpova i ECU flash-a. Implementiran `core/can_decoder.py` s potpunim payload decoderom. Proširen `ui/can_network_widget.py` s payload info, SAT_PROFILES i timing tablicama.
+
+### Promijenjeni fajlovi
+- `core/can_decoder.py` — NOVI fajl, 270+ linija
+- `ui/can_network_widget.py` — ažurirani CAN_ID_INFO (payload formati + timing), CAN_TABLE_ADDR komentar, dodan SAT_PROFILES dict, SAT_CONFIGS koristi SAT_PROFILES, docstring ažuriran
+
+### Ključni nalazi — SAT firmware dumpovi
+- **3 SAT dumpa** (`00000 143g full read` = Spark SAT, `truki gtix21` = GTI-X SAT, `unknow gti` = GTI SAT variant)
+- Veličine: Spark + GTI = 325,696B (0x4F840), GTI-X = 324,672B (0x4F440)
+- **Entropy 7.997 bits/byte** = firmwari su enkriptirani ili komprimirani — direktna binarna analiza CAN ID-ova NIJE MOGUĆA
+- Header pattern identičan sva 3 fajla (A5 3B FB 19 AC 26 45 A2 E9 70 ...) — bytes[10:11] se razlikuju (mogući SW revision)
+- spark_sat i gti_sat imaju IDENTIČAN kraj (isti base firmware), gtix_sat je drugačiji
+- **Zaključak**: SAT dumpovi su read-protected MCU dumpovi s enkriptiranim sadržajem — nemaju ASCII CAN ID-ove
+
+### Ključni nalazi — "nepoznati epprom" (2MB)
+- **Identifikacija**: ECU EEPROM backup za RXT-X 260 motor
+- SW ID @ 0x02001A: `1037524060` (RXT-X 260 SW — potvrđeno iz ranije analize)
+- MED17 string @ 0x03FE10: `30/1/MED17////7A1124O/A0RDS1//00//`
+- Bosch part @ 0x029D13: `7A1124OA0RDS1`
+- Nije-FF podaci samo u regiji 0x020000–0x040000 (131,072 bajta = 128KB aktivan sadržaj)
+- Header @ 0x020000: `60 00 00 00 04 FF 01 00` — BRP EEPROM container format
+- 0x020030 = `1C F1 64 84` = checksum (CRC32 ili Bosch checksum)
+- **Zaključak**: 2MB raw EEPROM chip dump, aktivan sadržaj 128KB @ 0x020000, identificiran kao RXT-X 260 ECU EEPROM (Bosch ME17 format, identičan strukturi poznatih 32KB EEPROM-a samo s drugačijim offset)
+
+### CAN payload analiza (iz ECU binarnih)
+- **CAN tablica 300hp @ 0x0433BC**: 015B 015C 0148 013C 015C 0138 0108 0214 012C 0110 0108 017C 0000
+- **CAN tablica Spark @ 0x042EC4**: 015B 0154 0134 013C 015C 0138 0108 0214 012C 0110 0108 017C 0000
+- **Timing tablica** @ (table_addr - 14): LE u16 ms periodicitet po ID-u
+  - GTI: 8ms 16ms 22ms 22ms 22ms 22ms 18ms 148ms 223ms 147ms
+  - Spark: 8ms 16ms 20ms 20ms 20ms 20ms 16ms 132ms 196ms 131ms
+- **CAN descriptor struct** @ CODE 0x0173C0: `5A opcode` + idx + CAN_ID(BE) + 0xFFFF + checksum
+- **RPM payload** (0x0108): byte[1:3] u16 BE × 0.25 = RPM
+- **Temp payload** (0x0110): byte[1] − 40 = °C
+- **Engine hours** (0x012C): byte[0:4] u32 BE (seconds) / 3600 = hours
+
+### Implementiran core/can_decoder.py
+- `CanDecoder.decode_rpm(payload)` — RPM iz 0x0108
+- `CanDecoder.decode_coolant_temp(payload)` — °C iz 0x0110
+- `CanDecoder.decode_iat(payload)` — IAT iz 0x0110
+- `CanDecoder.decode_engine_hours(payload)` — sate iz 0x012C
+- `CanDecoder.decode_dtc(payload)` — DTC liste iz 0x017C
+- `CanDecoder.decode_engine_status(payload)` — flags iz 0x013C
+- `CanDecoder.decode(can_id, payload)` — universal dispatcher
+- `GTI_SC_CAN_TIMING`, `SPARK_CAN_TIMING` — timing tablice
+- `get_timing(can_id, ecu_type)` — period lookup
+
+---
+
 ## 2026-03-18 — UI vizualna poboljšanja (5 zadataka)
 
 ### Što je napravljeno
@@ -2137,3 +2188,74 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 
 ### Provjera
 - AST parse OK (UTF-8 encoding)
+
+## 2026-03-18 — EEPROM parser 063 fix + analiza stanja projekta
+
+### 063 ODO bug fix (core/eeprom.py)
+- **Problem**: parser vraćao 0min za sve 063 dumpove osim 585-42
+- **Uzrok**: 063 (Spark ECU) ima dva aktivna buffer mjesta:
+  - 0x4562 — primary (niske/srednje sate, do ~10000min)
+  - 0x0562 — wrapa ovamo kad je 0x4xxx region popunjen
+- **Fix**: max(0x4562, 0x0562), fallback 0x0DE2
+- **Rezultat**: sve 7 063 dumpova čitaju ispravno ✅
+
+### Cjelokupna analiza projekta
+- 33 EEPROM dumpa (6×062, 7×063, 13×064) — parser radi za sve osim 2 prazna 064
+- SAT firmware dumpovi pronađeni (325KB): 00000 143g, truki gtix21, unknow gti — sadrže CAN ID-ove
+- "nepoznati epprom" (2MB) — još neidentificiran (IBR? SAT EEPROM?)
+- CAN/SAT agent pokrenut u pozadini
+
+## 2026-03-18 — CAN/SAT agent ZAVRŠEN
+
+### SAT firmware dumpovi — nalaz
+- Sva 3 SAT dumpa (325KB) imaju entropy 7.997 bits/byte = **enkriptirani/komprimirani**
+- Header pattern identičan (A5 3B FB 19...), razlika samo u bytes[10:11] = SW revision
+- Direktna binarna analiza CAN tablica nije moguća — zahtijeva MCU dekompresiju
+
+### "Nepoznati epprom" (2MB) — IDENTIFICIRAN
+- **RXT-X 260 ECU EEPROM backup** (ne IBR, ne SAT!)
+- SW ID @ 0x02001A: `1037524060` (RXT-X 260)
+- MED17 string @ 0x03FE10: `30/1/MED17////7A1124O/A0RDS1//00//`
+- Aktivan sadržaj samo 128KB @ 0x020000-0x040000, ostatak 0xFF
+- Format: BRP EEPROM container (header `60 00 00 00 04 FF 01 00`)
+
+### CAN payload formati (potvrđeno iz ECU CODE regije)
+- 0x0108 RPM: byte[1:3] u16 BE × 0.25 = RPM, period 16-18ms
+- 0x0110 temp: byte[1] - 40 = °C, period 131-147ms
+- 0x012C hours: byte[0:4] u32 BE (sekunde) / 3600 = sati, period 196-223ms
+- 0x017C DTC: byte[0]=count, byte[1:3]=code1 BE, byte[4:6]=code2 BE
+
+### Novi/ažurirani fajlovi
+- `core/can_decoder.py` (NOVI) — CanDecoder klasa, 7 metoda, decode() dispatcher
+- `ui/can_network_widget.py` — CAN_ID_INFO s payload formatima, SAT_PROFILES dict
+- AST OK za oba fajla
+
+## 2026-03-18 — DTC UI redesign + procjena pouzdanosti alata
+
+### DTC sidebar redesign (ui/main_window.py — DtcSidebarPanel)
+- Stablo restrukturirano: P/C/B/U top level → P0/P1/P2/P3 podgrupe
+  - Svi naši 111 kodovi su P-kodovi (P0=65, P1=35, P2=11)
+  - C/B/U grupe su prazne ali postoje za budućnost
+- Opis UKLONJEN iz stabla — samo p_code (npr. "P0106")
+- Boje: aktivna DTC = zelena (#4ec9b0), isključena = crvena (#ef4444), bez fajla = siva
+- Filter i dalje pretraži i kod i opis
+
+### Procjena pouzdanosti alata za tuning
+**Potvrđene mape (NPRo diff analiza 2019 stock vs NPRo):**
+- Injection main (KFTIPMF) @ 0x02436C: NPRo mijenja ✅ POTVRĐENA
+- Ignition maps 1-8 @ 0x02B730+: NPRo mijenja ✅ POTVRĐENE
+- Lambda AFR @ 0x0266F0: prisutna ✅
+
+**Neidentificirane regije koje NPRo mijenja:**
+- 0x024700-0x024800: flat array (7283,7283...) ~212B — vjerovatno dodatna injekcijska korekcija
+- 0x012C80: ~128B embedded calibration u ranom CODE-u — funkcijski hook ili inline cal
+- 0x02B380: ~72B pred ignition tablicama — neidentificirano
+
+**Zaključak:**
+- Paljenje: POUZDANO (20 mapa, sve potvrđene)
+- Gorivo (injection): UGLAVNOM POUZDANO, ~200B neidentificirane korekcije ostaju
+- Lambda/AFR: POUZDANO
+- DTC OFF: POUZDANO
+- Torque limit: FUNKCIONALNO
+- Rev limiter: OPREZ (adrese potvrđene za 10SW066726, manje sigurno za ostale SW)
+- CAL regija: NE DIRATI (TriCore bytekod)

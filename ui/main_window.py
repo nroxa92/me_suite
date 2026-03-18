@@ -618,10 +618,23 @@ class MapLibraryPanel(QWidget):
 class DtcSidebarPanel(QWidget):
     dtc_selected = pyqtSignal(int)
 
-    _GROUPS = [
-        ("P0xxx — OEM/SAE",   0x0000, 0x0FFF, "#9cdcfe"),
-        ("P1xxx — BRP/Bosch", 0x1000, 0x1FFF, "#f48771"),
+    # Top-level kategorije: (slovo, raspon_lo, raspon_hi, boja)
+    _CAT_GROUPS = [
+        ("P — Powertrain", 0x0000, 0x3FFF, "#f48771"),
+        ("C — Chassis",    0x4000, 0x7FFF, "#9cdcfe"),
+        ("B — Body",       0x8000, 0xBFFF, "#e5c07b"),
+        ("U — Network",    0xC000, 0xFFFF, "#a855f7"),
     ]
+    # Podgrupe unutar kategorije: (label, second_digit, boja)
+    _SUB_LABELS = {
+        0: "— Standardni (OEM/SAE)",
+        1: "— Proizvođač (BRP/Bosch)",
+        2: "— Standardni prošireni",
+        3: "— Dostupno",
+    }
+    _COLOR_ACTIVE = "#4ec9b0"   # zelena  — DTC aktivan (monitoring ON)
+    _COLOR_OFF    = "#ef4444"   # crvena  — DTC isključen (OFF)
+    _COLOR_NONE   = "#555555"   # siva    — nije učitan fajl
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -649,7 +662,7 @@ class DtcSidebarPanel(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setIndentation(12)
+        self.tree.setIndentation(14)
         self.tree.itemClicked.connect(self._click)
         lo.addWidget(self.tree, 1)
 
@@ -658,30 +671,48 @@ class DtcSidebarPanel(QWidget):
     def _build_tree(self):
         self.tree.clear()
         self._all_items.clear()
-        groups = {}
-        for label, lo_c, hi_c, color in self._GROUPS:
-            it = QTreeWidgetItem(self.tree, [label])
-            it.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
-            it.setForeground(0, QBrush(QColor(color)))
-            it.setSizeHint(0, QSize(0, 28))
-            it.setExpanded(True)
-            groups[(lo_c, hi_c)] = it
 
+        # Grupiraj kodove: cat_letter → sub_digit → [code]
+        from collections import defaultdict
+        buckets: dict[tuple[int,int], list] = defaultdict(list)
         for code, defn in sorted(DTC_REGISTRY.items()):
-            txt = f"  {defn.p_code}  {defn.name}"
-            parent_item = next(
-                (git for (lo_c, hi_c), git in groups.items() if lo_c <= code <= hi_c),
-                list(groups.values())[-1]
-            )
-            ch = QTreeWidgetItem(parent_item, [txt])
-            ch.setFont(0, QFont("Consolas", 12))
-            ch.setSizeHint(0, QSize(0, 24))
-            ch.setForeground(0, QBrush(QColor("#666666")))
-            ch.setData(0, Qt.ItemDataRole.UserRole, code)
-            self._all_items.append((code, ch))
+            cat_idx  = (code >> 14) & 3   # 0=P,1=C,2=B,3=U
+            sub_digit = (code >> 12) & 3   # 0,1,2,3
+            buckets[(cat_idx, sub_digit)].append((code, defn))
 
-        for it in groups.values():
-            it.setHidden(it.childCount() == 0)
+        for cat_idx, (cat_label, lo_c, hi_c, cat_color) in enumerate(self._CAT_GROUPS):
+            # Provjeri ima li kodova u ovoj kategoriji
+            has_any = any(k[0] == cat_idx for k in buckets)
+            if not has_any:
+                continue
+
+            cat_item = QTreeWidgetItem(self.tree, [cat_label])
+            cat_item.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
+            cat_item.setForeground(0, QBrush(QColor(cat_color)))
+            cat_item.setSizeHint(0, QSize(0, 28))
+            cat_item.setExpanded(True)
+
+            for sub_digit in range(4):
+                entries = buckets.get((cat_idx, sub_digit), [])
+                if not entries:
+                    continue
+
+                # Subgrupa npr. "P0 — Standardni (OEM/SAE)"
+                cat_char = "PCBU"[cat_idx]
+                sub_label = f"  {cat_char}{sub_digit}xxx {self._SUB_LABELS.get(sub_digit, '')}"
+                sub_item = QTreeWidgetItem(cat_item, [sub_label])
+                sub_item.setFont(0, QFont("Segoe UI", 10))
+                sub_item.setForeground(0, QBrush(QColor("#888888")))
+                sub_item.setSizeHint(0, QSize(0, 24))
+                sub_item.setExpanded(True)
+
+                for code, defn in entries:
+                    ch = QTreeWidgetItem(sub_item, [f"    {defn.p_code}"])
+                    ch.setFont(0, QFont("Consolas", 12))
+                    ch.setSizeHint(0, QSize(0, 22))
+                    ch.setForeground(0, QBrush(QColor(self._COLOR_NONE)))
+                    ch.setData(0, Qt.ItemDataRole.UserRole, code)
+                    self._all_items.append((code, ch))
 
     def set_engine(self, dtc_eng):
         self._dtc_eng = dtc_eng
@@ -691,16 +722,16 @@ class DtcSidebarPanel(QWidget):
         for code, ch in self._all_items:
             if self._dtc_eng:
                 status = self._dtc_eng.get_status(code)
-                ch.setForeground(0, QBrush(QColor(
-                    "#555555" if (status and status.is_off) else "#f48771"
-                )))
+                color = self._COLOR_OFF if (status and status.is_off) else self._COLOR_ACTIVE
             else:
-                ch.setForeground(0, QBrush(QColor("#666666")))
+                color = self._COLOR_NONE
+            ch.setForeground(0, QBrush(QColor(color)))
 
     def refresh_one(self, code: int, is_off: bool):
+        color = self._COLOR_OFF if is_off else self._COLOR_ACTIVE
         for c, ch in self._all_items:
             if c == code:
-                ch.setForeground(0, QBrush(QColor("#555555" if is_off else "#f48771")))
+                ch.setForeground(0, QBrush(QColor(color)))
                 break
 
     def _filter(self, txt: str):
@@ -710,9 +741,17 @@ class DtcSidebarPanel(QWidget):
                        txt.lower() in (defn.p_code if defn else "").lower() or
                        txt.lower() in (defn.name if defn else "").lower())
             ch.setHidden(not visible)
+        # Sakrij prazne podgrupe i kategorije
         for i in range(self.tree.topLevelItemCount()):
-            grp = self.tree.topLevelItem(i)
-            grp.setHidden(all(grp.child(j).isHidden() for j in range(grp.childCount())))
+            cat = self.tree.topLevelItem(i)
+            cat_empty = True
+            for j in range(cat.childCount()):
+                sub = cat.child(j)
+                sub_empty = all(sub.child(k).isHidden() for k in range(sub.childCount()))
+                sub.setHidden(sub_empty)
+                if not sub_empty:
+                    cat_empty = False
+            cat.setHidden(cat_empty)
 
     def _click(self, item: QTreeWidgetItem):
         code = item.data(0, Qt.ItemDataRole.UserRole)

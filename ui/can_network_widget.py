@@ -7,7 +7,13 @@ Podrzani SAT tipovi:
   - GTI/GTS SAT 2012-2020 (MC9S08DZ128)
   - MS/VS SAT 2020+ (Renesas V850 D70F3554M)
 
-Izvor podataka: docs/CAN_SAT_PORUKE.md + binarna analiza ECU fajlova
+Izvor podataka: binarna analiza ECU flash dumpova (2021)
+  - GTI/SC 1630 CAN table  @ 0x0433BC  (10SW066726)
+  - Spark 900 HO CAN table @ 0x042EC4  (10SW053774)
+  - CAN TX timing table    @ table_addr - 14 (LE u16 array, ms)
+  - CAN descriptor struct  @ CODE region 0x0173C0+ (5A opcode entries)
+
+Payload formati: vidjeti core/can_decoder.py za detalje.
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
@@ -18,33 +24,52 @@ from PyQt6.QtGui import QColor, QBrush, QFont
 
 
 # ─── CAN ID baza podataka ─────────────────────────────────────────────────────
+#
+# Payload format (u zagradama):
+#   0x0108 [0]=flags [1:3]=RPM_raw_BE (RPM=raw*0.25) [3]=TPS% [4]=MAP_kPa
+#   0x0110 [0]=flags [1]=coolant(raw-40=°C) [2]=IAT(raw-40=°C)
+#   0x012C [0:4]=seconds_BE (/3600=h) [4:6]=service_remaining_BE (*0.1h)
+#   0x013C [0]=state(0=off,1=crank,2=run,3=limp) [1]=MIL [2]=rev_lim
+#   0x017C [0]=dtc_count [1:3]=code1_BE [3]=status1 [4:6]=code2_BE
+#   0x0214 session/extended diag (BRP proprietary)
+#
+# CAN TX timing (ms) iz ECU binarne analize — vidjeti core/can_decoder.py
 
-# CAN ID: (opis poruke, tip: "common" | "spark" | "gti_sc")
+# CAN ID: (opis poruke s payload formatom, tip: "common" | "spark" | "gti_sc")
 CAN_ID_INFO: dict[int, tuple[str, str]] = {
-    0x0108: ("Engine speed (RPM)",                  "common"),
-    0x0110: ("Coolant temp / CTS",                  "common"),
-    0x012C: ("Engine hours / service info",         "common"),
-    0x0138: ("Throttle / speed status",             "common"),
-    0x013C: ("Engine status flags",                 "common"),
-    0x015B: ("Main ECU broadcast",                  "common"),
-    0x015C: ("Secondary ECU broadcast",             "common"),
-    0x017C: ("DTC / fault status",                  "common"),
-    0x0214: ("Extended diagnostics",                "common"),
-    0x0134: ("Spark-specifican A (neidentificiran)", "spark"),
-    0x0154: ("Spark-specifican B (neidentificiran)", "spark"),
-    0x0148: ("GTI/230/300-specifican",              "gti_sc"),
-    0x00BF: ("GTI extra config 1  (DLC=1, 0xFF)",  "gti_sc"),
-    0x00CD: ("GTI extra config 2  (DLC=1, 0xFF)",  "gti_sc"),
-    0x00DC: ("GTI extra config 3  (DLC=1, 0xFF)",  "gti_sc"),
+    0x0108: ("Engine speed  [RPM=raw*0.25, TPS, MAP]  @18ms",        "common"),
+    0x0110: ("Coolant/IAT temp  [byte1-40=°C]  @131-147ms",          "common"),
+    0x012C: ("Engine hours/service  [u32BE sec/3600=h]  @196-223ms", "common"),
+    0x0138: ("Throttle / speed status  @20-22ms",                    "common"),
+    0x013C: ("Engine status flags  [state,MIL,revlim]  @20-22ms",    "common"),
+    0x015B: ("Main ECU broadcast A  @8ms",                           "common"),
+    0x015C: ("Main ECU broadcast B  @16-22ms",                       "common"),
+    0x017C: ("DTC / fault status  [count,code1,code2]  event-driven","common"),
+    0x0214: ("Extended diagnostics  @132-148ms",                     "common"),
+    0x0134: ("Spark-specific A  @20ms",                              "spark"),
+    0x0154: ("Spark-specific B  @16ms",                              "spark"),
+    0x0148: ("GTI/SC 1630 specific  @22ms",                          "gti_sc"),
+    0x00BF: ("GTI extra config 1  (DLC=1, 0xFF)",                    "gti_sc"),
+    0x00CD: ("GTI extra config 2  (DLC=1, 0xFF)",                    "gti_sc"),
+    0x00DC: ("GTI extra config 3  (DLC=1, 0xFF)",                    "gti_sc"),
 }
 
-# Fizicke adrese CAN ID tablice u binarnom fajlu (BE u16, nul-terminiran)
+# Fizicke adrese CAN ID tablice u binarnom fajlu (BE u16, 0x0000 terminated)
+# Potvrdjeno binarnom analizom ECU flash dumpova (2021):
+#   spark @ 0x042EC4: 015B 0154 0134 013C 015C 0138 0108 0214 012C 0110 0108 017C 0000
+#   gti300 @ 0x0433BC: 015B 015C 0148 013C 015C 0138 0108 0214 012C 0110 0108 017C 0000
+# CAN timing table @ (addr - 14): LE u16 array, ms period per ID (index-matched)
 CAN_TABLE_ADDR: dict[str, int] = {
-    "spark":  0x042EC4,   # Spark ECU (SW: 1037xxxxxx / 10SW011328)
-    "gti300": 0x0433BC,   # GTI/230/300 ECU (SW: 10SWxxxxxx)
+    "spark":  0x042EC4,   # Spark ECU (SW: 1037xxxxxx / 10SW011328 / 10SW053774)
+    "gti300": 0x0433BC,   # GTI/SC 1630 ECU (SW: 10SWxxxxxx)
 }
 
-# ECU CAN ID profili — iz binarne analize (docs/CAN_SAT_PORUKE.md)
+# CAN timing table offset relative to CAN ID table (14 bytes = 7 LE u16 before IDs)
+# Full timing: @ CAN_TABLE_ADDR - 14  (10 entries, LE u16, ms period)
+CAN_TIMING_OFFSET: int = -14
+
+# ECU CAN ID profili — potvrdjeni binarnom analizom ECU flash-a (2021)
+# Redosljed odgovara CAN TX redoslijedu u ECU tablici
 ECU_PROFILES: dict[str, list[int]] = {
     "spark": [
         0x015B, 0x0154, 0x0134, 0x013C, 0x015C, 0x0138,
@@ -57,44 +82,81 @@ ECU_PROFILES: dict[str, list[int]] = {
     ],
 }
 
-# SAT konfiguracije
-SAT_CONFIGS: dict[str, dict] = {
-    "Spark SAT  2014-2024  (MC9S08DZ60)": {
-        "ids": [
+# SAT CAN profili — ID-ovi koje SAT PRIMA (subscribe lista)
+# Odredjeno analizom SAT <-> ECU kompatibilnosti i ECU TX profila
+# Napomena: SAT firmware dumpovi imaju entropy 7.997 (enkriptirani/komprimirani) —
+#   direktna binarna analiza nije moguca; profili su izvedeni iz ECU TX analize.
+SAT_PROFILES: dict[str, dict] = {
+    "Spark SAT  (MC9S08DZ60)": {
+        "subscribed_ids": [
             0x015B, 0x0154, 0x0134, 0x013C, 0x015C, 0x0138,
             0x0108, 0x0214, 0x012C, 0x0110, 0x017C,
         ],
-        "mcu":   "Freescale MC9S08DZ60  (HCS08, 8-bit)",
+        "mcu": "Freescale MC9S08DZ60  (HCS08, 8-bit)",
+        "notes": (
+            "SAT firmware dumpovi (0x4F840B) imaju entropy ~8.0 (enkriptirani/comprimirani).\n"
+            "Profil izveden iz ECU TX analize — potvrdjeni sparring ECU 300hp+Spark SAT.\n"
+            "ID-ovi 0x0134 i 0x0154 su Spark-specificni — GTI ECU ih ne salje."
+        ),
+    },
+    "GTI/GTS SAT  (MC9S08DZ128)": {
+        "subscribed_ids": [
+            0x015B, 0x015C, 0x0148, 0x013C, 0x0138,
+            0x0108, 0x0214, 0x012C, 0x0110, 0x017C,
+        ],
+        "mcu": "Freescale MC9S08DZ128  (HCS08, 8-bit)",
+        "notes": (
+            "Nativni SAT za GTI/GTS. SAT firmware (0x4F440B) enkriptiran — bez CAN ID-ova.\n"
+            "Profil izveden iz ECU GTI TX tablice @ 0x0433BC.\n"
+            "0x0148 = GTI/SC 1630 specificna poruka."
+        ),
+    },
+    "MS/VS SAT  2020+  (Renesas V850)": {
+        "subscribed_ids": [
+            0x015B, 0x015C, 0x0148, 0x013C, 0x0138,
+            0x0108, 0x0214, 0x012C, 0x0110, 0x017C,
+        ],
+        "mcu": "Renesas V850ES/SF3  (D70F3554M, 32-bit)",
+        "notes": (
+            "Noviji model SAT (2020+ MS/VS serija). Pretpostavka: isti ID set kao GTI SAT.\n"
+            "Direktna binarna analiza firmware-a nije dostupna."
+        ),
+    },
+}
+
+# SAT konfiguracije — generirane iz SAT_PROFILES
+# Odvojeno za backward-kompatibilnost widgeta
+SAT_CONFIGS: dict[str, dict] = {
+    "Spark SAT  2014-2024  (MC9S08DZ60)": {
+        "ids": SAT_PROFILES["Spark SAT  (MC9S08DZ60)"]["subscribed_ids"],
+        "mcu":   SAT_PROFILES["Spark SAT  (MC9S08DZ60)"]["mcu"],
         "notes": (
             "POTVRDJENO: 300hp ECU + Spark SAT = radi bez izmjena.\n"
             "230hp ECU koristi isti CAN ID set kao 300hp — ocekuje se da radi.\n"
             "ID-ovi 0x0134 i 0x0154 su Spark-specificni — ECU ih ne salje,\n"
-            "prikazne pozicije za te poruke bit ce prazne."
+            "prikazne pozicije za te poruke bit ce prazne.\n"
+            "SAT firmware (325KB) je enkriptiran — direktna CAN analiza nije moguca."
         ),
         "dump":  r"C:\Users\SeaDoo\Desktop\MCU\MC9S08DZ60",
     },
     "GTI/GTS SAT  2012-2020  (MC9S08DZ128)": {
-        "ids": [
-            0x0108, 0x0110, 0x012C, 0x0138, 0x013C,
-            0x015B, 0x015C, 0x017C, 0x0214,
-        ],
-        "mcu":   "Freescale MC9S08DZ128  (HCS08, 8-bit)",
+        "ids": SAT_PROFILES["GTI/GTS SAT  (MC9S08DZ128)"]["subscribed_ids"],
+        "mcu":   SAT_PROFILES["GTI/GTS SAT  (MC9S08DZ128)"]["mcu"],
         "notes": (
             "Nativni SAT za GTI/GTS ECU. Kompatibilan sa 300hp ECU-om\n"
-            "(identicni zajednicki CAN ID set). Dump @ MCU/MC9S08DZ128."
+            "(identicni zajednicki CAN ID set).\n"
+            "SAT firmware (325KB) je enkriptiran — direktna CAN analiza nije moguca.\n"
+            "0x0148 = GTI/SC 1630 specificna poruka (Spark ECU ne salje)."
         ),
         "dump":  r"C:\Users\SeaDoo\Desktop\MCU\MC9S08DZ128",
     },
     "MS/VS SAT  2020+  (Renesas V850 D70F3554M)": {
-        "ids": [
-            0x0108, 0x0110, 0x012C, 0x0138, 0x013C,
-            0x015B, 0x015C, 0x017C, 0x0214,
-        ],
-        "mcu":   "Renesas V850ES/SF3  (D70F3554M, 32-bit)",
+        "ids": SAT_PROFILES["MS/VS SAT  2020+  (Renesas V850)"]["subscribed_ids"],
+        "mcu":   SAT_PROFILES["MS/VS SAT  2020+  (Renesas V850)"]["mcu"],
         "notes": (
             "Noviji model SAT (2020+ MS/VS serija). Renesas V850 MCU.\n"
             "Pretpostavka kompatibilnosti — MCU dump analiza u toku.\n"
-            "Dump dostupan @ MCU/D70F3554M."
+            "Pretpostavlja se isti ID set kao GTI SAT."
         ),
         "dump":  r"C:\Users\SeaDoo\Desktop\MCU\D70F3554M",
     },
