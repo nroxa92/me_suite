@@ -14,6 +14,12 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 
+**[2026-03-18]**
+👤 Sveobuhvatna binarna analiza Spark 900 ACE ECU dumpova — pronađi SVE tuning mape koristeći diff analizu (2018 vs 2021), pattern scan, GTI90 usporedbu i 230hp 2020 vs 2021 provjeru.
+🤖 Analiza kompletna. Potvrđeno 13 poznatih mapa + pronađeni lambda osi (34B blokovi između mapa), lambda closed-loop trim (blokovi 0x024EEC/025004/025408, Q15), deadtime @ 0x0287A4 (period-encoded, 8×8ish), rev limiter hard cut 0x028E34=5120=8081 RPM (identičan 2018/2021/STG2). Blokovi 0x027E6A i 0x028382 (2×991B, u16 LE ~112-121) neidentificirani. 230hp 2020==2021 (80B diff u BOOT, CODE identičan).
+
+---
+
 **2026-03-15**
 👤 claude-code "Kreiraj core/safety_validator.py sa SafetyValidator klasom: boost_pressure/ignition/injection/lambda limiti, validate_edit, batch_validate..."
 🤖 Kreiran SafetyValidator s limitima kalibriranim na stvarne firmware vrijednosti (ne generički). boost_pressure u bar odbijen (ECU koristi SC bypass, drugačiji format). ERROR blokira edit u _on_edit(), WARNING propušta s porukom. 13/13 testnih scenarija OK, 0 false positive na ORI/STG2 mapama.
@@ -422,5 +428,25 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18]**
 👤 gti90?i spark znaci.... evo dump spark 90 2018.... pocistio sam materijale pa istrazi kako sada to taro sve izgleda.... baci se na posao, hvala..
 🤖 Pronašao: 2018 Spark = 10SW011328 (isti kao 2016!), 2019-2021 Spark = 10SW039116 (novi SW). Diff 2018 vs 2021 = 3510B CODE, ali mape su na ISTIM adresama — vrijednosti se razlikuju, ne layout. Dodano 10SW039116 u _SPARK_10SW_IDS. Test referentni putovi ažurirani za novu dumps/ strukturu. Svi testovi prolaze: 300hp=51, 230hp=51, 130/170hp=60, GTI90=58, Spark=13 mapa.
+
+---
+**[2026-03-18]**
+👤 rijesio sam
+🤖 Dumps restrukturiranje detektirano — nova struktura dumps/YYYY/{1630ace,900ace,4tec1503}/ je na mjestu. Sve test putanje ažurirane, MapDef read_only greška ispravljena. Svi testovi prolaze: Spark=20 mapa (7 novih aux), GTI90=58, 300hp=51, 130/170hp=60.
+
+---
+**[2026-03-18]**
+👤 i imas dump 2020 300 koji bi trebao odgovarati stg2 300, to je onaj npro tune... dakle ista situacija kao i sa spark 2018 bi trebao odgovarati stg2 spark.. mislim po sw broju...
+🤖 Potvrđeno: 2020/1630ace/300.bin=10SW054296 (novi SW!), 300_stg2=10SW040039 (NPRo). Spark 2018: spark90.bin=10SW011328, spark_stg2=1037544876 (decimalni format). Oba para validna. Dodano u KNOWN_SW i _300HP_SW_IDS/_SPARK_10SW_IDS.
+
+---
+**[2026-03-18]**
+👤 jel vodis logove work i chat?
+🤖 Da, vodim oboje. work_log.md = tehnički detalji (mape, adrese, promjene koda), chat_log.md = sažetak razgovora. Ažuriram ih nakon svake bitne promjene.
+
+---
+**[2026-03-18]**
+👤 standardni spark se vrti na 7900.. ovaj tuning je isao daleko preko 8, ovisno o pitchu implera u pogonu... 8500-8550 sam najvise vozio, ali isao je i dalje prilikom modifikacija impelera
+🤖 Konzistentno s ECU hard cut @ 8081 RPM (5120 ticks). Stock Spark propeller-limitan na ~7900. NPRo tune + modificirani impeler → 8500-8550 RPM u vodi. Vjerojatno NPRo tune uzdiže lift-pump/boost tablice, ne nužno rev limiter. Zabilježeno u work_log.
 
 ---

@@ -16,8 +16,8 @@ from core.checksum import ChecksumEngine
 
 ROOT      = os.path.join(os.path.dirname(__file__), '..')
 DUMPS     = os.path.join(ROOT, "_materijali", "dumps")
-ORI_PATH  = os.path.join(DUMPS, "2021", "300.bin")
-STG2_PATH = os.path.join(DUMPS, "2021", "300.bin")   # isti fajl — diff test preskočen ako nema npro
+ORI_PATH  = os.path.join(DUMPS, "2021", "1630ace", "300.bin")
+STG2_PATH = os.path.join(DUMPS, "2020", "1630ace", "300_stg2")
 
 
 def test_load_ori():
@@ -41,7 +41,7 @@ def test_load_ori():
 
 def test_load_stg2():
     print("\n=== TEST: Load STG2 ===")
-    npro_path = os.path.join(DUMPS, "2021", "npro_300.bin")
+    npro_path = STG2_PATH
     if not os.path.exists(npro_path):
         print("  PRESKACAM — npro_300.bin nije pronaden")
         return None
@@ -135,9 +135,9 @@ def test_checksum(ori):
 def test_map_finder_sc_variants():
     print("\n=== TEST: Map finder SC varijante (230hp/130hp/170hp) ===")
     variants = [
-        (os.path.join(DUMPS, "2021", "230.bin"), "10SW053727", "230hp"),
-        (os.path.join(DUMPS, "2021", "130.bin"), "10SW053729", "130hp"),
-        (os.path.join(DUMPS, "2020", "170.bin"), "10SW053729", "170hp"),
+        (os.path.join(DUMPS, "2021", "1630ace", "230.bin"), "10SW053727", "230hp"),
+        (os.path.join(DUMPS, "2021", "1630ace", "130.bin"), "10SW053729", "130hp"),
+        (os.path.join(DUMPS, "2020", "1630ace", "170.bin"), "10SW053729", "170hp"),
     ]
     for path, expected_sw, label in variants:
         if not os.path.exists(path):
@@ -171,9 +171,9 @@ def test_write_safety():
     print("  PASS")
 
 
-SPARK_PATH  = os.path.join(DUMPS, "2021", "spark90.bin")   # 10SW039116
-SPARK2_PATH = os.path.join(DUMPS, "2019", "spark90.bin")   # 10SW039116
-GTI90_PATH  = os.path.join(DUMPS, "2021", "gti90.bin")     # 10SW053774
+SPARK_PATH  = os.path.join(DUMPS, "2021", "900ace", "spark90.bin")   # 10SW039116
+SPARK2_PATH = os.path.join(DUMPS, "2019", "900ace", "spark90.bin")   # 10SW039116
+GTI90_PATH  = os.path.join(DUMPS, "2021", "900ace", "gti90.bin")     # 10SW053774
 GTI_PATH    = None   # GTI155 (10SW025752) nije u dumps — preskoci
 
 
@@ -228,7 +228,7 @@ def test_map_finder_gti90():
 
 def test_map_finder_gti():
     print("\n=== TEST: Map finder GTI 155 ===")
-    gti155 = os.path.join(DUMPS, "2018", "gti155.bin")
+    gti155 = os.path.join(DUMPS, "2018", "4tec1503", "gti155.bin")
     if not os.path.exists(gti155):
         print("  PRESKACAM — gti155.bin nije pronaden")
         return []

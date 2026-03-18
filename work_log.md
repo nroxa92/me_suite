@@ -1,5 +1,113 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 (sesija 2) — Spark deadtime fix, rev limiter, novi SW ID-ovi, ORI/STG2 parovi
+
+### Spark deadtime ispravka
+- Stara adresa 0x02428E bila pogrešna (false positive)
+- **Prava adresa: 0x0287A4** — 8×8=64 u16 LE, period-encoded 9632-13440 ticks @ 40MHz → ~240-336µs
+- RAZLIKUJE SE od GTI90 (0x025900, 14×7, drukčiji raw raspon)
+
+### Spark rev limiter dodan
+- **Hard cut @ 0x028E34 = 5120 ticks = 8081 RPM** (formula: 40e6×60/(5120×58))
+- Identičan u 2018 i 2021 Spark; NPRo STG2 NE mijenja rev limiter!
+- Ramp tablica @ 0x028E2E (16 val, 3200-13763 ticks) — u scanneru nisam dodao još
+- Praktično: stock Spark u vodi ≈7900 RPM (impeller-limitirano); NPRo tune + mod impeler do 8500-8550 RPM uživo; ECU cut = 8081 RPM (kavitacija zaštita)
+
+### Novi SW ID-ovi otkriveni
+- **10SW054296** = 300hp SC 2020 ORI (dumps/2020/1630ace/300.bin) — dodan u KNOWN_SW i _300HP_SW_IDS
+- **1037544876** = NPRo Spark 900 ACE STG2 (decimalni format, dumps/2018/900ace/spark_stg2) — dodan u KNOWN_SW i _SPARK_10SW_IDS
+
+### ORI/STG2 parovi potvrđeni
+| ORI | SW | STG2 | SW | CODE diff |
+|-----|-----|------|-----|-----------|
+| 2021/1630ace/300.bin | 10SW066726 | 2020/1630ace/300_stg2 | 10SW040039 | 7087B |
+| 2020/1630ace/300.bin | 10SW054296 | 2020/1630ace/300_stg2 | 10SW040039 | 6038B |
+| 2018/900ace/spark90.bin | 10SW011328 | 2018/900ace/spark_stg2 | 1037544876 | 3065B |
+
+### Test rezultati (svi PASS)
+- Spark=21 mapa (deadtime + rev limiter dodani), GTI90=58, 300hp=51, 130/170hp=60, 230hp=51
+
+## 2026-03-18 — Dumps restrukturiranje + Spark aux mape + testovi
+
+### Dumps nova struktura
+- Korisnik premjestio fajlove u `dumps/YYYY/{1630ace,900ace,4tec1503}/`
+- `test_core.py` putanje ažurirane na novu strukturu (sve rješeno)
+- STG2 fajl pronađen @ `dumps/2020/1630ace/300_stg2` (bez ekstenzije, data fajl)
+
+### Spark aux mape implementirane (_scan_spark_aux)
+7 novih MapDef + scanner za Spark 900 ACE, sve potvrđene testovima:
+- `_SPARK_DFCO_DEF` @ 0x021748 (7 u16 LE) — identično GTI90
+- `_SPARK_COLD_START_DEF` @ 0x0241F8 (6 u16 LE) — identično GTI90
+- `_SPARK_DEADTIME_DEF` @ 0x02428E (14×7=98 u16 LE) — identično GTI90
+- `_SPARK_KNOCK_DEF` @ 0x02408C (24 u16 LE) — identično GTI90
+- `_SPARK_START_INJ_DEF` @ 0x024676 (6 u16 LE)
+- `_SPARK_WARMUP_DEF` @ 0x024786 (156 u16 LE Q14)
+- `_SPARK_IDLE_RPM_DEF` @ 0x0224A0 (5×12=60 u16 LE)
+
+### Rezultati test_core.py (sve PASS)
+- ORI (10SW066726): 51 mapa
+- STG2 (10SW040039): 51 mapa
+- Spark 2021 (10SW039116): **20 mapa** (13 base + 7 aux)
+- GTI90 2021 (10SW053774): **58 mapa**
+- 230hp (10SW053727): 51 mapa
+- 130hp (10SW053729): 60 mapa
+- 170hp (10SW053729): 60 mapa
+
+## 2026-03-18 — Sveobuhvatna binarna analiza Spark 900 ACE ECU
+
+### Pronađene mape (Spark 10SW039116 / 10SW011328)
+
+#### Potvrđene mape (s adresama)
+- **RPM os** @ 0x02225A: 20pt u16 LE, [7680-26624] (RPM * 8/60 skala)
+- **Load os** @ 0x022282: 30pt u16 LE, [3999-33600] (MAP/load vrijednosti)
+- **Injection** @ 0x0222BE: 20×30 u16 LE = 1200B, range 479-4443 µs
+- **Injection mirror** @ 0x022774: +0x4B6 offset (provjeri)
+- **Ignition #0-#5** @ 0x026A76+i*0x90: 6× 12×12 u8, razmak 144B, 0.75°/bit
+- **Lambda #0-#3** @ 0x025F5C/0x02607E/0x0261A0/0x0262C2: svaka 8×16 u16 LE Q15, razmak 290B (= 256B mapa + 34B osi!)
+  - Lambda os (RPM): 9 tačaka @ -34B od svake mape, Q15 opseg 0.101-1.521
+  - Lambda os (load): 8 tačaka @ -16B, Q15 opseg 0.301-1.521
+  - Range lambda: 0.886-0.967 (tuned 2021 vs flat ~1.0 u 2018)
+
+#### Novo pronađene mape (2026-03-18)
+- **Lambda closed-loop trim** @ 0x025408 (i dalje): 240B, Q15 format, 2021 vs 2018 razlike 0.90-1.02
+  - Sparkovi imaju bogatu closed-loop korekciju po regijama (svaki cell individualno tuned)
+  - 0x024EEC (240B): Q15 ~0.975-0.994, 120 vrijednosti (dimenzije TODO: 10x12 ili 12x10)
+  - 0x025004 (120B): Q15 ~0.994-1.004
+  - 0x0250A4 (80B): Q15 ~1.004-1.007
+  - 0x025408-0x025570 (360B): closed-loop trim, 0.90-1.02, 2021 tuned
+  - 0x025702-0x025884 (386B): Q15 format, 0.931-1.007 (lambda mape ili trim?)
+- **Deadtime (injector)** @ 0x0287A4: 193B, u16 LE, range 12000-13440
+  - Format: 8×8 ili sličan, vrijednosti su period-encoded (NS, ne µs)
+  - Razlikuje se 2018 vs 2021 (tuned)
+  - Iza deadtime: voltage osi @ 0x028852 (u8: 8,70,80,100...150, 2 kopije)
+- **Rev limiter tablica** @ 0x028E2E: niz ticks vrijednosti 3200-13763+
+  - Ovo je RAMP tablica (soft-cut): 5120=8081RPM do 13763+
+  - **Hard cut** = 5120 ticks @ 0x028E34 = **8081 RPM** za Spark 2018/2021
+  - Identično u 2018, 2021 i STG2 Spark → rev limiter nije promijenjen u STG2!
+
+#### Blokovi 0x027E6A-0x028249 i 0x028382-0x028761 (svaki 991B)
+- **Format: u16 LE, range 112-121**
+- Ovo su KNOCK/KNK tablice ili ignition trim korekcije po load/RPM
+- Nisu ignition (premalo za 4-80 range); vjerojatno knock threshold ili ign trim u nepoznatom formatu
+
+#### 230hp 2020 vs 2021
+- **CODE regija**: 80B razlike na 2 bloka (0x017F02-0x017F48 i 0x017F5C-0x017F74)
+- **Praktički IDENTIČNI** — isti SW 10SW053727, minimalne razlike (vjerojatno build timestamp)
+- Mape su 100% iste!
+
+### Ključni nalazi
+1. Lambda mape imaju 34B osi IZMEĐU mapa (RPM+load os) — niie 256B nego 290B blok
+2. Spark 2018 vs 2021 diff: 40 merged blokova, ~1148B ukupno promijenjeno
+3. Rev limiter: ISTI za 2018/2021/STG2 — STG2 tune ne dira rev limiter
+4. GTI90 i Spark imaju POTPUNO DRUGAČIJU strukturu od 0x028E00 nadalje
+5. Blokovi 0x027E6A i 0x028382 (2×991B) su neidentificirani — vjerojatno ignition/knock
+
+### Privremene skripte
+- `analyze_spark.py` — inicijalna analiza, diff blokovi
+- `analyze_spark2.py` — rev limiter, ignition, injection detalji
+- `analyze_spark3.py` — lambda osi, deadtime, 230hp analiza
+- `analyze_spark4.py` — finalizi identifikacija preostalih blokova
+
 ## 2026-03-18 — Test refaktor + Spark 10SW039116 klasifikacija
 
 ### Promjene

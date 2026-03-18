@@ -1544,6 +1544,127 @@ def _make_spark_ign_def(idx: int) -> MapDef:
 
 _SPARK_IGN_DEFS = [_make_spark_ign_def(i) for i in range(6)]
 
+# ── Spark aux tablice (POTVRĐENE binarnim skanom 2026-03-19) ─────────────────
+# Sve adrese verificirane usporedbom s GTI90 (10SW053774) koji ima identičan motor.
+
+_SPARK_DFCO_DEF = MapDef(
+    name        = "Spark — DFCO pragovi isključivanja goriva",
+    description = "Spark 900 ACE DFCO (Deceleration Fuel Cut-Off) RPM pragovi. "
+                  "7 vrijednosti u16 LE. Identične vrijednosti kao GTI90. "
+                  "Adresa: 0x021748.",
+    category    = "misc",
+    rows=7, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "RPM",
+    raw_min     = 500, raw_max = 4000,
+    notes       = "Spark 900 ACE. @ 0x021748. Identično s GTI90 @ 0x02202E.",
+)
+
+_SPARK_COLD_START_DEF = MapDef(
+    name        = "Spark — Cold start bogaćenje gorivom",
+    description = "Spark 900 ACE enrichment pri hladnom startu. "
+                  "6 vrijednosti u16 LE, po temperaturnim točkama. "
+                  "Adresa: 0x0241F8. Identično s GTI90.",
+    category    = "fuel",
+    rows=6, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "raw",
+    raw_min     = 50, raw_max = 2000,
+    notes       = "Spark 900 ACE. @ 0x0241F8. Identično s GTI90 @ 0x02586A.",
+)
+
+_SPARK_DEADTIME_DEF = MapDef(
+    name        = "Spark — Injektori deadtime (read-only)",
+    description = "Spark 900 ACE injektor mrtvo vrijeme po naponu baterije. "
+                  "8×8 = 64 vrijednosti u16 LE, period-encoded (ticks @ 40MHz). "
+                  "raw 12000-13440 ticks = ~300-336µs. Samo za prikaz, ne mijenjati!",
+    category    = "fuel",
+    rows=8, cols=8,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 40000.0,
+    offset_val  = 0.0,
+    unit        = "µs",
+    raw_min     = 8000, raw_max = 14500,
+    notes       = "Spark 900 ACE. @ 0x0287A4. Period ticks @ 40MHz → µs×40. "
+                  "RAZLIKUJE SE od GTI90 @ 0x025900 (GTI90 = 14×7, drukčiji raw raspon). "
+                  "2018 vs 2021 Spark: neznatno drugačije vrijednosti. Samo za prikaz!",
+)
+
+_SPARK_START_INJ_DEF = MapDef(
+    name        = "Spark — Gorivo pri pokretanju (cranking)",
+    description = "Spark 900 ACE injection količina pri pokretanju (cranking). "
+                  "1D tablica 6 točaka po temperaturi. Adresa: 0x024676.",
+    category    = "fuel",
+    rows=6, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "raw",
+    raw_min     = 200, raw_max = 6000,
+    notes       = "Spark 900 ACE. @ 0x024676. Slična struktura kao GTI90 @ 0x025CDC, "
+                  "ali različite vrijednosti: Spark [341,565,1001,2397,4363,5089].",
+)
+
+_SPARK_KNOCK_DEF = MapDef(
+    name        = "Spark — Knock parametri praga detekcije",
+    description = "Spark 900 ACE knock sensor threshold parametri. "
+                  "24 vrijednosti u16 LE. Identično GTI90. Adresa: 0x02408C.",
+    category    = "misc",
+    rows=24, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "raw",
+    raw_min     = 7000, raw_max = 65535,
+    notes       = "Spark 900 ACE. @ 0x02408C. Identično s GTI90 @ 0x0256F8.",
+)
+
+_SPARK_WARMUP_DEF = MapDef(
+    name        = "Spark — CTS warm-up korekcija goriva [%]",
+    description = "Spark 900 ACE temperaturna korekcija goriva pri zagrijavanju. "
+                  "156 u16 LE Q15 vrijednosti. Identična početna vrijednost kao GTI90 (13364). "
+                  "Adresa: 0x024786.",
+    category    = "fuel",
+    rows=156, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 16384.0,
+    offset_val  = 0.0,
+    unit        = "%",
+    raw_min     = 10000, raw_max = 16000,
+    notes       = "Spark 900 ACE. @ 0x024786. Q14 format (~13364/16384=0.816 → 81.6%). "
+                  "Analogno GTI90 @ 0x025E50.",
+)
+
+_SPARK_IDLE_RPM_DEF = MapDef(
+    name        = "Spark — Ralanti ciljni RPM (5×12)",
+    description = "Spark 900 ACE idle RPM target tablica. "
+                  "5 temperaturnih zona × 12 RPM točaka = 60 u16 LE vrijednosti. "
+                  "Raspon ~1513–2648 RPM. Adresa: 0x0224A0.",
+    category    = "misc",
+    rows=5, cols=12,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "RPM",
+    raw_min     = 1400, raw_max = 3000,
+    notes       = "Spark 900 ACE. @ 0x0224A0. Format 5×12 = 60 rpm vrijednosti.",
+)
+
+_SPARK_REV_LIMITER_DEF = MapDef(
+    name        = "Spark — Rev limiter hard cut (scalar)",
+    description = "Spark 900 ACE rev limiter, period-encoded. "
+                  "5120 ticks @ 40MHz → 8081 RPM hard cut. "
+                  "Formula: RPM = 40e6 × 60 / (ticks × 58). (60-2 kotačić, 3-cil.)",
+    category    = "rpm_limiter",
+    rows=1, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0,
+    offset_val  = 0.0,
+    unit        = "ticks",
+    raw_min     = 4000, raw_max = 8000,
+    notes       = "Spark 900 ACE. @ 0x028E34. Identičan u 2018 i 2021 (5120 ticks = 8081 RPM). "
+                  "STG2 Spark NE mijenja rev limiter! Ramp tablica @ 0x028E2E (16 val).",
+)
+
 _SPARK_LAMBDA_DEF = MapDef(
     name          = "Spark lambda cilj (open-loop) [λ]",
     description   = (
@@ -1591,7 +1712,8 @@ _SPARK_LAMBDA_DEF = MapDef(
 # Koriste 300hp injection format @ 0x02436C
 _300HP_SW_IDS = {
     "10SW066726",  # ori_300, rxpx300_21 (2016-2021, RXP/RXT/GTX 300hp)
-    "10SW040039",  # npro_stg2_300 (300hp)
+    "10SW054296",  # 300hp SC 2020 ORI (2020 model year 300hp, pronađen u dumps/2020/1630ace/)
+    "10SW040039",  # npro_stg2_300 (300hp NPRo tune, radi s 2020 i 2021 ORI)
     "10SW004672",  # rxpx300_16 (300hp)
     "10SW082806",  # backup_flash (noviji 300hp variant)
     "10SW053727",  # GTI SE 230 / Wake Pro 230 2021 (Rotax 1630 SC, 230hp)
@@ -1603,6 +1725,7 @@ _300HP_SW_IDS = {
 _SPARK_10SW_IDS = {
     "10SW011328",  # Spark 90 2016/2018 (HW063, BOOT eraziran, 666-serija)
     "10SW039116",  # Spark 90 2019-2021 (HO ACE, razlicit CODE layout od 2016)
+    "1037544876",  # NPRo Spark 900 ACE Stage 2 (decimalni format, BOOT djelomično izmijenjen)
 }
 
 # GTI RPM os (12 točaka)
@@ -1789,11 +1912,12 @@ class MapFinder:
         is_gti_na = self._is_gti_na()
 
         if is_spark:
-            # Spark 900 ACE mape (SW: 1037xxxxxx)
+            # Spark 900 ACE mape (SW: 1037xxxxxx ili 10SW011328/039116)
             if progress_cb: progress_cb(f"Spark 900 ACE SW detektiran ({self._sw()})...")
             self._scan_spark_injection(progress_cb)
             self._scan_spark_ignition(progress_cb)
             self._scan_spark_lambda(progress_cb)
+            self._scan_spark_aux(progress_cb)
         else:
             # 300hp / 260hp ACE 1630 mape (SW: 10SWxxxxxx ili nepoznat)
             # Za GTI/NA: standardni scan + GTI-specifični extras
@@ -3001,6 +3125,98 @@ class MapFinder:
                 if cb: cb(f"  Spark lambda @ 0x{addr:06X}  λ=[{mn/32768:.3f}–{mx/32768:.3f}]")
 
         if cb: cb(f"  Spark lambda: {found}/4 kopija pronađeno")
+
+    def _scan_spark_aux(self, cb=None):
+        """Spark 900 ACE pomoćne mape — DFCO, cold start, deadtime, idle RPM,
+        knock, warm-up, start inj.  Sve adrese potvrđene binarnim skanom 2026-03-19."""
+        if cb: cb("Trazim Spark aux tablice...")
+        data = self.eng.get_bytes()
+        sw   = self._sw()
+
+        def _read_u16le_n(addr, n):
+            return [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+
+        def _add(defn, addr, vals):
+            self.results.append(FoundMap(defn=defn, address=addr, sw_id=sw, data=vals))
+
+        # ─ DFCO @ 0x021748 (7 u16 LE) ─
+        addr = 0x021748
+        vals = _read_u16le_n(addr, 7)
+        if all(_SPARK_DFCO_DEF.raw_min <= v <= _SPARK_DFCO_DEF.raw_max for v in vals):
+            _add(_SPARK_DFCO_DEF, addr, vals)
+            if cb: cb(f"  Spark DFCO @ 0x{addr:06X}  [{min(vals)}..{max(vals)}] RPM")
+        else:
+            if cb: cb(f"  Spark DFCO @ 0x{addr:06X}: validacija pala {vals}")
+
+        # ─ Cold start enrichment @ 0x0241F8 (6 u16 LE) ─
+        addr = 0x0241F8
+        vals = _read_u16le_n(addr, 6)
+        if all(_SPARK_COLD_START_DEF.raw_min <= v <= _SPARK_COLD_START_DEF.raw_max for v in vals):
+            _add(_SPARK_COLD_START_DEF, addr, vals)
+            if cb: cb(f"  Spark cold start @ 0x{addr:06X}  {vals}")
+        else:
+            if cb: cb(f"  Spark cold start @ 0x{addr:06X}: validacija pala {vals}")
+
+        # ─ Knock threshold @ 0x02408C (24 u16 LE) ─
+        addr = 0x02408C
+        vals = _read_u16le_n(addr, 24)
+        if any(v >= _SPARK_KNOCK_DEF.raw_min for v in vals) and any(v == 65535 for v in vals):
+            _add(_SPARK_KNOCK_DEF, addr, vals)
+            if cb: cb(f"  Spark knock @ 0x{addr:06X}  n=24")
+        else:
+            if cb: cb(f"  Spark knock @ 0x{addr:06X}: validacija pala")
+
+        # ─ Deadtime @ 0x0287A4 (8×8 = 64 u16 LE, period-encoded) ─
+        addr = 0x0287A4
+        n    = _SPARK_DEADTIME_DEF.rows * _SPARK_DEADTIME_DEF.cols  # 64
+        vals = _read_u16le_n(addr, n)
+        if all(_SPARK_DEADTIME_DEF.raw_min <= v <= _SPARK_DEADTIME_DEF.raw_max for v in vals):
+            _add(_SPARK_DEADTIME_DEF, addr, vals)
+            if cb: cb(f"  Spark deadtime @ 0x{addr:06X}  8×8  [{min(vals)}..{max(vals)}] ticks")
+        else:
+            if cb: cb(f"  Spark deadtime @ 0x{addr:06X}: validacija pala [{min(vals)}..{max(vals)}]")
+
+        # ─ Start injection @ 0x024676 (6 u16 LE) ─
+        addr = 0x024676
+        vals = _read_u16le_n(addr, 6)
+        if (self._monotone(vals) and vals[0] > 0 and
+                all(_SPARK_START_INJ_DEF.raw_min <= v <= _SPARK_START_INJ_DEF.raw_max for v in vals)):
+            _add(_SPARK_START_INJ_DEF, addr, vals)
+            if cb: cb(f"  Spark start inj @ 0x{addr:06X}  {vals}")
+        else:
+            if cb: cb(f"  Spark start inj @ 0x{addr:06X}: validacija pala {vals}")
+
+        # ─ Warm-up fuel @ 0x024786 (156 u16 LE) ─
+        addr = 0x024786
+        n    = _SPARK_WARMUP_DEF.rows * _SPARK_WARMUP_DEF.cols  # 156
+        vals = _read_u16le_n(addr, n)
+        if all(_SPARK_WARMUP_DEF.raw_min <= v <= _SPARK_WARMUP_DEF.raw_max for v in vals):
+            _add(_SPARK_WARMUP_DEF, addr, vals)
+            if cb: cb(f"  Spark warm-up @ 0x{addr:06X}  n={n}  [{min(vals)}..{max(vals)}]")
+        else:
+            if cb: cb(f"  Spark warm-up @ 0x{addr:06X}: validacija pala")
+
+        # ─ Idle RPM @ 0x0224A0 (5×12 = 60 u16 LE) ─
+        addr = 0x0224A0
+        n    = _SPARK_IDLE_RPM_DEF.rows * _SPARK_IDLE_RPM_DEF.cols  # 60
+        vals = _read_u16le_n(addr, n)
+        if all(_SPARK_IDLE_RPM_DEF.raw_min <= v <= _SPARK_IDLE_RPM_DEF.raw_max for v in vals):
+            _add(_SPARK_IDLE_RPM_DEF, addr, vals)
+            if cb: cb(f"  Spark idle RPM @ 0x{addr:06X}  5×12  [{min(vals)}..{max(vals)}] RPM")
+        else:
+            if cb: cb(f"  Spark idle RPM @ 0x{addr:06X}: validacija pala")
+
+        # ─ Rev limiter hard cut @ 0x028E34 (scalar u16 LE, period ticks) ─
+        addr = 0x028E34
+        v    = int.from_bytes(data[addr:addr+2], 'little')
+        if _SPARK_REV_LIMITER_DEF.raw_min <= v <= _SPARK_REV_LIMITER_DEF.raw_max:
+            rpm = int(40_000_000 * 60 / (v * 58)) if v > 0 else 0
+            _add(_SPARK_REV_LIMITER_DEF, addr, [v])
+            if cb: cb(f"  Spark rev limiter @ 0x{addr:06X}  {v} ticks = {rpm} RPM")
+        else:
+            if cb: cb(f"  Spark rev limiter @ 0x{addr:06X}: neočekivana vrijednost {v}")
+
+        if cb: cb("  Spark aux tablice: skeniranje završeno")
 
     # ── Diff-guided scanner ───────────────────────────────────────────────────
 
