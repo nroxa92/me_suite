@@ -1067,17 +1067,17 @@ _NEUTRAL_CORR_DEF = MapDef(
 # ─── SC boost fuel factor (flat Q14=1.224 = +22.4% for 300hp) ────────────────
 #
 # 40 u16 @ 0x025DF8: SVE = 20046 (Q14 = 1.224 = +22.4%) za 300hp SC.
-# 130hp NA + 8-pt os ispred: SVE = 0 (tablica nije aktivna za NA motor).
+# 130hp NA: varijabilna [+23.9%..−1.2%], NIJE sve nule! Prethodni komentar bio pogrešan.
+# GTI 90 NA (900cc): flat −18.4% (13364). GTI 155: slično 130hp.
 # STG2: identično (tuneri ne diraju ovu kalibraciju).
 #
-# Lambda os (8 točaka) ispred @ 0x025DE8: [22352,25693,29035,32632,35973,39315,42912,48045]
-#   Q15 = [0.682, 0.784, 0.886, 0.996, 1.098, 1.200, 1.310, 1.466]
-#   Raspon: lambda 0.68–1.47 (SC motor pokriva širi lambda raspon)
-#   130hp NA: os i data su SVE NULE (ova regija nije aktivna za NA)
+# Lambda os (8 točaka) ispred @ 0x025DE8 — razlikuje se po SW:
+#   300hp: [22352–48045] = [0.682–1.466]
+#   130/170hp + GTI 155: [15413–39315] = [0.470–1.200]
+#   GTI 90: [12072–37772] = [0.368–1.153]
 #
-# Fizikalni smisao: BAZNA SC KOREKCIJA GORIVA po lambdi = +22.4% za SC motor
-#   vs. NA motor koji ne koristi ovu tablicu (sve 0).
-#   Moguće: KFMSWSC (SC base fuel offset) ili lambda-indexed SC enrichment.
+# Fizikalni smisao: nepoznat — nije pouzdani indikator SC motora.
+#   Moguće: KFMSWSC (SC base fuel offset) ili opća lambda fuel korekcija.
 # Lokacija: neposredno ispred TEMP_FUEL tablice (0x025E50).
 
 SC_BOOST_FACTOR_AXIS_ADDR = 0x025DE8  # 8× u16 Q15 lambda os
@@ -1587,12 +1587,15 @@ _SPARK_LAMBDA_DEF = MapDef(
 #   [5200, 6000, 8000, 10000, 12000, 14000, 16000, 18000,
 #    20000, 22000, 24000, 26000, 28000, 29200, 30000, 32000]
 
-# SW ID-ovi za poznate 300hp SC varijante (razlikovanje od GTI/NA)
+# SW ID-ovi za Rotax 1630 ACE SC varijante (300hp, 230hp)
+# Koriste 300hp injection format @ 0x02436C
 _300HP_SW_IDS = {
-    "10SW066726",  # ori_300, rxpx300_21 (2016-2021, RXP/RXT/GTX 300)
-    "10SW040039",  # npro_stg2_300
-    "10SW004672",  # rxpx300_16
+    "10SW066726",  # ori_300, rxpx300_21 (2016-2021, RXP/RXT/GTX 300hp)
+    "10SW040039",  # npro_stg2_300 (300hp)
+    "10SW004672",  # rxpx300_16 (300hp)
     "10SW082806",  # backup_flash (noviji 300hp variant)
+    "10SW053727",  # GTI SE 230 / Wake Pro 230 2021 (Rotax 1630 SC, 230hp)
+    # 10SW053729 (GTI SE 130/170 2021) — NA motor, injection @ 0x022066 (GTI format) → nije ovdje!
 }
 
 # Poznati Spark 900 ACE SW ID-ovi s "10SW0" prefiksom (starija 666-serija HW063)
@@ -1774,7 +1777,8 @@ class MapFinder:
         return sw in _SPARK_10SW_IDS
 
     def _is_gti_na(self) -> bool:
-        """GTI/NA motor detekcija: 10SW... ali NIJE u listi poznatih 300hp ni Spark SW-ova."""
+        """GTI/NA motor detekcija: 10SW... ali NIJE u listi poznatih SC ni Spark SW-ova.
+        Primjeri: 10SW025752 (GTI 155 2018), 10SW053774 (GTI 90 2021, Rotax 900 HO)."""
         sw = self._sw()
         return sw.startswith("10SW") and sw not in _300HP_SW_IDS and sw not in _SPARK_10SW_IDS
 

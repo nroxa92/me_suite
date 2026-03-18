@@ -16,21 +16,23 @@
 
 ## SW verzije i modeli {#sw-verzije}
 
-| SW ID | Model | Konjske snage | Godina | HW prefix | Napomena |
-|-------|-------|--------------|--------|-----------|----------|
-| 10SW066726 | RXP-X 300 / GTX 300 / RXT-X 300 | 300hp | 2016–2021 | 064 | **Primarna referenca** |
-| 10SW082806 | RXP-X 300 (noviji) | 300hp | 2022+ | 064 | backup_flash_082806.bin |
-| 10SW040039 | NPRo Stage 2 300hp | 300hp | 2020+ | 064 | Tuned SW |
-| 10SW053727 | Wake Pro 230 / GTX 230 | 230hp | 2020+ | 064 | |
-| 10SW040013 | RXT 230 (2018) | 230hp | 2018 | 064 | alen_flash_2026 |
-| 10SW025752 | GTI SE 155 | 155hp | 2018 | 062 | 1.5L motor |
-| 10SW004672 | RXP-X 300 (stariji) | 300hp | 2016–17 | 064 | rxpx300_16 |
-| 1037544876 | Spark STG2 (NPRo) | 90hp | 2018 | 063 | Samo DTC OFF, mape=ORI |
-| 1037524060 | RXT-X 260 / RXP-X 260 | 260hp | pre-2016 | — | 1.5L SC |
-| 1037525897 | Spark/GTI (stariji) | 90–130hp | 2014 | 062/063 | alen_spark_2014 |
-| 1037525858 | Spark ORI / GTI SE 155 | 90–155hp | 2017+ | 062/063 | MPEM ID |
-| 1037509210 | GTI 130/155 (stariji) | 130–155hp | 2015–16 | 062 | donor_10SW014510 |
-| 10SW011328 | Spark ORI 2016 | 90hp | 2016 | — | Layout +0x020000! |
+| SW ID | Model | Motor | Konjske snage | Godina | HW prefix | Napomena |
+|-------|-------|-------|--------------|--------|-----------|----------|
+| 10SW066726 | RXP-X 300 / GTX 300 / RXT-X 300 | Rotax 1630 SC | 300hp | 2016–2021 | 064 | **Primarna referenca** |
+| 10SW082806 | RXP-X 300 (noviji) | Rotax 1630 SC | 300hp | 2022+ | 064 | backup_flash_082806.bin |
+| 10SW040039 | NPRo Stage 2 300hp | Rotax 1630 SC | 300hp | 2020+ | 064 | Tuned SW |
+| 10SW004672 | RXP-X 300 (stariji) | Rotax 1630 SC | 300hp | 2016–17 | 064 | rxpx300_16 |
+| **10SW053727** | **GTI SE 230 / Wake Pro 230 2021** | **Rotax 1630 SC (1.6L)** | **230hp** | **2021** | 064 | SC motor, hard cut ~8158 rpm |
+| **10SW053729** | **GTI SE 130 / GTI SE 170 2021** | **Rotax 1630 NA (1.6L)** | **130/170hp** | **2021** | 064 | NA motor, isti SW (0 binarnih razlika!), razlika = mehanička |
+| **10SW053774** | **GTI SE 90 2021** | **Rotax 900 HO ACE** | **90hp** | **2021** | — | NA motor, hard cut ~7040 rpm |
+| 10SW040013 | RXT 230 (2018) | Rotax 1630 SC | 230hp | 2018 | 064 | alen_flash_2026 |
+| 10SW025752 | GTI SE 155 2018 | Rotax 1503 NA (1.5L) | 155hp | 2018 | 062 | NA motor, hard cut 7700 rpm |
+| 1037544876 | Spark STG2 (NPRo) | Rotax 900 ACE | 90hp | 2018 | 063 | Samo DTC OFF, mape=ORI |
+| 1037524060 | RXT-X 260 / RXP-X 260 | Rotax 1503 SC | 260hp | pre-2016 | — | 1.5L SC, drugačiji layout |
+| 1037525897 | Spark/GTI (stariji) | Rotax 900 ACE | 90–130hp | 2014 | 062/063 | alen_spark_2014 |
+| 1037525858 | Spark ORI / GTI SE 155 | Rotax 900/1503 | 90–155hp | 2017+ | 062/063 | MPEM ID |
+| 1037509210 | GTI 130/155 (stariji) | Rotax 1503 NA | 130–155hp | 2015–16 | 062 | donor_10SW014510 |
+| 10SW011328 | Spark ORI 2016 | Rotax 900 ACE | 90hp | 2016 | — | BOOT eraziran, fallback @ 0x02001A |
 
 ---
 
@@ -113,16 +115,15 @@
 | 0x025900 | Injektori — deadtime | 14×7 | u16 LE | 1024–2989 raw (read-only) |
 
 ### Rev Limiter
-| Adresa | Naziv | Format | 300hp vrijednost | GTI 155 vrijednost | Napomena |
-|--------|-------|--------|------------------|--------------------|----------|
-| 0x028E90 | Rev cut ramp [0] | u16 LE period | 3506 (~11802 rpm) | 4981 (8307 rpm) | Početak ramp-down |
-| 0x028E92 | Rev cut ramp [1] | u16 LE period | 4030 (~10268 rpm) | 5112 (8095 rpm) | |
-| 0x028E94 | Rev cut ramp [2] | u16 LE period | 4589 (~9017 rpm) | 5243 (7892 rpm) | |
-| **0x028E96** | **Rev limiter — hard cut** | u16 LE period | **5072 = 8158 rpm** | **5374 = 7700 rpm** | ✅ Potvrđeno |
-| 0x028E98 | Rev limiter — soft cut | u16 LE period | 5399 = 7664 rpm | 5505 = 7517 rpm | Resume threshold |
+| Adresa | Naziv | Format | 300/230hp | 130/170hp 2021 | GTI 155 2018 | Napomena |
+|--------|-------|--------|-----------|----------------|--------------|----------|
+| 0x028E90–0x028E94 | Rev cut ramp [0–2] | u16 LE period | 3506–4589 | 4915–5112 | 4981–5243 | Ramp-down periodi |
+| **0x028E96** | **Rev limiter — hard cut** | u16 LE period | **5072 = 8158 rpm** | **5243 = 7892 rpm** | **5374 = 7700 rpm** | ✅ Potvrđeno |
+| 0x028E98 | Rev limiter — soft cut | u16 LE period | 5399 = 7664 rpm | 5374 = 7700 rpm | 5505 = 7517 rpm | Resume threshold |
 
 > **Formula dekodiraj**: `RPM = 40,000,000 / (ticks × 58/60)` — 60-2 kotačić (58 eff. zubi), 3-cil. Rotax
-> ⚠️ **PAŽNJA**: Ova adresa potvrđena SAMO za **10SW066726** i **10SW025752**. Ostali SW (10SW004672, 10SW082806) imaju drugačiji sadržaj na toj adresi!
+> ✅ Potvrđeno za: **10SW066726** (8158), **10SW053727/053729** (7892/8158), **10SW025752** (7700)
+> ⚠️ **10SW053774 (GTI 90)** ima drugačiju strukturu — hard cut je na **0x028E7C** (5875 = 7043 rpm)!
 > ❌ **0x02B72A** (stara dokumentacija) je ASCII filler (0x2222 = `""`, 0x2121 = `!!`) — NIJE rev limiter!
 
 ### Ostale mape
@@ -201,7 +202,32 @@
 
 > ⚠️ GTI injection je na **0x022066** (16×12 direktni raw), NE identično 300hp @ 0x02436C!
 > ⚠️ GTI extra ignition mape su na **0x028310** (8 mapa, stride 144B), a adresa 0x02B730 (dijeljena s 300hp) je **fill vrijednost** specifično za GTI high-load range
-> ⚠️ GTI je **NA motor** (nema SC) — SC bypass mape (0x020534, 0x029993) prisutne ali neaktivne
+> ⚠️ GTI 155 je **NA motor** (nema SC) — SC bypass mape (0x020534, 0x029993) prisutne ali neaktivne
+> ⚠️ **Iste adrese vrijede za GTI SE 90 2021 (10SW053774)** — isti GTI/NA format, drugačiji tune
+
+---
+
+## GTI SE 90 2021 mape (10SW053774) {#gti90-mape}
+> Referentni fajl: `_materijali/dumps/2021/gti 90 2021.bin`
+> Motor: Rotax 900 HO ACE, 3 cilindra, NA (bez SC), ~90hp
+
+### GTI 90 — ključne razlike od GTI 155 (10SW025752)
+| Adresa | Naziv | GTI 90 vrijednost | GTI 155 vrijednost | Napomena |
+|--------|-------|-------------------|---------------------|----------|
+| 0x022066 | Injection — primarni | [5284, 5124, 4780...] | [6351, 5768, 5348...] | 16×12 raw, GTI format |
+| 0x028310–0x028700 | Ignition (8 mapa) | prisutne | prisutne | isti format 12×12 u8 |
+| 0x025DF8 | SC boost factor | 13364 (−18.4%) | 20046 (+22.4%) | NA motor = negativna vrijednost |
+
+### GTI 90 Rev Limiter
+| Adresa | Format | Vrijednost | Dekodirana RPM | Status |
+|--------|--------|------------|----------------|--------|
+| **0x028E68** | u16 LE period | **5883** | **~7034 RPM** | Probable hard cut (blok A) |
+| **0x028E7C** | u16 LE period | **5875** | **~7043 RPM** | Probable hard cut (blok B) |
+
+> ⚠️ GTI 90 ima **drugačiji rev limiter raspored** od GTI 155/300hp!
+> Adresa 0x028E96 za GTI 90 = 3277 ticks (~12627 rpm) — potpuno pogrešna za rev limiter.
+> Dva bloka s gotovo identičnim završnim peridom (~5880 ≈ 7040 RPM) pronađena na 0x028E60 i 0x028E70.
+> Hard cut ~7040 RPM je **procjena** — nije potvrđeno live testom ili tune usporedbom.
 
 ---
 

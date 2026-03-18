@@ -340,3 +340,36 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Potvrda: 8158 RPM ECU cut je sigurnosni limit, normalna granica u vodi = ~7900 (propeler-limitirano). GTI injection @ 0x022066 nema mirrora (potvrđeno skeniranjem). Logovi ažurirani.
 
 ---
+**[2026-03-18]**
+👤 [Nastavak sesije — analiza 2021 dumpova, GTI 90 rev limiter, SW klasifikacija]
+🤖 2021 SW klasifikacija dovršena: 130/170/230hp su SC motori (Rotax 1630) → u _300HP_SW_IDS. GTI 90 (NA) detektiran ispravno. Rev limiter GTI 90 ≈ 7040 rpm @ 0x028E7C/0x028E68 (procjena, nije live potvrđeno).
+
+---
+---
+**[2026-03-18]**
+👤 130, 155 i 170 nemaju kompresor — SC boost faktor nije pouzdan indikator. 21 god su sviii 1.6! U principu svi 1.5 su isti, razlika klipovi i bregasta, injektori, mapa.
+🤖 Ispravka: 10SW053729 (130/170hp) vraćen u GTI/NA (NA Rotax 1630 1.6L). 230hp SC ostaje u _300HP_SW_IDS. Lambda os @ 0x025DE8 nije 0 za NA — stari komentar bio pogrešan. Sve 2021 = 1.6L Rotax.
+
+---
+---
+**[2026-03-18]**
+👤 1.6 ima samo veći hod radilice u odnosu na 1.5, drugačije bregaste po snazi i klipove, 230 i 300 imaju različite SC, iako svi 130-300 1.6 imaju iste injektore.
+🤖 Zapisano. Razlika injekcije između varijanti = bregaste/VE/boost, ne injektori. 230 i 300 imaju različite SC. Isti injektori = iste injector deadtime vrijednosti u ECU.
+
+---
+---
+**[2026-03-18]**
+👤 Ima manuala sa specifikacijama kuteva ventila, bregastih, kompresijskim mjeračima, razlika tlak benzina NA vs SC... C:\Users\SeaDoo\Desktop\SEADOO, fokus 2016+, zanemari pre-2012.
+🤖 Izvukao kompletne engine specifikacije iz 2021 1630 ACE manuala (str. 185) i GTI manuala. Ventilski kutovi, kompresija, lobe heights, piston clearance sve u memoriji. Tlak goriva isti za sve (386-414 kPa).
+
+---
+**[2026-03-18]**
+👤 ok za benzin su stariji sa siemens ecu imali razliku... mozemo zanemariti
+🤖 Potvrđeno — Siemens ECU (pre-2012) imao različite specifikacije, za ME17.8.5 projekt zanemarujemo. Nastavljeno s CAN SAT analizom.
+
+---
+**[2026-03-18]**
+👤 [nastavak sesije — CAN SAT ekstrakcija za Spark SAT na 230/260hp projekt]
+🤖 Kompletna binarna analiza svih 2021 ECU-a. Pronađena CAN ID tablica @ CODE regiji. Spark-specific: 0x0134, 0x0154. GTI/230/300-specific: 0x0148. Zajednički: 9 ID-ova (0x108-0x214). 300hp+Spark SAT radi → 230hp treba raditi. Dokument: docs/CAN_SAT_PORUKE.md.
+
+---

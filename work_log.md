@@ -1,5 +1,67 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — CAN SAT analiza: Spark vs GTI/230/300hp poruke
+
+### Što je napravljeno
+
+#### CAN SAT analiza (docs/CAN_SAT_PORUKE.md)
+- Binarni scan svih 2021 ECU fajlova za CAN message ID tablice
+- Pronađena CAN ID tablica @ Spark:0x042EC4 / GTI-family:0x0433BC (u16 BE niz)
+- **Spark ECU CAN IDs:** 0x15B, 0x154, 0x134, 0x13C, 0x15C, 0x138, 0x108, 0x214, 0x12C, 0x110, 0x17C
+- **GTI/230/300 ECU CAN IDs:** 0x15B, 0x15C, 0x148, 0x13C, 0x15C, 0x138, 0x108, 0x214, 0x12C, 0x110, 0x17C
+- **Spark-specific:** 0x0134, 0x0154 (u GTI-family nema)
+- **GTI-specific:** 0x0148 (u Sparku nema)
+- **Zajednički:** 9 poruka (0x108–0x214) — identični u svim varijantama
+- GTI/230/300 imaju 3 extra config entrya: CAN ID 0xBF, 0xCD, 0xDC (DLC=1)
+- Zaključak: 300hp + Spark SAT radi → 230hp/260hp + Spark SAT treba raditi (isti CAN set)
+- **Fajl:** `docs/CAN_SAT_PORUKE.md`
+
+### Napomene
+- Korisnikova napomena: stariji modeli sa Siemens ECU imali različite injektore/tlak benzina — zanemariti za ME17
+
+## 2026-03-18 — 2021 SW klasifikacija, GTI 90 rev limiter, MAPA_ADRESE ažuriranje
+
+### Što je napravljeno
+
+#### 1. Analiza 2021 dumpa (5 novih fajlova u `_materijali/dumps/2021/`)
+- GTI 90 (10SW053774), 130hp (10SW053729), 170hp (10SW053729), 230hp (10SW053727), 300hp (10SW066726)
+- Otkriveno: 130/170/230hp 2021 su **Rotax 1630 SC motori** (SC boost +23–30%)
+- Otkriveno: GTI 90 2021 je **NA motor** (SC boost −18.4%)
+
+#### 2. SW klasifikacija (`core/map_finder.py`)
+- Dodani u `_300HP_SW_IDS`: `10SW053727` (230hp), `10SW053729` (130/170hp)
+- GTI 90 (10SW053774) ostaje kao GTI/NA — ispravno
+- Ažuriran komentar u `_is_gti_na()`
+
+#### 3. KNOWN_SW prošireno (`core/engine.py`)
+- Dodano 7 novih SW opisa: 10SW025752, 10SW053774, 10SW053729, 10SW053727, 10SW004672, 10SW082806, 10SW011328
+
+#### 4. GTI 90 rev limiter istraživanje
+- Adresa 0x028E96 za GTI 90 = 3277 ticks (~12627 rpm) — **KRIVO za ovu varijantu**
+- Pronađena dva bloka s uzlaznim periodi koji završavaju oko 5880 ticks:
+  - 0x028E68: **5883 ticks = 7034 RPM** (blok A)
+  - 0x028E7C: **5875 ticks = 7043 RPM** (blok B)
+- Procjena: GTI 90 hard cut ≈ **7040 RPM** — nije potvrđeno live testom
+
+#### 5. Rev limiter usporedba svih 2021 SW @ 0x028E96
+- 300hp/230hp (SC): 5072 ticks = **8158 RPM**
+- 130/170hp (SC): 5243 ticks = **7892 RPM**
+- GTI 155 2018 (NA): 5374 ticks = **7700 RPM**
+- GTI 90 2021 (NA): drugačija struktura, vidi gore
+
+#### 6. MAPA_ADRESE.md ažuriranje
+- SW tablica: dodani 2021 SW IDs s motorima i hard cut vrijednostima
+- Rev Limiter tablica: proširena za 130/170hp stupac
+- Dodana nova sekcija GTI SE 90 2021 s rev limiter analizom
+- Svi testovi prolaze ✅
+
+### Fajlovi promijenjeni
+- `core/engine.py` — KNOWN_SW
+- `core/map_finder.py` — _300HP_SW_IDS, komentar _is_gti_na
+- `docs/MAPA_ADRESE.md` — SW tablica, Rev Limiter, GTI 90 sekcija
+
+---
+
 ## 2026-03-18 — GTI mape, EEPROM fix, testovi, GUI SW varijanta
 
 ### Što je napravljeno
