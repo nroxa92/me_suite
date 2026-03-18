@@ -112,6 +112,7 @@ class EepromWidget(QWidget):
         # SW polja
         self._f_mpem    = self._add_field(self._grp_sw, "MPEM SW ID")
         self._f_svc     = self._add_field(self._grp_sw, "Servisni SW ID")
+        self._f_hw_type = self._add_field(self._grp_sw, "HW tip ECU-a")
 
         # Datumi
         self._f_date1   = self._add_field(self._grp_dates, "Prvo programiranje")
@@ -212,6 +213,10 @@ class EepromWidget(QWidget):
 
         self._f_mpem.set_value(_v(info.mpem_sw))
         self._f_svc.set_value(_v(info.service_sw))
+        hw_labels = {"062": "HW 062 — 1.5L (GTI 130/155, RXT 1.5L do 2016)",
+                     "063": "HW 063 — Spark 90/115hp (900 ACE)",
+                     "064": "HW 064 — 1.6L (300hp RXP/RXT/GTX, GTI SE 155)"}
+        self._f_hw_type.set_value(hw_labels.get(info.hw_type, _v(info.hw_type, "Nepoznat")))
 
         self._f_date1.set_value(_v(info.date_first_prog))
         self._f_date2.set_value(_v(info.date_last_update))

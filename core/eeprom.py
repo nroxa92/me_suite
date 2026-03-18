@@ -12,7 +12,13 @@ Potvrđena struktura (3 uzorka: RXP 300 2021, Spark 18, RXP 20):
   0x004D–0x0057  ECU serijski broj (11 ASCII "SF00HMxxxxx")
   0x0082–0x008D  Hull ID / VIN (12 ASCII "YDVxxxxxxxxx")
   0x0102–0x0112  Dealer naziv (ASCII, max 16 chars)
-  0x0125–0x0129  Odometar (5-digit ASCII string, BRP unutarnje jedinice)
+  0x0125–0x0129  NIJE hw timer — SW konstanta ("60620", "BRP10") ili nula
+                 Pravi radni sati su u circular bufferu (vidi ODO adrese po HW tipu)
+
+Circular buffer — radni sati u minutama (potvrdjeno 2026-03-18):
+  HW 064 (1037550003): primarno @ 0x0562 (u16 LE), backup: 0x0D62, 0x1562
+  HW 063 (1037525858): primarno @ 0x0562, visoke minute: 0x0DE2
+  HW 062 (1037509210): rotacija 0x5062 -> 0x4562 -> 0x1062
 """
 
 from dataclasses import dataclass, field
@@ -49,8 +55,9 @@ class EepromInfo:
     # Vlasnik / dealer
     dealer_name: str = ""       # Dealer naziv (iz BUDS2)
 
-    # Odometar (circular buffer, u minutama)
-    odo_raw: int = 0            # Vrijednost iz circular buffera (u16 LE, minute); adresa ovisi o HW tipu
+    # Odometar / radni sati (circular buffer, u minutama)
+    odo_raw: int = 0            # Vrijednost iz circular buffera (u16 LE, minute)
+    hw_type: str = ""           # HW tip: "062", "063", "064" ili ""
 
     # Meta
     file_size: int = 0
@@ -87,17 +94,26 @@ class EepromInfo:
 
 
 class EepromParser:
-    """Čita i parsira BRP ME17 EEPROM dump fajl."""
+    """Cita i parsira BRP ME17 EEPROM dump fajl."""
 
     DATE_OFFSET_1  = 0x0013  # Datum prvog programiranja
-    DATE_OFFSET_2  = 0x001E  # Datum zadnjeg ažuriranja
+    DATE_OFFSET_2  = 0x001E  # Datum zadnjeg azuriranja
     MPEM_SW_OFFSET = 0x0032  # MPEM SW ID (10B)
     SVC_SW_OFFSET  = 0x0040  # Servisni SW (10B)
     PROG_CNT_OFF   = 0x004C  # Broj programiranja (u8)
     ECU_SER_OFFSET = 0x004D  # ECU serial "SF00HM..." (11B)
     HULL_OFFSET    = 0x0082  # Hull ID / VIN (12B)
     DEALER_OFFSET  = 0x0102  # Dealer naziv (max 16B ASCII)
-    ODO_OFFSET     = 0x0125  # Odometar (5-digit ASCII)
+    # ODO_OFFSET  = 0x0125  # NE koristiti! SW konstanta, ne odometar
+
+    # Circular buffer ODO adrese po HW tipu (istraivanje 2026-03-18)
+    _ODO_064_PRIMARY  = 0x0562   # 064/063 primarni
+    _ODO_064_ALT1     = 0x0D62   # 064 backup (stariji layout, visoke minute)
+    _ODO_064_ALT2     = 0x1562   # 064 backup mirror
+    _ODO_063_HIGH     = 0x0DE2   # 063 visoke minute (>~30000)
+    _ODO_062_HIGH_B   = 0x5062   # 062 rotacija: najnoviji
+    _ODO_062_HIGH_A   = 0x4562   # 062 rotacija: drugi
+    _ODO_062_LOW      = 0x1062   # 062 rotacija: najstariji
 
     def parse(self, path: str) -> EepromInfo:
         info = EepromInfo(source_path=str(path))
@@ -130,13 +146,37 @@ class EepromParser:
         info.hull_id = _str(self.HULL_OFFSET, 12)
         info.dealer_name = _str(self.DEALER_OFFSET, 16).strip()
 
-        odo_str = _str(self.ODO_OFFSET, 5).strip()
-        try:
-            info.odo_raw = int(odo_str)
-        except ValueError:
-            info.odo_raw = 0
-            if odo_str:
-                info.errors.append(f"Odometar: ne može se parsirati '{odo_str}'")
+        # ── HW tip detekcija iz MPEM SW prefiksa ─────────────────────────────
+        mpem = info.mpem_sw
+        if mpem.startswith("10375500"):
+            info.hw_type = "064"
+        elif mpem.startswith("10375258"):
+            info.hw_type = "063"
+        elif mpem.startswith("10375091") or mpem.startswith("10375092"):
+            info.hw_type = "062"
+        else:
+            info.hw_type = ""
+
+        # ── Circular buffer ODO (radni sati u minutama) ───────────────────
+        def _u16le(off: int) -> int:
+            if off + 2 > len(data): return 0
+            return int.from_bytes(data[off:off+2], 'little')
+
+        if info.hw_type == "062":
+            for addr in (self._ODO_062_HIGH_B, self._ODO_062_HIGH_A, self._ODO_062_LOW):
+                v = _u16le(addr)
+                if 1 <= v <= 65000:
+                    info.odo_raw = v; break
+        else:
+            # 063 / 064 (ili nepoznat HW)
+            v = _u16le(self._ODO_064_PRIMARY)
+            if 1 <= v <= 65000:
+                info.odo_raw = v
+            else:
+                for addr in (self._ODO_064_ALT1, self._ODO_064_ALT2, self._ODO_063_HIGH):
+                    v = _u16le(addr)
+                    if 1 <= v <= 65000:
+                        info.odo_raw = v; break
 
         # Provjera valjanosti
         if info.hull_id.startswith("YDV") and len(info.mpem_sw) >= 6:

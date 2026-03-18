@@ -1694,6 +1694,7 @@ class MainWindow(QMainWindow):
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
             self.log_strip.log(f"MCU: {'TC1762 OK' if info.mcu_confirmed else 'NEPOTVRDJEN'}", "info")
             self.status.showMessage(f"{info.sw_id}  —  {info.sw_desc}")
+            self.setWindowTitle(f"ME17Suite  —  {info.sw_id}  [{name}]")
             self._undo.clear(); self._redo.clear(); self._upd_undo_btns()
             QTimer.singleShot(100, self.scan_maps)
         except Exception as e:

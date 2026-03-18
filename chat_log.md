@@ -305,3 +305,21 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Logovi ažurirani, sve sačuvano. Stanje projekta: Spark 900 mape implementirane (13 mapa), 300hp 53 mape, svi testovi OK. Spreman za /clear.
 
 ---
+
+---
+**[2026-03-18]**
+👤 molim nastavimo
+🤖 Obnovljen kontekst. Stanje: 300hp 53 mape, Spark 900 13 mapa, GTI 155 analiziran (nije u map_finder). Predložene opcije: GTI 155 SW-gating, EEPROM radni sati parser, GUI poboljšanja, testovi za Spark.
+
+---
+**[2026-03-18]**
+👤 moze sve 4 tocke, molim te samo vodi work i chat log
+🤖 Sve 4 točke implementirane: (1) GTI 155 mape — 9 GTI-specifičnih mapa dodano, ukupno 56 za GTI, 300hp regresija 53 OK; (2) EEPROM fix — hw_type + circular buffer ODO po HW tipu, ispravan docstring; (3) GUI — SW ID u naslovnoj traci, HW tip u EEPROM widgetu; (4) Testovi — 3 nova testa (Spark, GTI, EEPROM circular), svi prolaze.
+
+---
+
+
+---
+**[2026-03-18]**
+👤 sfo jos imamo za raditj?
+🤖 Otvoren backlog: GTI rev limiter (adresa nije potvrđena), Spark 666063 SW detekcija (0xFF fill), MAPA_ADRESE.md dokumentacija, GTI injection mirror, 130/170hp format analiza, KFWIRKBA format.

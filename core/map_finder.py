@@ -1568,6 +1568,131 @@ _SPARK_LAMBDA_DEF = MapDef(
 )
 
 
+# ─── GTI 155 / NA motor mape ──────────────────────────────────────────────────
+#
+# GTI SE 155 (1.5L ATM, SW 10SW025752) i srodnih NA motornih varijanti.
+# Adrese verificirane binarnim skanom gti_155_18_10SW025752.bin (2026-03-18).
+#
+# Razlike od 300hp ACE 1630 (SC motor):
+#   Injection: potpuno drugačiji format — direktne vrijednosti (ne Q15 rk)
+#     @ 0x022066, 16×12, u16 LE, range ~3193–14432 raw (vs. 300hp Q15 @ 0x02439C)
+#   Ignition:  šire timing vrijednosti (do 67 raw = 50.25°) — NA nema knock-ograničenje SC-a
+#     Serija 8 mapa @ 0x028310, stride 144B (vs. 300hp @ 0x02B730 niži raspon)
+#     NAPOMENA: 300hp adresa 0x02B730 prolazi validaciju i za GTI (range 33-43) — obje serije
+#   Rev limiter: 7700 rpm potvrđeno na više mjesta (0x02B72A kod GTI = 8481 = trash 0x2121!)
+#
+# RPM os za GTI injection: 12-pt @ 0x02202E (u16 LE):
+#   [853, 1152, 1408, 1707, 2005, 2261, 2560, 2816, 3413, 3968, 4139, 4267]
+# Load os za GTI injection: 16-pt @ 0x022046 (u16 LE):
+#   [5200, 6000, 8000, 10000, 12000, 14000, 16000, 18000,
+#    20000, 22000, 24000, 26000, 28000, 29200, 30000, 32000]
+
+# SW ID-ovi za poznate 300hp SC varijante (razlikovanje od GTI/NA)
+_300HP_SW_IDS = {
+    "10SW066726",  # ori_300, rxpx300_21 (2016-2021, RXP/RXT/GTX 300)
+    "10SW040039",  # npro_stg2_300
+    "10SW004672",  # rxpx300_16
+    "10SW082806",  # backup_flash (noviji 300hp variant)
+}
+
+# Poznati Spark 900 ACE SW ID-ovi s "10SW0" prefiksom (starija 666-serija HW063)
+# Ovi nemaju "1037" prefiks ali su verificirani Spark binariji
+_SPARK_10SW_IDS = {
+    "10SW011328",  # spark_ori_2016_666063 (HW063, BOOT eraziran)
+}
+
+# GTI RPM os (12 točaka)
+_GTI_RPM_12 = [853, 1152, 1408, 1707, 2005, 2261, 2560, 2816, 3413, 3968, 4139, 4267]
+_GTI_RPM_AXIS_12 = AxisDef(count=12, byte_order="LE", dtype="u16",
+                             scale=1.0, unit="rpm", values=_GTI_RPM_12)
+
+# GTI Load os (16 točaka)
+_GTI_LOAD_16 = [5200, 6000, 8000, 10000, 12000, 14000, 16000, 18000,
+                20000, 22000, 24000, 26000, 28000, 29200, 30000, 32000]
+_GTI_LOAD_AXIS_16 = AxisDef(count=16, byte_order="LE", dtype="u16",
+                              scale=1.0, unit="load [raw]", values=_GTI_LOAD_16)
+
+GTI_INJ_MAIN          = 0x022066
+GTI_INJ_MIRROR_OFFSET = 0x518  # TODO: mirror offset za GTI nije potvrđen s 0 razlika
+
+_GTI_INJ_DEF = MapDef(
+    name          = "GTI — ubrizgavanje (direktno) [raw]",
+    description   = (
+        "GTI 155 / NA motor injection map — 16×12 tablica. "
+        "DRUGAČIJI format od 300hp: direktne vrijednosti (ne Q15 rk). "
+        "Range ~3193–14432 raw. Veće = dulje ubrizgavanje = više goriva. "
+        "Osi: Y = opterećenje (16pt @ 0x022046), X = RPM (12pt @ 0x02202E). "
+        "Nema SC korekcija — NA motor."
+    ),
+    category      = "injection",
+    rows=16, cols=12,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,
+    offset_val    = 0.0,
+    unit          = "raw",
+    axis_x        = _GTI_RPM_AXIS_12,
+    axis_y        = _GTI_LOAD_AXIS_16,
+    raw_min       = 100,
+    raw_max       = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{GTI_INJ_MAIN:06X} (16×12 u16 LE, 384B). "
+        "RPM os @ 0x02202E (12pt LE u16). Load os @ 0x022046 (16pt LE u16). "
+        "GTI 155 specifično — NA motor, ne Q15 format. "
+        "300hp injection @ 0x02439C (Q15 rk) i dalje prisutna kao sekundarna."
+    ),
+)
+
+# GTI ignition — serija 8 mapa @ 0x028310, stride 144B
+# Raw range 40-67 (30°-50.25°BTDC) — NA motor ima širi timing od SC motora
+# Validacijski prag širi (16-70) jer NA timer dopušta do 52.5°
+GTI_IGN_BASE   = 0x028310
+GTI_IGN_STRIDE = 144
+GTI_IGN_COUNT  = 8
+
+_GTI_IGN_NAMES = [
+    "GTI Paljenje — OS 1 (low load)",
+    "GTI Paljenje — OS 2 (mid load)",
+    "GTI Paljenje — OS 3 (high load)",
+    "GTI Paljenje — OS 4",
+    "GTI Paljenje — OS 5",
+    "GTI Paljenje — OS 6",
+    "GTI Paljenje — OS 7",
+    "GTI Paljenje — OS 8",
+]
+
+def _make_gti_ign_def(idx: int) -> MapDef:
+    addr = GTI_IGN_BASE + idx * GTI_IGN_STRIDE
+    return MapDef(
+        name          = _GTI_IGN_NAMES[idx],
+        description   = (
+            f"GTI 155 NA motor — timing mapa #{idx}. 12×12 u8, 0.75°/bit. "
+            f"Vrijednosti 40-67 = 30°-50.25° pred TMT. "
+            f"NA motor dopušta viši timing (nema knock-ograničenja SC boosta). "
+            f"Serija od 8 mapa @ 0x028310, stride 144B."
+        ),
+        category      = "ignition",
+        rows=12, cols=12,
+        byte_order    = "BE",
+        dtype         = "u8",
+        scale         = 0.75,
+        offset_val    = 0.0,
+        unit          = "°BTDC",
+        axis_x        = _RPM_AXIS_12,
+        axis_y        = _LOAD_AXIS_12,
+        raw_min       = 16,
+        raw_max       = 70,
+        mirror_offset = 0,
+        notes         = (
+            f"GTI 155. @ 0x{addr:06X}, stride=144B. "
+            "NA motor: viši timing (40-67 raw = 30-50.25°) vs 300hp SC (33-47 raw). "
+            "Validacija: 16-70 raspon (širi od 300hp 16-58)."
+        ),
+    )
+
+_GTI_IGN_DEFS = [_make_gti_ign_def(i) for i in range(GTI_IGN_COUNT)]
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -1640,9 +1765,23 @@ class MapFinder:
         self.eng = engine
         self.results: list[FoundMap] = []
 
+    def _is_spark(self) -> bool:
+        sw = self._sw()
+        # Numerički format 1037xxxxxx (npro_spark, alen_spark i sl.)
+        if sw.startswith("1037") and not sw.startswith("10SW"):
+            return True
+        # Stariji 10SW format s poznatim Spark SW ID-ovima (HW063, 666-serija)
+        return sw in _SPARK_10SW_IDS
+
+    def _is_gti_na(self) -> bool:
+        """GTI/NA motor detekcija: 10SW... ali NIJE u listi poznatih 300hp ni Spark SW-ova."""
+        sw = self._sw()
+        return sw.startswith("10SW") and sw not in _300HP_SW_IDS and sw not in _SPARK_10SW_IDS
+
     def find_all(self, progress_cb: Optional[Callable] = None) -> list[FoundMap]:
         self.results = []
-        is_spark = self._sw().startswith("1037") and not self._sw().startswith("10SW")
+        is_spark  = self._is_spark()
+        is_gti_na = self._is_gti_na()
 
         if is_spark:
             # Spark 900 ACE mape (SW: 1037xxxxxx)
@@ -1652,6 +1791,7 @@ class MapFinder:
             self._scan_spark_lambda(progress_cb)
         else:
             # 300hp / 260hp ACE 1630 mape (SW: 10SWxxxxxx ili nepoznat)
+            # Za GTI/NA: standardni scan + GTI-specifični extras
             self._scan_rpm_axes(progress_cb)
             self._scan_rev_limiter_known(progress_cb)
             self._scan_rev_limiter_heuristic(progress_cb)
@@ -1682,6 +1822,13 @@ class MapFinder:
             self._scan_sc_boost_factor(progress_cb)
             self._scan_lambda_eff(progress_cb)
             self._scan_dtc(progress_cb)
+
+            # ── GTI / NA motor specifično ──────────────────────────────────
+            if is_gti_na:
+                if progress_cb: progress_cb(f"GTI/NA motor SW detektiran ({self._sw()}) — dodajem GTI mape...")
+                self._scan_gti_injection(progress_cb)
+                self._scan_gti_ignition_extra(progress_cb)
+
         return self.results
 
     # ── RPM Axis scan ─────────────────────────────────────────────────────────
@@ -2889,6 +3036,78 @@ class MapFinder:
             })
 
         return blocks
+
+    # ── GTI / NA motor scan metode ────────────────────────────────────────────
+
+    def _scan_gti_injection(self, cb=None):
+        """GTI 155 injection @ 0x022066 — 16×12, direktni format (ne Q15 rk)."""
+        if cb: cb("GTI: tražim injection mapu (direktni format)...")
+        data = self.eng.get_bytes()
+
+        addr = GTI_INJ_MAIN
+        n    = _GTI_INJ_DEF.rows * _GTI_INJ_DEF.cols  # 16 × 12 = 192
+        if addr + n * 2 > len(data):
+            if cb: cb(f"  GTI injection: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: sve vrijednosti nenula, raspon 1000-65535, nije flat
+        non_zero = sum(1 for v in vals if v > 100)
+        if non_zero < n * 0.9:
+            if cb: cb(f"  GTI injection @ 0x{addr:06X}: previse nula ({non_zero}/{n}) — preskacam")
+            return
+
+        # Provjeri da NIJE Q15 flat format (300hp ima mnoge flat redove = nisko-varijantno)
+        # GTI direktni format treba varijaciju > 500 po redu
+        row_vars = [max(vals[r*12:(r+1)*12]) - min(vals[r*12:(r+1)*12]) for r in range(16)]
+        varied_rows = sum(1 for v in row_vars if v > 100)
+        if varied_rows < 6:
+            if cb: cb(f"  GTI injection @ 0x{addr:06X}: premalo varijacije (flat Q15 format?) — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _GTI_INJ_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  GTI injection @ 0x{addr:06X}  16×12  raw=[{min(vals)}-{max(vals)}]")
+
+    def _scan_gti_ignition_extra(self, cb=None):
+        """GTI ignition serija @ 0x028310 — 8 mapa, širi raspon (16-70 raw = do 52.5°)."""
+        if cb: cb("GTI: tražim ignition extra seriju (@ 0x028310)...")
+        data = self.eng.get_bytes()
+        found = 0
+
+        for idx in range(GTI_IGN_COUNT):
+            addr = GTI_IGN_BASE + idx * GTI_IGN_STRIDE
+            if addr + GTI_IGN_STRIDE > len(data):
+                continue
+
+            raw = list(data[addr:addr + GTI_IGN_STRIDE])
+
+            # Validacija: NA motor ima timing do ~67 raw (50.25°)
+            in_range = sum(1 for v in raw if 16 <= v <= 70)
+            threshold = 0.55  # niži prag jer je raspon širi
+            if in_range / len(raw) < threshold:
+                if cb: cb(f"  GTI IGN extra #{idx} @ 0x{addr:06X}: validacija pala — preskacam")
+                continue
+
+            if max(raw) - min(raw) < 3:
+                continue
+
+            self.results.append(FoundMap(
+                defn    = _GTI_IGN_DEFS[idx],
+                address = addr,
+                sw_id   = self._sw(),
+                data    = raw,
+            ))
+            found += 1
+            if cb: cb(f"  GTI IGN extra #{idx} @ 0x{addr:06X}"
+                      f"  raw=[{min(raw)}-{max(raw)}] ({min(raw)*0.75:.1f}°-{max(raw)*0.75:.1f}°BTDC)")
+
+        if cb: cb(f"  GTI ignition extra: {found}/{GTI_IGN_COUNT} pronadjeno")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

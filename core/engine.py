@@ -112,8 +112,10 @@ class ME17Engine:
         if len(d) != FILE_SIZE:
             errors.append(f"Pogrešna veličina: {len(d):,} B (očekivano {FILE_SIZE:,} B)")
 
-        # SW ID @ 0x001A
+        # SW ID @ 0x001A, fallback na CODE mirror 0x02001A ako je BOOT eraziran (0xFF fill)
         sw_raw = bytes(d[0x001A:0x0024])
+        if all(b == 0xFF for b in sw_raw) and len(d) > 0x02001A + 10:
+            sw_raw = bytes(d[0x02001A:0x02001A + 10])
         sw_id = sw_raw.rstrip(b"\x00").decode("ascii", errors="replace")
         sw_desc = KNOWN_SW.get(sw_raw.rstrip(b"\x00"), f"Nepoznati SW: {sw_id}")
 

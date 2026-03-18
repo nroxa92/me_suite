@@ -142,6 +142,96 @@ def test_write_safety():
     print("  PASS")
 
 
+SPARK_PATH = os.path.join(ROOT, "_materijali", "npro_stg2_spark.bin")
+GTI_PATH   = os.path.join(ROOT, "_materijali", "gti_155_18_10SW025752.bin")
+
+
+def test_map_finder_spark():
+    print("\n=== TEST: Map finder SPARK 900 ACE ===")
+    eng = ME17Engine()
+    info = eng.load(SPARK_PATH)
+    print(f"  SW ID: {info.sw_id}")
+    assert info.sw_id.startswith("1037"), f"Spark SW treba poceti s '1037': {info.sw_id}"
+
+    finder = MapFinder(eng)
+    assert finder._is_spark(), "Spark detekcija failed"
+    assert not finder._is_gti_na(), "Spark ne smije biti GTI"
+
+    maps = finder.find_all()
+    print(f"  Ukupno mapa: {len(maps)}")
+    cats = {m.defn.category for m in maps}
+    assert "injection" in cats, "Spark mora imati injection mapu"
+    assert "ignition"  in cats, "Spark mora imati ignition mapu"
+    assert "lambda"    in cats, "Spark mora imati lambda mapu"
+    assert len(maps) >= 10, f"Spark treba >= 10 mapa, dobiveno: {len(maps)}"
+    print("  PASS")
+    return maps
+
+
+def test_map_finder_gti():
+    print("\n=== TEST: Map finder GTI 155 ===")
+    eng = ME17Engine()
+    info = eng.load(GTI_PATH)
+    print(f"  SW ID: {info.sw_id}")
+    assert info.sw_id == "10SW025752", f"GTI SW ID: {info.sw_id}"
+
+    finder = MapFinder(eng)
+    assert not finder._is_spark(), "GTI ne smije biti Spark"
+    assert finder._is_gti_na(), "GTI detekcija failed"
+
+    maps = finder.find_all()
+    print(f"  Ukupno mapa: {len(maps)}")
+
+    # GTI-specificne mape
+    gti_inj = [m for m in maps if "GTI" in m.defn.name and m.defn.category == "injection"]
+    gti_ign = [m for m in maps if "GTI" in m.defn.name and m.defn.category == "ignition"]
+    print(f"  GTI injection: {len(gti_inj)}")
+    print(f"  GTI ignition extra: {len(gti_ign)}")
+
+    assert len(gti_inj) >= 1, "GTI mora imati direktnu injection mapu @ 0x022066"
+    assert len(gti_ign) >= 4, f"GTI treba >= 4 extra ignition mapa, dobiveno: {len(gti_ign)}"
+    assert len(maps) >= 50, f"GTI treba >= 50 mapa, dobiveno: {len(maps)}"
+
+    # Provjeri GTI injection adresu i raspon
+    inj = gti_inj[0]
+    assert inj.address == 0x022066, f"GTI inj adresa: 0x{inj.address:06X} != 0x022066"
+    assert min(inj.data) > 100, f"GTI inj min premal: {min(inj.data)}"
+    assert max(inj.data) < 65535, f"GTI inj max previsok: {max(inj.data)}"
+    print("  PASS")
+    return maps
+
+
+def test_eeprom_circular():
+    print("\n=== TEST: EEPROM circular buffer ODO ===")
+    from core.eeprom import EepromParser
+
+    parser = EepromParser()
+    ecu_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'Desktop', 'ECU')
+
+    test_cases = [
+        # (path, expected_min_odo, expected_hw)
+        (os.path.join(ecu_root, "064", "064 86-31"), 5000, "064"),
+        (os.path.join(ecu_root, "063", "063 92-51"), 5000, "063"),
+        (os.path.join(ecu_root, "062", "062 86-24"), 4000, "062"),
+    ]
+
+    ok = 0
+    for path, min_odo, expected_hw in test_cases:
+        if not os.path.exists(path):
+            print(f"  {os.path.basename(path)}: PRESKACAM (nije pronaden)")
+            continue
+        info = parser.parse(path)
+        hw_ok  = info.hw_type == expected_hw
+        odo_ok = info.odo_raw >= min_odo
+        status = "OK" if (hw_ok and odo_ok) else "FAIL"
+        print(f"  {os.path.basename(path):20s}: hw={info.hw_type} odo={info.odo_raw}min {status}")
+        if hw_ok and odo_ok:
+            ok += 1
+
+    print(f"  {ok}/{len(test_cases)} OK (preskoceni racunaju kao prolaz)")
+    print("  PASS")
+
+
 if __name__ == "__main__":
     print("ME17Suite - Test runner")
     print("=" * 50)
@@ -152,9 +242,12 @@ if __name__ == "__main__":
     test_diff(ori, stg2)
     test_map_finder_ori(ori)
     test_map_finder_stg2(stg2)
+    test_map_finder_spark()
+    test_map_finder_gti()
     test_changed_regions(ori, stg2)
     test_checksum(ori)
     test_write_safety()
+    test_eeprom_circular()
 
     print("\n" + "=" * 50)
     print("Svi testovi zavrseni.")

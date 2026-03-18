@@ -1,5 +1,49 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — GTI mape, EEPROM fix, testovi, GUI SW varijanta
+
+### Što je napravljeno
+
+#### 1. GTI 155 / NA motor mape (`core/map_finder.py`)
+- Dodan `_300HP_SW_IDS` set za razlikovanje 300hp od GTI/NA varijanti
+- Dodana `_is_gti_na()` helper metoda (detektira 10SW... koji NISU 300hp)
+- Dodana `_is_spark()` helper metoda (refactor iz inline koda)
+- Dodane GTI MapDef definicije: `_GTI_INJ_DEF` (@ 0x022066, 16×12, direktni raw) + `_GTI_IGN_DEFS` (8 mapa @ 0x028310, stride 144, raw 40-67)
+- Dodane scan metode: `_scan_gti_injection()` i `_scan_gti_ignition_extra()`
+- GTI binary sada pronalazi **56 mapa** (53 standardne + 9 GTI-specifičnih)
+- 300hp regresija: i dalje **53 mape** ✅
+
+#### 2. EEPROM fix (`core/eeprom.py`)
+- Ispravan docstring: 0x0125 NIJE hw timer, pravi sati su u circular bufferu
+- Dodan `hw_type: str` u `EepromInfo` dataclass
+- Dodana HW tip detekcija iz MPEM SW prefiksa (064/063/062)
+- Dodan circular buffer ODO po HW tipu (zamjenjuje pogrešno čitanje 0x0125)
+  - HW 064/063: primarno 0x0562, backup 0x0D62/0x1562/0x0DE2
+  - HW 062: rotacija 0x5062 → 0x4562 → 0x1062
+
+#### 3. EEPROM widget (`ui/eeprom_widget.py`)
+- Dodan "HW tip ECU-a" field u SW verzije grupu
+- Prikazuje puni opis HW tipa (npr. "HW 064 — 1.6L (300hp RXP/RXT/GTX, GTI SE 155)")
+
+#### 4. GUI poboljšanja (`ui/main_window.py`)
+- Naslov prozora sada prikazuje SW ID i ime fajla pri učitavanju
+  - Primjer: `ME17Suite  —  10SW066726  [ori_300.bin]`
+
+#### 5. Testovi (`test/test_core.py`)
+- Dodan `test_map_finder_spark()`: Spark 900 ACE, >=10 mapa, sve kategorije OK
+- Dodan `test_map_finder_gti()`: GTI 155, >=50 mapa, 1 GTI injection + >=4 GTI ignition
+- Dodan `test_eeprom_circular()`: circular buffer ODO s poznatim EEPROM fajlovima
+- Sve 3 EEPROM test case: **3/3 OK** ✅
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` (GTI definicije + scan metode + _is_gti_na/_is_spark)
+- `core/eeprom.py` (hw_type, circular buffer ODO, ispravan docstring)
+- `ui/eeprom_widget.py` (HW tip field)
+- `ui/main_window.py` (SW ID u naslovnoj traci)
+- `test/test_core.py` (3 nova testa)
+
+---
+
 ## 2026-03-18 — GTI 155 (10SW025752) binarna analiza — ključne mape identificirane
 
 ### Što je napravljeno
