@@ -338,7 +338,6 @@ class MapLibraryPanel(QWidget):
         "lambda":      ("🧪 Lambda / AFR","#9cdcfe"),
         "rpm_limiter": ("🔴 Rev Limiter", "#9cdcfe"),
         "axis":        ("📊 RPM Axes",    "#9cdcfe"),
-        "dtc":         ("❗ DTC / Faults","#9cdcfe"),
         "misc":        ("  Other",         "#9cdcfe"),
     }
 
@@ -535,6 +534,109 @@ class DtcSidebarPanel(QWidget):
         code = item.data(0, Qt.ItemDataRole.UserRole)
         if code is not None:
             self.dtc_selected.emit(code)
+
+
+# ─── EEPROM Sidebar Panel ─────────────────────────────────────────────────────
+
+class EepromSidebarPanel(QWidget):
+    entry_selected = pyqtSignal(str)  # emits entry key/name
+
+    _ENTRIES = [
+        ("ODO — kilometre",         "odo",      "Ukupni prijeđeni put"),
+        ("Sati motora",             "hours",    "Sati rada motora"),
+        ("HW tip / model",          "hw_type",  "Hardware tip ECU-a (063/064)"),
+        ("Serijska tvornice",       "serial",   "Serijski broj ECU-a"),
+        ("Boot checksums",          "boot_cs",  "BOOT checksum blokovi"),
+        ("Nadmorska visina",        "altitude", "Kompenzacija nadmorske visine"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        lo = QVBoxLayout(self); lo.setContentsMargins(0, 0, 0, 0); lo.setSpacing(0)
+
+        hdr = QLabel("  EEPROM")
+        hdr.setStyleSheet(
+            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
+            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+        )
+        lo.addWidget(hdr)
+
+        self._list = QListWidget()
+        self._list.setFont(QFont("Consolas", 12))
+        self._list.setStyleSheet("background:#1e1e1e; border:none;")
+        self._list.itemClicked.connect(self._click)
+        lo.addWidget(self._list, 1)
+
+        for label, key, desc in self._ENTRIES:
+            item = QListWidgetItem(f"  {label}")
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            item.setToolTip(desc)
+            item.setForeground(QBrush(QColor("#9cdcfe")))
+            self._list.addItem(item)
+
+    def _click(self, item: QListWidgetItem):
+        key = item.data(Qt.ItemDataRole.UserRole)
+        if key:
+            self.entry_selected.emit(key)
+
+
+# ─── CAN Sidebar Panel ────────────────────────────────────────────────────────
+
+class CanSidebarPanel(QWidget):
+    id_selected = pyqtSignal(int)   # emits CAN ID
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ids: list[tuple[int, str]] = []
+
+        lo = QVBoxLayout(self); lo.setContentsMargins(0, 0, 0, 0); lo.setSpacing(0)
+
+        hdr = QLabel("  CAN ID-ovi")
+        hdr.setStyleSheet(
+            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
+            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+        )
+        lo.addWidget(hdr)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("🔍  Filtriraj...")
+        self._search.setFixedHeight(32)
+        self._search.setStyleSheet(
+            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
+            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
+        )
+        self._search.textChanged.connect(self._filter)
+        lo.addWidget(self._search)
+
+        self._list = QListWidget()
+        self._list.setFont(QFont("Consolas", 12))
+        self._list.setStyleSheet("background:#1e1e1e; border:none;")
+        self._list.itemClicked.connect(self._click)
+        lo.addWidget(self._list, 1)
+
+    def populate(self, ids: list[tuple[int, str]]):
+        """ids = list of (can_id, description)"""
+        self._ids = ids
+        self._render(ids)
+
+    def _render(self, ids):
+        self._list.clear()
+        for can_id, desc in ids:
+            item = QListWidgetItem(f"  0x{can_id:03X}  {desc}")
+            item.setData(Qt.ItemDataRole.UserRole, can_id)
+            item.setForeground(QBrush(QColor("#4ec9b0")))
+            self._list.addItem(item)
+
+    def _filter(self, txt: str):
+        filtered = [(i, d) for i, d in self._ids
+                    if not txt or txt.lower() in f"0x{i:03X}".lower() or txt.lower() in d.lower()]
+        self._render(filtered)
+
+    def _click(self, item: QListWidgetItem):
+        can_id = item.data(Qt.ItemDataRole.UserRole)
+        if can_id is not None:
+            self.id_selected.emit(can_id)
 
 
 # ─── Heatmap paleta ───────────────────────────────────────────────────────────
@@ -1591,17 +1693,20 @@ class MainWindow(QMainWindow):
 
         self.btn_file = _btn("+ FILE", "primary")
         self.btn_file.setToolTip("Učitaj ECU .bin  (Ctrl+1)")
-        self.btn_file.clicked.connect(self._load1); tb.addWidget(self.btn_file)
+        self.btn_file.clicked.connect(self._load1)
+        self._act_file = tb.addWidget(self.btn_file)
 
         self.btn_swap = _btn("↔ Swap")
         self.btn_swap.setToolTip("Zamijeni aktivni fajl  (Ctrl+1)")
         self.btn_swap.clicked.connect(self._load1)
-        self.btn_swap.hide(); tb.addWidget(self.btn_swap)
+        self._act_swap = tb.addWidget(self.btn_swap)
+        self._act_swap.setVisible(False)
 
         self.btn_compare = _btn("+ Compare")
         self.btn_compare.setToolTip("Dodaj fajl za usporedbu  (Ctrl+2)")
         self.btn_compare.clicked.connect(self._load2)
-        self.btn_compare.hide(); tb.addWidget(self.btn_compare)
+        self._act_compare = tb.addWidget(self.btn_compare)
+        self._act_compare.setVisible(False)
 
         tb.addSeparator()
 
@@ -1649,8 +1754,14 @@ class MainWindow(QMainWindow):
         self.map_lib.map_selected.connect(self._on_map_selected)
         self.dtc_sidebar = DtcSidebarPanel()
         self.dtc_sidebar.dtc_selected.connect(self._on_dtc_sidebar_selected)
-        self._sidebar_stack.addWidget(self.map_lib)    # page 0
-        self._sidebar_stack.addWidget(self.dtc_sidebar) # page 1
+        self.eeprom_sidebar = EepromSidebarPanel()
+        self.eeprom_sidebar.entry_selected.connect(self._on_eeprom_entry_selected)
+        self.can_sidebar = CanSidebarPanel()
+        self.can_sidebar.id_selected.connect(self._on_can_id_selected)
+        self._sidebar_stack.addWidget(self.map_lib)        # page 0
+        self._sidebar_stack.addWidget(self.dtc_sidebar)    # page 1
+        self._sidebar_stack.addWidget(self.eeprom_sidebar) # page 2
+        self._sidebar_stack.addWidget(self.can_sidebar)    # page 3
         main_split.addWidget(self._sidebar_stack)
 
         # ── Centar: mapa + hex + log (vertikalni split) ────────────────────
@@ -1765,6 +1876,10 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, idx: int):
         if idx == self._dtc_tab:
             self._sidebar_stack.setCurrentIndex(1)
+        elif idx == self._eeprom_tab:
+            self._sidebar_stack.setCurrentIndex(2)
+        elif idx == self._can_tab:
+            self._sidebar_stack.setCurrentIndex(3)
         else:
             self._sidebar_stack.setCurrentIndex(0)
 
@@ -1786,6 +1901,17 @@ class MainWindow(QMainWindow):
                 if status:
                     self.props.show_dtc_details(status)
 
+    def _on_eeprom_entry_selected(self, key: str):
+        self.eeprom_widget.show_entry(key)
+
+    def _on_can_id_selected(self, can_id: int):
+        self.can_widget.show_id(can_id)
+
+    def _populate_can_sidebar(self):
+        from ui.can_network_widget import CAN_ID_INFO
+        ids = sorted(CAN_ID_INFO.items())
+        self.can_sidebar.populate([(can_id, info[0]) for can_id, info in ids])
+
     # ── Load / Save ───────────────────────────────────────────────────────────
 
     def _load1(self):
@@ -1801,14 +1927,16 @@ class MainWindow(QMainWindow):
             self.dtc_panel.dtc_status_changed.connect(self._on_dtc_status_changed)
             self.dtc_sidebar.set_engine(self.dtc_eng)
             self.can_widget.set_engine(eng)
+            # Napuni CAN sidebar s ID-ovima iz widgeta
+            self._populate_can_sidebar()
             name = Path(path).name
             self._file_lbl.setText(
                 f"  <b style='color:#9cdcfe'>{info.sw_id}</b>"
                 f"  <span style='color:#888888'>{name}</span>"
             )
             self._file_lbl.setTextFormat(Qt.TextFormat.RichText)
-            self.btn_file.hide()
-            self.btn_swap.show(); self.btn_compare.show()
+            self._act_file.setVisible(False)
+            self._act_swap.setVisible(True); self._act_compare.setVisible(True)
             self.btn_save.setEnabled(True)
             self.props.show_ecu(eng)
             self.log_strip.log(f"Ucitan: {name}", "ok")

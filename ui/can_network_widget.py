@@ -471,6 +471,9 @@ class CanNetworkWidget(QWidget):
                 )
         self._rec_text.setPlainText("\n".join(lines))
 
+    def show_id(self, can_id: int):
+        pass  # TODO: scroll to / highlight CAN ID row
+
     @staticmethod
     def _id_color(tip: str) -> str:
         return {

@@ -1,5 +1,25 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — Test refaktor + Spark 10SW039116 klasifikacija
+
+### Promjene
+- `test/test_core.py`: Svi referentni putovi ažurirani za novu `dumps/` strukturu (stari `_materijali/ori_300.bin` → `dumps/2021/300.bin`)
+  - Dodani testovi: `test_map_finder_gti90()`, `test_map_finder_sc_variants()` (230/130/170hp)
+  - STG2 i GTI155 testovi: graceful skip ako fajl nije prisutan
+  - Spark SW assertion: `"1037..."` → `"10SW039116"`
+- `core/map_finder.py`: Dodano `"10SW039116"` u `_SPARK_10SW_IDS`
+- Svi testovi prolaze: 300hp=51, 230hp=51, 130/170hp=60, GTI90=58, Spark(oba SW)=13 mapa
+
+### Spark analiza —ključni nalaz
+- **2018 Spark (10SW011328) vs 2021 Spark (10SW039116)**: samo 3510B CODE diff — mape su NA ISTIM adresama!
+  - Diff blokovi: 0x024EEC (240B), 0x025F57 (262B), 0x024772 (420B), itd.
+  - Calibriranje vrijednosti se razlikuju (tuning za HW reviziju), ali layout identičan
+- **Spark torque/rev limiter**: još nisu lokalizirani — adrese su različite od 300hp layouta
+  - GTI90 @ 0x028E7C = 5875 → ~7043 RPM (potvrđeno)
+  - Spark @ 0x028E7C = 17695 → ~2338 RPM (nije rev lim — nešto drugačije)
+  - Spark torque @ 0x02A0D8 = sve nule (300hp adresa ne vrijedi za Spark)
+- TODO: dublja analiza Spark CODE regije za torque i rev lim
+
 ## 2026-03-18 — Spark 2019/2020/2021 dump analiza + 170hp 2019
 
 ### Findings
@@ -1775,3 +1795,24 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 
 ### Čekamo
 - Novi dumpovi: GTI 90ks 2021, Spark 90 2021 — za 130/170hp injection analizu
+
+## 2026-03-18 — 3-panel layout za EEPROM i CAN Network tabove
+
+### Napravljeno
+- Dodane dvije nove sidebar klase u `ui/main_window.py`:
+  - `EepromSidebarPanel` (page 2): lista 6 EEPROM unosa (odo, hours, hw_type, serial, boot_cs, altitude), signal `entry_selected`
+  - `CanSidebarPanel` (page 3): lista CAN ID-ova s filter search-om, signal `id_selected`
+- `_sidebar_stack` proširen na 4 stranice (0=MapLibrary, 1=DTC, 2=EEPROM, 3=CAN)
+- `_on_tab_changed` ažuriran: prebacuje na odgovarajuću sidebar stranicu za EEPROM/CAN tabove
+- Dodani handler metodi: `_on_eeprom_entry_selected`, `_on_can_id_selected`, `_populate_can_sidebar`
+- `_load1` sada poziva `_populate_can_sidebar()` nakon `can_widget.set_engine(eng)`
+- Stub metode: `EepromWidget.show_entry(key)` u `ui/eeprom_widget.py`, `CanNetworkWidget.show_id(can_id)` u `ui/can_network_widget.py`
+- `CAN_ID_INFO` vrijednosti su tuple `(opis, tip)` → koristi `info[0]` za naziv
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — nove klase + `_build_ui` + `_on_tab_changed` + handleri + `_load1`
+- `ui/eeprom_widget.py` — dodan `show_entry` stub
+- `ui/can_network_widget.py` — dodan `show_id` stub
+
+### Provjera
+- `ast.parse` OK za sva 3 fajla

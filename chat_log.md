@@ -401,3 +401,26 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Analizirao dumps/ folder. Spark 2019/2020/2021 = isti binarni SW 10SW039116 (novi, dodan u KNOWN_SW). 170hp 2019 = 10SW053729 isti kao 2020-2021. NPRo Spark baza je 10SW039116, 6145B CODE izmjena.
 
 ---
+**[2026-03-18]**
+👤 Implement 3-panel layout for EEPROM and CAN Network tabs in ui/main_window.py — EepromSidebarPanel, CanSidebarPanel, sidebar_stack pages 2+3, _on_tab_changed update, stubs.
+🤖 Implementirano: EepromSidebarPanel (page 2) i CanSidebarPanel (page 3) dodani u main_window.py, _sidebar_stack proširen na 4 stranice, _on_tab_changed ažuriran, show_entry/show_id stubovi dodani. Sve 3 datoteke sintaktički OK.
+
+---
+
+
+---
+**[2026-03-18]**
+👤 u listi mapa immo neke dtc off? ne trebamo u listi mapa dtc.. samo te mape lijepo kategoriziraj i preimenuj smisleno...
+🤖 DTC mape uklonjene iz map library (maknuto _scan_dtc iz find_all, uklonjena "dtc" kategorija iz CATEGORIES). Preimenovano 10 mapa: rev_lim_0x... → "Rev limiter — scalar (0x...)", lambda sub-A/B → smisleni nazivi, Torque optimal → hrvatski, itd.
+
+---
+**[2026-03-18]**
+👤 kreni.. tako je sve isto kao map editor i dtc off... samo eeprom koristi svoj file, a sve ostalo svoj file... ne vidim tipku za compare i za swap ucitanof filea?
+🤖 Toolbar fix: btn_swap/btn_compare koristili widget hide/show — zamijenjeno s QAction.setVisible() (Qt toolbar bug). EEPROM i CAN sidebari: EepromSidebarPanel (page 2) i CanSidebarPanel (page 3) dodani u _sidebar_stack, _on_tab_changed proširen, stubs u EepromWidget/CanNetworkWidget.
+
+---
+**[2026-03-18]**
+👤 gti90?i spark znaci.... evo dump spark 90 2018.... pocistio sam materijale pa istrazi kako sada to taro sve izgleda.... baci se na posao, hvala..
+🤖 Pronašao: 2018 Spark = 10SW011328 (isti kao 2016!), 2019-2021 Spark = 10SW039116 (novi SW). Diff 2018 vs 2021 = 3510B CODE, ali mape su na ISTIM adresama — vrijednosti se razlikuju, ne layout. Dodano 10SW039116 u _SPARK_10SW_IDS. Test referentni putovi ažurirani za novu dumps/ strukturu. Svi testovi prolaze: 300hp=51, 230hp=51, 130/170hp=60, GTI90=58, Spark=13 mapa.
+
+---

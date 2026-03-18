@@ -995,7 +995,7 @@ _EFF_CORR_DEF = MapDef(
 OVERTEMP_LAMBDA_ADDR = 0x025ADA
 
 _OVERTEMP_LAMBDA_DEF = MapDef(
-    name          = "Lambda efikasnost sub-A (0xFFFF=SC bypass)",
+    name          = "Lambda — zaštita pretemperature (SC=bypass)",
     description   = (
         "Lambda Wirkungsgrad sub-tablica A — 63 u16 Q15. "
         "300hp SC: sve 0xFFFF = bypass (SC ne koristi ovu korekciju). "
@@ -1035,7 +1035,7 @@ _OVERTEMP_LAMBDA_DEF = MapDef(
 NEUTRAL_CORR_ADDR = 0x025B58
 
 _NEUTRAL_CORR_DEF = MapDef(
-    name          = "Lambda efikasnost sub-B (Q14=1.004 za SC)",
+    name          = "Lambda — neutral korekcija (Q14)",
     description   = (
         "Lambda Wirkungsgrad sub-tablica B — 63 u16 Q14. "
         "300hp SC: flat 16448 = Q14 1.004 (+0.4%, neutralno = bypass). "
@@ -1084,7 +1084,7 @@ SC_BOOST_FACTOR_AXIS_ADDR = 0x025DE8  # 8× u16 Q15 lambda os
 SC_BOOST_FACTOR_ADDR      = 0x025DF8  # 40× u16 Q14 (+22.4% za SC)
 
 _SC_BOOST_FACTOR_DEF = MapDef(
-    name          = "SC bazno obogacivanje po lambdi (+22.4%)",
+    name          = "SC — bazni faktor obogaćivanja [Q14]",
     description   = (
         "Bazna SC korekcija goriva — 40 u16 flat = 20046 (Q14 = 1.224 = +22.4%). "
         "130hp NA: sve nule (tablica nije aktivna). "
@@ -1236,7 +1236,7 @@ IGN_CORR_ADDR = 0x022374   # Start podatkovnog dijela (poslije 2×8B osi)
 IGN_CORR_AXIS_ADDR = 0x022364  # Y-os (prva os, 8× u8)
 
 _IGN_CORR_DEF = MapDef(
-    name          = "Paljenje — korekcija/efikasnost (2D u8)",
+    name          = "Paljenje — korekcija po RPM×load",
     description   = (
         "2D korekcijska tablica paljenja — 8×8 u8 vrijednosti. "
         "Osi ugrađene kao u8 ispred podataka (nije standardni format). "
@@ -1284,7 +1284,7 @@ _IGN_CORR_DEF = MapDef(
 TORQUE_OPT_ADDR = 0x02A7F0
 
 _TORQUE_OPT_DEF = MapDef(
-    name          = "Torque optimal / driver demand [%]",
+    name          = "Moment — optimalni / vozačev zahtjev [%]",
     description   = (
         "Drugi torque blok odmah iza torque mirrora — Q8 format, 93–107% raspon. "
         "Manji raspon od glavne torque mape (93–119%). "
@@ -1601,7 +1601,8 @@ _300HP_SW_IDS = {
 # Poznati Spark 900 ACE SW ID-ovi s "10SW0" prefiksom (starija 666-serija HW063)
 # Ovi nemaju "1037" prefiks ali su verificirani Spark binariji
 _SPARK_10SW_IDS = {
-    "10SW011328",  # spark_ori_2016_666063 (HW063, BOOT eraziran)
+    "10SW011328",  # Spark 90 2016/2018 (HW063, BOOT eraziran, 666-serija)
+    "10SW039116",  # Spark 90 2019-2021 (HO ACE, razlicit CODE layout od 2016)
 }
 
 # GTI RPM os (12 točaka)
@@ -1975,10 +1976,7 @@ class MapFinder:
                           f"validacija pala ({in_range}/{len(raw)} = {valid_frac:.0%}) — preskacam")
                 continue
 
-            # Mora biti nekakva varijacija (nije sve ista vrijednost)
-            if max(raw) - min(raw) < 2:
-                if cb: cb(f"  Ignition #{idx:02d} @ 0x{addr:06X}: nema varijacije — preskacam")
-                continue
+            # Flat mapa (sve ista vrijednost) je OK — neke SW verzije imaju stock flat mape
 
             self.results.append(FoundMap(
                 defn    = _IGN_DEFS[idx],
@@ -2128,7 +2126,7 @@ class MapFinder:
             non_trivial2 = sum(1 for v in vals2 if 0 < v < 255)
             if non_trivial2 >= n // 4:
                 extra_def = MapDef(
-                    name          = "SC bypass ventil — extra kopija [%]",
+                    name          = "SC bypass ventil — kopija 2 [%]",
                     description   = _SC_DEF.description + " (3. kopija @ 0x029993, moguce alternativni uvjeti/rezim)",
                     category      = "misc",
                     rows=7, cols=7,
@@ -2471,8 +2469,8 @@ class MapFinder:
         data_vals = [int.from_bytes(data[addr + (N_AXIS+i)*2: addr+(N_AXIS+i)*2+2], 'little')
                      for i in range(N_DATA)]
 
-        # Validacija: os mora biti rastuća, podaci > 0
-        if not (self._monotone(axis_vals) and all(v > 0 for v in data_vals)):
+        # Validacija: os mora biti rastuća, podaci monotono rastuci (0 je OK na pocetku)
+        if not (self._monotone(axis_vals) and self._monotone(data_vals) and max(data_vals) > 0):
             if cb: cb(f"  Start inj @ 0x{addr:06X}: validacija pala — preskacam")
             return
 
@@ -2506,9 +2504,9 @@ class MapFinder:
         if not (self._monotone(y_axis) and self._monotone(x_axis)):
             if cb: cb(f"  Ign corr @ 0x{data_addr:06X}: osi nisu rastuće — preskacam")
             return
-        in_range = sum(1 for v in vals if 100 <= v <= 255)
-        if in_range < n * 3 // 4:
-            if cb: cb(f"  Ign corr @ 0x{data_addr:06X}: validacija pala ({in_range}/{n}) — preskacam")
+        # Vrijednosti mogu biti u razlicitim rasponima po SW verziji — dovoljno je osi OK
+        if max(vals) == 0:
+            if cb: cb(f"  Ign corr @ 0x{data_addr:06X}: sve nule — preskacam")
             return
 
         self.results.append(FoundMap(
@@ -2647,8 +2645,8 @@ class MapFinder:
 
         vals = [int.from_bytes(data[addr + i*2: addr+i*2+2], 'little') for i in range(n)]
 
-        # 300hp: sve 16448 ili blizu; 130hp: Q15 raspršene vrijednosti
-        flat_16k = sum(1 for v in vals if 14000 <= v <= 18000)
+        # Prihvati bilo koji flat Q14 faktor > 0.5 (300hp=16448, 170hp=23130 itd.)
+        flat_16k = sum(1 for v in vals if 8000 <= v <= 30000)
         if flat_16k < n // 2:
             if cb: cb(f"  Neutral corr @ 0x{addr:06X}: nije prepoznat pattern — preskacam")
             return
@@ -2678,7 +2676,7 @@ class MapFinder:
         vals    = [int.from_bytes(data[addr    + i*2: addr    +i*2+2], 'little') for i in range(n)]
 
         # 300hp: lambda os rastuća 22352-48045; 130hp: sve 0
-        ax_ok   = self._monotone(ax_vals) and ax_vals[0] > 20000
+        ax_ok   = self._monotone(ax_vals) and ax_vals[0] > 10000
         ax_zero = all(v == 0 for v in ax_vals)
         all_zero = all(v == 0 for v in vals)
         flat_sc  = sum(1 for v in vals if 16000 <= v <= 24000)
@@ -2688,7 +2686,7 @@ class MapFinder:
             self.results.append(FoundMap(
                 defn=_SC_BOOST_FACTOR_DEF, address=addr, sw_id=self._sw(), data=vals))
             if cb: cb(f"  SC boost factor @ 0x{addr:06X}  1×40  sve 0 (NA motor)")
-        elif (ax_ok or ax_zero) and flat_sc >= n * 3 // 4:
+        elif (ax_ok or ax_zero) and flat_sc >= n // 2:
             self.results.append(FoundMap(
                 defn=_SC_BOOST_FACTOR_DEF, address=addr, sw_id=self._sw(), data=vals))
             pct = vals[0] / 16384 * 100 - 100

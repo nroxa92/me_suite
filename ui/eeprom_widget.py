@@ -233,3 +233,6 @@ class EepromWidget(QWidget):
         else:
             self._errors_text.setPlainText("")
             self._errors_text.setPlaceholderText("Nema upozorenja.")
+
+    def show_entry(self, key: str):
+        pass  # TODO: scroll to / highlight entry
