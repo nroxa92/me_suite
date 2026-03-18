@@ -1607,3 +1607,56 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
   - Treba: verifikacijska skripta na gti_155_18_10SW025752.bin
 - Spark rev limiter adresa — nije još pronađena
 - analyze_maps.py — provjeriti što radi i je li korisno zadržati
+
+## 2026-03-18 14:XX — Spark 666063 detekcija + GTI rev limiter pronađen
+
+### Spark 666063 fix
+- **Problem**: `spark_ori_2016_666063.bin` ima BOOT eraziran (0x0000–0x7EFF = 0xFF)
+  - SW ID @ 0x001A = 0xFF → `_is_spark()` vraćala False → 9 mapa (bez Spark-specifičnih)
+- **Fix 1** — `core/engine.py` `_analyse()`: fallback SW ID na `0x02001A` kad je 0x001A all-0xFF
+  - SW ID za spark_666 je `10SW011328` na 0x02001A i 0x04001A
+- **Fix 2** — `core/map_finder.py`: dodan `_SPARK_10SW_IDS = {"10SW011328"}`
+  - `_is_spark()` sada provjerava i ovaj set
+  - `_is_gti_na()` isključuje `_SPARK_10SW_IDS` iz GTI detekcije
+- **Rezultat**: spark_666 sada detektira kao Spark → 13 mapa, sve kategorije OK
+
+### GTI rev limiter — PRONAĐEN
+- **Format**: period-based encoding (ne direktni RPM!)
+- **Adresa**: `0x028E96` (u16 LE) — hard cut
+- **Dekodiraj**: `RPM = 40MHz / (ticks × 58/60)` (60-2 kotačić, 58 efektivnih zubi)
+- **GTI 155**: 5374 ticks → **7700 RPM** (hard cut) | `0x028E98`: 5505 → 7517 RPM (soft cut)
+- **300hp (10SW066726)**: 5072 ticks → **8158 RPM** | `0x028E98`: 5399 → 7664 RPM
+- **4-točkovna ramp** `0x028E90–0x028E96`:
+  - GTI: 4981→5112→5243→5374 (korak 131 ticks, ~207 RPM/korak), od 8307 do 7700 RPM
+  - ORI: 3506→4030→4589→5072 (korak ~530 ticks), od 11802 do 8158 RPM
+- **PAŽNJA**: Ova adresa potvrđena SAMO za 10SW066726 i 10SW025752
+  - 10SW004672 (RXPX) i 10SW082806 (BACKUP) imaju drugačiji sadržaj na toj adresi
+- Nije implementirano u map_finder (rev limiter nije "mapa" za editing)
+
+### Fajlovi promijenjeni
+- `core/engine.py` — SW ID fallback @ 0x02001A
+- `core/map_finder.py` — `_SPARK_10SW_IDS`, `_is_spark()`, `_is_gti_na()` prošireni
+
+## 2026-03-18 15:XX — MAPA_ADRESE.md ažuriranje + GTI mirror potvrda + KFWIRKBA analiza
+
+### MAPA_ADRESE.md (docs/MAPA_ADRESE.md)
+- **Ispravljen Rev Limiter dio** (300hp): uklonjen netočni 0x02B72A (ASCII fill!), dodan period-based @ 0x028E96
+- **Ažuriran GTI SE 155 dio**: ispravljena injection adresa (0x022066 direktni raw, NE 0x02439C), ignition adresa (0x028310, NE 0x027594)
+- **Dodan EEPROM circular buffer** — tablica s HW tipovima i adresama
+- Datum dokumenta ažuriran na 2026-03-18
+
+### GTI mirror potvrda
+- Injection @ 0x022066 (16×12, 384B): **NEMA mirrora** — scan 100% CODE regije, 0 identičnih kopija
+- Ignition extras @ 0x028310 (8×144B = 1152B): **NEMA mirrora** — scan 100% CODE regije, 0 identičnih kopija
+- Zaključak: GTI extra mape su single-storage (bez redundancije poput 300hp)
+
+### KFWIRKBA lambda eff analiza (0x02AE5E)
+- Format: 41×18 Q15 LE ✅ potvrđeno
+- Y-os @ 0x02AE40 (18pt): LOAD os (/256 = %, raspon 15%–104%), NE lambda os (stara anotacija bila pogrešna)
+- Vrijednosti Q15: 0.660–1.800 (korekcija volumetrčke efikasnosti)
+- ORI vs NPRo: 225/738 razlika (NPRo značajno tunovao)
+- ORI vs GTI: 735/738 razlika (potpuno različit motor — normalno)
+- Status: format potvrđen, fizikalno značenje = volumetrička efikasnost korekcija, nema dalje TODO
+
+### Čekamo
+- Novi dumpovi: GTI 90ks 2021, Spark 90 2021 — za 130/170hp injection analizu

@@ -323,3 +323,20 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18]**
 👤 sfo jos imamo za raditj?
 🤖 Otvoren backlog: GTI rev limiter (adresa nije potvrđena), Spark 666063 SW detekcija (0xFF fill), MAPA_ADRESE.md dokumentacija, GTI injection mirror, 130/170hp format analiza, KFWIRKBA format.
+---
+**[2026-03-18]**
+👤 krenimo od 1 prema 7.. cim uspijem dostavljam dumpove koje smo se dogovorili...
+🤖 Spark 666 fix implementiran (SW fallback @ 0x02001A, _SPARK_10SW_IDS). GTI rev limiter PRONAĐEN: period @ 0x028E96 (GTI=5374→7700rpm, ORI=5072→8158rpm). Formula: 40MHz/(ticks×58/60).
+
+---
+**[2026-03-18]**
+👤 stizu novi dumpovi, maps starijih godina i 90 ks... 8150 za ori to je stock vrijednost, ranije je pokazivao vecu vrijednost
+🤖 Točno — 8158 rpm je pravi stock 300hp limit. Stara vrijednost 8481 (@0x02B72A) bila je ASCII filler 0x2121="!!" lažni pogodak. Nastavljamo s MAPA_ADRESE.md.
+
+---
+---
+**[2026-03-18]**
+👤 inace u moru se svi 300 vrte 7900 ako je sve ok, ako je impeler/wear ring pozvakan, smanjuje se opterecenje i digne se na 8100+rpm... stizu novi dumpovi: GTI 90ks 21god + Spark 90 21god
+🤖 Potvrda: 8158 RPM ECU cut je sigurnosni limit, normalna granica u vodi = ~7900 (propeler-limitirano). GTI injection @ 0x022066 nema mirrora (potvrđeno skeniranjem). Logovi ažurirani.
+
+---

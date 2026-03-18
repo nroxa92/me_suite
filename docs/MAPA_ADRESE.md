@@ -113,10 +113,17 @@
 | 0x025900 | Injektori — deadtime | 14×7 | u16 LE | 1024–2989 raw (read-only) |
 
 ### Rev Limiter
-| Adresa | Naziv | Format | Vrijednost |
-|--------|-------|--------|------------|
-| 0x02B72A | Rev limiter 1 | u16 BE | 8738 rpm |
-| 0x02B73E | Rev limiter 2 | u16 BE | 8738 rpm |
+| Adresa | Naziv | Format | 300hp vrijednost | GTI 155 vrijednost | Napomena |
+|--------|-------|--------|------------------|--------------------|----------|
+| 0x028E90 | Rev cut ramp [0] | u16 LE period | 3506 (~11802 rpm) | 4981 (8307 rpm) | Početak ramp-down |
+| 0x028E92 | Rev cut ramp [1] | u16 LE period | 4030 (~10268 rpm) | 5112 (8095 rpm) | |
+| 0x028E94 | Rev cut ramp [2] | u16 LE period | 4589 (~9017 rpm) | 5243 (7892 rpm) | |
+| **0x028E96** | **Rev limiter — hard cut** | u16 LE period | **5072 = 8158 rpm** | **5374 = 7700 rpm** | ✅ Potvrđeno |
+| 0x028E98 | Rev limiter — soft cut | u16 LE period | 5399 = 7664 rpm | 5505 = 7517 rpm | Resume threshold |
+
+> **Formula dekodiraj**: `RPM = 40,000,000 / (ticks × 58/60)` — 60-2 kotačić (58 eff. zubi), 3-cil. Rotax
+> ⚠️ **PAŽNJA**: Ova adresa potvrđena SAMO za **10SW066726** i **10SW025752**. Ostali SW (10SW004672, 10SW082806) imaju drugačiji sadržaj na toj adresi!
+> ❌ **0x02B72A** (stara dokumentacija) je ASCII filler (0x2222 = `""`, 0x2121 = `!!`) — NIJE rev limiter!
 
 ### Ostale mape
 | Adresa | Naziv | Dimenzije | Format | Raspon |
@@ -159,32 +166,42 @@
 
 ## GTI SE 155 mape (10SW025752) {#gti-155-mape}
 > Referentni fajl: `_materijali/gti_155_18_10SW025752.bin`
-> Motor: Rotax 1503/1504 1.5L, atmosferski, 155hp, max ~7750 rpm
+> Motor: Rotax 1503/1504 1.5L, atmosferski, 155hp, **hard cut @ 7700 RPM**
 
-| Adresa | Naziv | Dimenzije | Format | Status |
-|--------|-------|-----------|--------|--------|
-| 0x024F46 | RPM os 1 | 1×16 | u16 BE | ✅ Identično 300hp |
+### GTI-specifične mape (DRUGAČIJE od 300hp)
+| Adresa | Naziv | Dimenzije | Format | Napomena |
+|--------|-------|-----------|--------|----------|
+| **0x022066** | **GTI — ubrizgavanje (direktno)** | **16×12** | u16 LE raw | ✅ Direktne vrijednosti, NE Q15! Range ~3193–14432 |
+| 0x028310 | GTI Paljenje — OS 1 (low load) | 12×12 | u8 | ✅ Stride 0x90 (144B) od ove adrese |
+| 0x0283A0 | GTI Paljenje — OS 2 (mid load) | 12×12 | u8 | ✅ |
+| 0x028430 | GTI Paljenje — OS 3 (high load) | 12×12 | u8 | ✅ |
+| 0x0284C0 | GTI Paljenje — OS 4 | 12×12 | u8 | ✅ |
+| 0x028550 | GTI Paljenje — OS 5 | 12×12 | u8 | ✅ |
+| 0x0285E0 | GTI Paljenje — OS 6 | 12×12 | u8 | ✅ |
+| 0x028670 | GTI Paljenje — OS 7 | 12×12 | u8 | ✅ |
+| 0x028700 | GTI Paljenje — OS 8 | 12×12 | u8 | ✅ (ukupno 8 GTI-specifičnih mapa) |
+
+### GTI mape dijeljene s 300hp (iste adrese, drugačije vrijednosti)
+| Adresa | Naziv | Dimenzije | Format | Napomena |
+|--------|-------|-----------|--------|----------|
+| 0x024F46 | RPM os 1 | 1×16 | u16 BE | ✅ Identično 300hp ([512..8448]) |
 | 0x025010 | RPM os 2 | 1×16 | u16 BE | ✅ Identično 300hp |
 | 0x0250DC | RPM os 3 | 1×16 | u16 BE | ✅ Identično 300hp |
-| 0x02439C | Injection — osnovna | 12×32 | u16 LE | ✅ Identično 300hp (adr. = 0x02439C, ne 0x02436C!) |
-| 0x02451C | Injection — mirror | 12×32 | u16 LE | ✅ Mirror @ 0x02439C+0x180 |
-| 0x027594 | Paljenje — GTI 1 | 12×12 | u8 | ✅ Potvrđeno (NE 0x02B730!) |
-| 0x027624 | Paljenje — GTI 2 | 12×12 | u8 | ✅ +0x90 stride |
-| 0x0276B4 | Paljenje — GTI 3 | 12×12 | u8 | ✅ |
-| 0x027744 | Paljenje — GTI 4 | 12×12 | u8 | ✅ |
-| 0x0277D4 | Paljenje — GTI 5 | 12×12 | u8 | ✅ |
-| 0x027864 | Paljenje — GTI 6 | 12×12 | u8 | ✅ |
-| 0x0278F4 | Paljenje — GTI 7 | 12×12 | u8 | ✅ |
-| 0x027984 | Paljenje — GTI 8 | 12×12 | u8 | ✅ (ukupno 8 mapa) |
-| 0x0265B0 | Lambda/AFR | 12×18 | u16 LE Q15 | ✅ NOVA adresa (ne 0x0266F0!) |
-| 0x029318 | Rev limiter 1 | skalar | u16 BE | ✅ 7725 rpm (ne 0x02B72A!) |
-| 0x0293FC | Rev limiter 2 | skalar | u16 BE | ✅ 7725 rpm (drugi primjerak) |
-| 0x02A0D8 | Torque | 16×16 | u16 BE Q8 | ✅ GTI = flat 32768 (1.0×, NA motor, nema SC!) |
-| 0x02202E | DFCO limit | 1×7 | u16 LE | ✅ GTI max = 6000 rpm (vs 300hp 7000) |
+| 0x02436C | Ubrizgavanje — rel. masa goriva (rk) | 6×32 | u16 LE Q15 | Dijeli se s 300hp, ali GTI ima vlastiti @ 0x022066 |
+| 0x0266F0 | Lambda — ciljni AFR | 12×18 | u16 LE Q15 | Iste adrese, vrijednosti skalirane za 1.5L |
+| 0x02A0D8 | Moment — ograničenje | 16×16 | u16 BE Q8 | ✅ GTI = flat 32768 (1.0×, NA motor, nema SC!) |
+| 0x02B730 | Paljenje — Osnovna 1 (dijeljeno) | 12×12 | u8 | Prisutno u GTI, ali GTI koristi 0x028310 seriju |
+| 0x02202E | DFCO limit | 1×7 | u16 LE | GTI max = 6000 rpm (vs 300hp 7000) |
 
-> ⚠️ GTI ignition mape su na **potpuno drugoj adresi** od 300hp! Adresa 0x02B730 je fill na GTI.
-> ⚠️ GTI lambda je na **0x0265B0**, ne 0x0266F0 kao kod 300hp!
-> ⚠️ GTI rev limiter je **0x029318** (7725 rpm), ne 0x02B72A!
+### GTI Rev Limiter
+| Adresa | Format | GTI vrijednost | Dekodirana RPM |
+|--------|--------|----------------|----------------|
+| **0x028E96** | u16 LE period | **5374** | **7700 RPM** (hard cut) |
+| 0x028E98 | u16 LE period | 5505 | 7517 RPM (soft cut / resume) |
+
+> ⚠️ GTI injection je na **0x022066** (16×12 direktni raw), NE identično 300hp @ 0x02436C!
+> ⚠️ GTI extra ignition mape su na **0x028310** (8 mapa, stride 144B), a adresa 0x02B730 (dijeljena s 300hp) je **fill vrijednost** specifično za GTI high-load range
+> ⚠️ GTI je **NA motor** (nema SC) — SC bypass mape (0x020534, 0x029993) prisutne ali neaktivne
 
 ---
 
@@ -251,13 +268,18 @@ Ključni za tuning:
 | 0x0125 | Neidentificirano (SW konstanta?) | ASCII 5B | "60620"/"BRP10"/0x00 — NIJE hw timer! |
 
 ### Promjenjivi odometar (circular buffer, BUDS2 promjenjiv)
-- Format: u16 LE, vrijednost u **minutama**
-- Adresa: varijabilna (circular buffer s anchor slotom)
-- **064 HW** (300hp, GTI 155, 230hp): anchor @ 0x0550, ODO @ **0x0562**; wrap fallback: 0x0D62 / 0x1562
-- **063 HW** (Spark 90hp): anchor isti @ 0x0550, ODO @ **0x0562**; >32767 min → 0x0DE2
-- **062 HW** (1.5L stariji): circular rotacija, prioritet **0x5062 → 0x4562 → 0x1062**
-- Slot format: 20B, ODO @ offset+16 (u16 LE, minute)
-- Implementirano u `core/eeprom_parser.py`
+- Format: u16 LE, vrijednost u **minutama** od prvog pokretanja
+- Adresa: varijabilna (circular buffer s anchor slotom @ 0x0550)
+- Slot format: 20B, ODO vrijednost @ slot_start+16 i slot_start+18 (u16 LE)
+
+| HW tip | Primarna adresa | Fallback 1 | Fallback 2 | Napomena |
+|--------|-----------------|------------|------------|----------|
+| **064** (300hp, GTI SE, 230hp) | **0x0562** | 0x0D62 | 0x1562 | 064 = MPEM "1037550003" |
+| **063** (Spark 90/115hp) | **0x0562** | 0x0DE2 | — | 063 = MPEM "1037525858" |
+| **062** (GTI 130/155, RXT 1.5L stari) | **0x5062** | 0x4562 | 0x1062 | 062 = MPEM "1037509210" |
+
+> Implementirano u `core/eeprom.py` — `EepromParser.parse()` automatski detektira HW tip iz MPEM SW prefiksa.
+> EEPROM widget u GUI prikazuje hw_type i preračunate HH:MM radne sate.
 
 ### MPEM ID → HW tip
 | MPEM SW | HW folder | Motor |
@@ -300,5 +322,5 @@ Checksum se mijenja samo ako se mijenja BOOT kod (0x0000–0x7EFF).
 
 ---
 
-*Posljednje ažuriranje: 2026-03-17*
+*Posljednje ažuriranje: 2026-03-18*
 *Generiran automatski iz core/map_finder.py i binarnih analiza*
