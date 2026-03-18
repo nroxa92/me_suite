@@ -36,8 +36,8 @@ KNOWN_SW = {
     b"10SW004672": "RXP/RXT 300hp SC (2016)",
     b"10SW082806": "300hp SC variant (backup_flash)",
     b"10SW025752": "GTI SE 155 2018 (NA, 10SW025752)",
-    b"10SW053774": "GTI SE 90 2021 (NA, Rotax 900 HO ACE)",
-    b"10SW053729": "GTI SE 130/170 2021 (NA, Rotax 1630 NA — isti SW, 0 razlika!)",
+    b"10SW053774": "GTI SE 90 2020-2021 (NA, Rotax 900 HO ACE — isti SW, 2020 vs 2021 = 80B razlika u hash bloku @ 0x017F02)",
+    b"10SW053729": "GTI SE 130/170 2020-2021 (NA, Rotax 1630 NA — isti SW, 2020 vs 2021 = 80B razlika samo u hash bloku)",
     b"10SW053727": "GTI SE 230 / Wake Pro 230 2021 (SC, Rotax 1630 SC)",
     b"10SW011328": "Spark 90 2016 (NA, HW063, Rotax 900 ACE)",
 }

@@ -373,3 +373,19 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 🤖 Kompletna binarna analiza svih 2021 ECU-a. Pronađena CAN ID tablica @ CODE regiji. Spark-specific: 0x0134, 0x0154. GTI/230/300-specific: 0x0148. Zajednički: 9 ID-ova (0x108-0x214). 300hp+Spark SAT radi → 230hp treba raditi. Dokument: docs/CAN_SAT_PORUKE.md.
 
 ---
+---
+**[2026-03-18]**
+👤 okej super, stize duump 130 2020
+🤖 2020 130hp dump: SW=10SW053729 (isti kao 2021!), samo 80B razlika od 2021 (hash blok @ 0x017F00-0x017F73), mape i rev limiter identični. KNOWN_SW ažuriran na "2020-2021".
+
+---
+**[2026-03-18]**
+👤 s obzirom das je buds2 izvor stock dumpova, a spor je brutalno... na njega cekamo evoza gti 90 2020 sada... mozesmo li maloporaditi na ui, prositriti polja u tablicama, jesu li sve tablice definirane podatak imjerna jedinica... htio bih da nekako odvojimo i naglasimo tab map editor, tab dtc off, novi tab can network da mozemo redefinirati poslane i poruke koje ecu ocekuje, odnosno upariti sa zeljenim satom...
+🤖 UI overhaul: kolone 54→64px, ispravljen _fmt (offset_val), tabovi preimenovani (Map Editor/DTC Off) s bojama, novi CAN Network tab s can_network_widget.py za SAT kompatibilnost.
+
+---
+**[2026-03-18]**
+👤 novi dump gti 90 2020
+🤖 GTI 90 2020 = SW 10SW053774 (isti kao 2021), 80B hash blok razlika @ 0x017F02-0x017F73, mape identične. KNOWN_SW ažuriran na "2020-2021".
+
+---

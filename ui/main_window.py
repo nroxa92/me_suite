@@ -43,6 +43,7 @@ from core.map_differ import MapDiffer
 from ui.calculator_widget import CalculatorWidget
 from ui.diff_viewer import MapDiffWidget
 from ui.eeprom_widget import EepromWidget
+from ui.can_network_widget import CanNetworkWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -554,7 +555,7 @@ class MapTableView(QWidget):
 
         self.table = QTableWidget()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.table.horizontalHeader().setDefaultSectionSize(54)
+        self.table.horizontalHeader().setDefaultSectionSize(64)
         self.table.horizontalHeader().setFont(QFont("Consolas", 9))
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self.table.verticalHeader().setDefaultSectionSize(32)
@@ -578,7 +579,7 @@ class MapTableView(QWidget):
 
         self.table2 = QTableWidget()
         self.table2.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.table2.horizontalHeader().setDefaultSectionSize(54)
+        self.table2.horizontalHeader().setDefaultSectionSize(64)
         self.table2.horizontalHeader().setFont(QFont("Consolas", 9))
         self.table2.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self.table2.verticalHeader().setDefaultSectionSize(32)
@@ -691,9 +692,12 @@ class MapTableView(QWidget):
         mx2 = max(data2) if data2 else mx
 
         def _fmt(raw, d):
-            return (f"{raw * d.scale:.1f}" if d.dtype == "u8"
-                    else f"{raw * d.scale:.3f}" if d.scale != 0
-                    else f"0x{raw:04X}")
+            if d.dtype == "u8":
+                return f"{raw * d.scale + d.offset_val:.1f}"
+            elif d.scale != 0:
+                return f"{raw * d.scale + d.offset_val:.3f}"
+            else:
+                return f"0x{raw:04X}"
 
         for r in range(rows):
             for c in range(cols):
@@ -732,7 +736,7 @@ class MapTableView(QWidget):
     def _on_zoom_changed(self, val: int):
         """Skalira visinu redova i sirinu stupaca heatmape."""
         self._zoom_lbl.setText(f"{val}%")
-        col_w = max(28, int(54 * val / 100))
+        col_w = max(28, int(64 * val / 100))
         row_h = max(16, int(32 * val / 100))
         font_pt = max(7, int(10 * val / 100))
         for tbl in (self.table, self.table2):
@@ -815,9 +819,12 @@ class MapTableView(QWidget):
 
     def refresh_cell(self, row: int, col: int, new_raw: int):
         defn = self._fm.defn
-        txt  = (f"{new_raw * defn.scale:.1f}" if defn.dtype == "u8"
-                else f"{new_raw * defn.scale:.3f}" if defn.scale != 0
-                else f"0x{new_raw:04X}")
+        if defn.dtype == "u8":
+            txt = f"{new_raw * defn.scale + defn.offset_val:.1f}"
+        elif defn.scale != 0:
+            txt = f"{new_raw * defn.scale + defn.offset_val:.3f}"
+        else:
+            txt = f"0x{new_raw:04X}"
         item = self.table.item(row, col)
         if not item: return
         item.setText(txt); item.setData(Qt.ItemDataRole.UserRole, new_raw)
@@ -1576,16 +1583,16 @@ class MainWindow(QMainWindow):
         # ── Centar: mapa + hex + log (vertikalni split) ────────────────────
         center_vsplit = QSplitter(Qt.Orientation.Vertical)
 
-        # Tab widget (Mapa | DTC | Diff)
+        # Tab widget (Map Editor | DTC Off | Diff | CAN Network | ...)
         self.tabs = QTabWidget(); self.tabs.setDocumentMode(True)
         self.map_view = MapTableView()
         self.map_view.cell_clicked.connect(self._on_cell_click)
         self.map_view.btn_csv.clicked.connect(self._export_csv)
-        self.tabs.addTab(self.map_view, "Mapa")
+        self.tabs.addTab(self.map_view, "Map Editor")
 
         self.dtc_panel = DtcPanel()
         self.dtc_panel.action_done.connect(lambda msg: self.log_strip.log(msg, "ok"))
-        self._dtc_tab = self.tabs.addTab(self.dtc_panel, "DTC")
+        self._dtc_tab = self.tabs.addTab(self.dtc_panel, "DTC Off")
 
         self.diff_widget = DiffWidget()
         self._diff_tab = self.tabs.addTab(self.diff_widget, "Diff")
@@ -1600,6 +1607,15 @@ class MainWindow(QMainWindow):
 
         self.eeprom_widget = EepromWidget()
         self._eeprom_tab = self.tabs.addTab(self.eeprom_widget, "EEPROM")
+
+        self.can_widget = CanNetworkWidget()
+        self._can_tab = self.tabs.addTab(self.can_widget, "CAN Network")
+
+        # Vizualno naglasavanje kljucnih tabova
+        _tb = self.tabs.tabBar()
+        _tb.setTabTextColor(0, QColor("#9cdcfe"))               # Map Editor — plava
+        _tb.setTabTextColor(self._dtc_tab, QColor("#f48771"))   # DTC Off — narandzasta
+        _tb.setTabTextColor(self._can_tab, QColor("#4ec9b0"))   # CAN Network — teal
 
         center_vsplit.addWidget(self.tabs)
 
@@ -1681,6 +1697,7 @@ class MainWindow(QMainWindow):
             eng = ME17Engine(); info = eng.load(path)
             self.eng1 = eng; self.editor = MapEditor(eng)
             self.dtc_eng = DtcEngine(eng); self.dtc_panel.set_engine(self.dtc_eng)
+            self.can_widget.set_engine(eng)
             name = Path(path).name
             self._file_lbl.setText(
                 f"  <b style='color:#9cdcfe'>{info.sw_id}</b>"

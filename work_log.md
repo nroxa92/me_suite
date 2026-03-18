@@ -1,5 +1,23 @@
 # ME17Suite — Work Log
 
+## 2026-03-18 — UI overhaul + GTI 90 2020 dump analiza
+
+### UI promjene
+- **Šire kolone**: defaultSectionSize 54→64px (sve tablice + zoom formula)
+- **_fmt ispravka**: dodan `offset_val` u formatiranje vrijednosti u heatmap tablici (SC corr, lambda trim, neutral corr, accel enrich itd. sada prikazuju ispravne %)
+- **Tab naglašavanje**: "Mapa"→"Map Editor" (plava), "DTC"→"DTC Off" (narandzasta), setTabTextColor per-tab
+- **CAN Network tab**: novi tab (teal) + `ui/can_network_widget.py` — prikaz ECU CAN ID-ova, SAT kompatibilnost, citanje iz binarnog
+- **Fajlovi promijenjeni**: `ui/main_window.py`, `ui/can_network_widget.py` (novi)
+
+### GTI 90 2020 dump analiza
+- **Fajl**: `_materijali/dumps/2020/gti90.bin`
+- **SW ID**: `10SW053774` — isti kao GTI 90 2021
+- **Razlika**: 80 bajtova u CODE regiji @ `0x017F02–0x017F73` (hash/potpis blok)
+- **Zaključak**: GTI 90 2020 = 2021 uz hash update (isti obrazac kao 130hp 2020/2021)
+- **Ažurirano**: `core/engine.py` KNOWN_SW: 10SW053774 → "2020-2021"
+
+---
+
 ## 2026-03-18 — CAN SAT analiza: Spark vs GTI/230/300hp poruke
 
 ### Što je napravljeno
