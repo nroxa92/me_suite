@@ -3,6 +3,16 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-19 13:45]**
+👤 Cross-SW DTC audit za 1630 ACE — pronađi adrese U16Ax kodova i enable bajtova za 10 dumpova, provjeri dijele li U16Ax isti enable slot kao P0231. Spremi u dtc_cross_sw_audit.md.
+🤖 Audit završen. Mapping tablica potvrđena na 0x0239B4 za sve 300hp SW (2018-2021). P0231 stvarno @ 0x0217BC (idx=94). Grupe: slot 57 (0x0210B9) = P0231+U16A1/A2/A3/A5/A8/AB (enabled 0x06); slot 3 (0x021083) = P0232+U16A4/A7/A9/AA (disabled 0x00). Enable tablica identična u svih 10 dumpova. Za 230/170/130hp mapping nije identificiran.
+
+---
+**[2026-03-19 — CLAUDE.md rewrite iz koda]**
+👤 Ažuriraj CLAUDE.md na temelju implementiranog koda (čitaj Python fajlove, ne logove). Dodaj DTC/CAN/EEPROM sekcije, ispravi adrese i brojeve mapa, max 150 linija.
+🤖 CLAUDE.md potpuno rewritan iz stvarnog koda. Ključne ispravke: injection 16×12 (ne 6×32), DTC=121 kodova (ne 111), rev limiter samo 2 adrese, dodane CAN/DTC/EEPROM sekcije s konkretnim adresama i konstantama.
+
+---
 ---
 **[2026-03-19 25:00 — Full 56-mapa cross-SW audit svih 1630 ACE dumpova]**
 👤 VAZNA ISPRAVKA — prethodni popis mapa bio nepotpun (30 umjesto 56). Evo pune liste MAPS_REF_FULL (56 mapa). Za cross-SW analizu: provjeri svaku adresu u svakom 1630 ACE dumpu, izvjesti koliko bajtova se razlikuje vs referenca (2021/300.bin).

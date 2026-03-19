@@ -10,9 +10,12 @@ Potvrđeno analizom binarnih fajlova + bench sniff + SDCANlogger sesija (2026-03
     Rolling counter: byte[6] = 0x00-0x0F (4-bit, inkrement svaki frejm)
 
   Cluster bus (250 kbps, Delphi 20-pin J1 pin2/3):
-    ECU→SAT IDs: 0x011D-0x01C0 (razlikuje se po modelu)
-    SAT→ECU IDs: 0x0186-0x019B, 0x01CD, 0x04CD (DESS relay)
-    ECU CAN TX table @ 0x0433BC: 0x015B, 0x015C, 0x0148, 0x013C, 0x0138, 0x0108, 0x0214, 0x012C, 0x0110, 0x017C
+    ECU→SAT IDs: 0x0578 (267-300ms, svi modeli), 0x0400 (311-344ms, GTX/GTI)
+                 0x0408 (267ms, prisutan u svim SW varijantama, nije samo GTS)
+    SAT→ECU IDs: 0x0186-0x019B, 0x01CD (GTX/GTI), 0x04CD (DESS relay)
+    ECU CAN TX table @ 0x03DF0C (2019-2021) / 0x03DF1E (2018):
+      Počinje s 78 05 = LE16 0x0578 (cluster primary ID)
+      ISPRAVKA: 0x0433BC je tablica perioda (LE16 ms vrijednosti), NE CAN IDs!
 
 === CHECKSUM PROTOKOL (potvrđeno sniffom + XOR verifikacijom) ===
 
@@ -48,16 +51,15 @@ DIAG_MUX          = 0x0342   # ECT/MAP/MAT mux            @  50 Hz
 DIAG_HW_ID        = 0x0516   # HW/Protocol identifier     (constant)
 DIAG_DESS         = 0x04CD   # DESS relay / cluster hb    @   1 Hz
 
-# Cluster bus (250 kbps, ECU binary CAN TX table @ 0x0433BC)
-CAN_MAIN_A        = 0x015B   # Main ECU broadcast A       @   8 ms
-CAN_MAIN_B        = 0x015C   # Main ECU broadcast B       @  16 ms
-CAN_GTI_SPEED     = 0x0148   # GTI/SC speed               @  22 ms
-CAN_ENGINE_FLAGS  = 0x013C   # Engine status flags        @  22 ms
-CAN_THROTTLE      = 0x0138   # Throttle / speed           @  22 ms
-CAN_RPM           = 0x0108   # RPM (cluster bus)          @  18 ms
-CAN_DIAG_EXT      = 0x0214   # Extended diagnostics       @ 148 ms
-CAN_ENGINE_HOURS  = 0x012C   # Engine hours / service     @ 223 ms
-CAN_TEMP          = 0x0110   # Temperature (shared ID)    @ 147 ms
+# Cluster bus (250 kbps, ECU CAN TX table @ 0x03DF0C)
+# ECU→SAT (potvrđeno iz SAT watchdog tablice @ GTX 0x05280):
+CAN_CLUSTER_PRI   = 0x0578   # ECU primarna poruka za SAT @ 267-300ms
+CAN_CLUSTER_SEC   = 0x0400   # ECU sekundarna poruka      @ 311-344ms
+CAN_CLUSTER_GTS   = 0x0408   # GTS/dodatna (svi SW)       @ 267ms
+# SAT→ECU (potvrđeno iz SAT firmware init tablice):
+CAN_SAT_HEARTBEAT = 0x0186   # Primarni SAT heartbeat     @ ~100ms
+CAN_SAT_CRITICAL  = 0x01CD   # KRITIČNI heartbeat GTX/GTI @ ~50ms
+CAN_SAT_DESS      = 0x04CD   # DESS relay                 @ ~1Hz
 CAN_DTC           = 0x017C   # DTC / fault codes          (event)
 
 # SW-specific scalars u byte[4] od DIAG_RPM (0x0102)

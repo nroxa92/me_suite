@@ -1,5 +1,46 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 13:45 — DTC cross-SW audit za 1630 ACE
+
+### Što je napravljeno
+- Napisana i pokrenuta Python skripta `_materijali/dtc_cross_sw_audit.py`
+- Analizirano 10 dumpova (2018–2021, 300/230/170/130hp)
+- Rezultati zapisani u `_materijali/dtc_cross_sw_audit.md`
+
+### Ključni nalazi
+- **P0231 stvarna adresa**: 0x0217BC (idx=94), NE 0x021786 (idx=67) kako je bilo pretpostavljeno
+- **Mapping tablica**: 0x0239B4 za sve 300hp SW verzije (10SW023910/040039/054296/066726) — potvrđena
+- **Enable tablica (0x021080)**: identična bajt-za-bajt u SVIM 10 dumpova
+- **U16Ax grupacija** (za 300hp SW, konzistentno 2018-2021):
+  - Slot 57 (0x0210B9=0x06): P0231, U16A1, U16A2, U16A3, U16A5, U16A8, U16AB
+  - Slot 3 (0x021083=0x00): P0232, U16A4, U16A7, U16A9, U16AA (već disabled!)
+- Za 10SW053727 (230hp) i 10SW053729 (170/130hp): mapping tablica nije pronađena automatski — drugačija SW struktura
+- DTC storage adrese identične u svim SW verzijama
+
+### Fajlovi promijenjeni
+- `_materijali/dtc_cross_sw_audit.py` (nova skripta)
+- `_materijali/dtc_cross_sw_audit.md` (izvještaj)
+
+---
+
+## 2026-03-19 — CLAUDE.md rewrite iz stvarnog koda
+
+### Što je napravljeno
+- Pročitani svi Python fajlovi: engine.py, map_finder.py, map_editor.py, dtc.py, checksum.py, can_decoder.py, eeprom.py, tools/can_sniffer.py, tools/did_map.py, ui/main_window.py, test_core.py, main.py
+- CLAUDE.md potpuno rewritan na temelju stvarnih vrijednosti iz koda (ne logova)
+
+### Ključne ispravke u novom CLAUDE.md
+- Injection dimenzije: 16×12 (ne 6×32 kako je stajalo)
+- Rev limiter: samo 0x02B72A + 0x02B73E su stvarni limiteri (ostale 3 adrese su unutar 2D mape)
+- DTC: 121 kodova (111 P + 10 U16Ax) — ne 111
+- Checksum: CRC32-HDLC poly=0xEDB88320, BOOT [0x0000–0x7EFF], residua=0x6E23044F — dodane stvarne konstante
+- MapFinder: find_all() za 300hp = 33 skenera; Spark = 4 skenera; broj mapa iz test potvrdjen
+- CAN decoder: svi ID-ovi i decode metode dokumentirani iz dispatch tablice
+- EEPROM: sve ODO adrese po HW tipu iz koda (0x0562/0x0D62/0x1562/0x4562/0x0490/0x0DE2/0x5062/0x1062)
+- Dodan popis svih relevantnih lambda/SC/torque/decel mapa s adresama
+- Dodan opis can_sniffer.py i did_map.py
+- Uklonjene sekcije 7 i 8 (Claude komande i permissions — nisu relevantne za projekt kontekst)
+
 ## 2026-03-19 25:00 — Full 56-mapa cross-SW audit, nova skripta cross_sw_audit.py
 
 ### Sto je napravljeno
