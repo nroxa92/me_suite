@@ -5,6 +5,7 @@ Pasivno snifanje BRP CAN busa (IXAAT VCI4 USB-to-CAN V2).
 Pokretanje:
     python tools/can_sniffer.py
     python tools/can_sniffer.py --bitrate 500000 --output sniff_buds2.csv
+    python tools/can_sniffer.py --bitrate 250000 --output sniff_cluster_250k.csv
 """
 
 import argparse
@@ -20,39 +21,14 @@ except ImportError:
     print("GREŠKA: pip install python-can")
     sys.exit(1)
 
-
-# ─── BRP payload dekoderi ──────────────────────────────────────────────────────
-# Potvrđeno iz ECU CODE analize (me_suite sessions 2026-03)
-
-def _try_decode(msg_id: int, data: bytes) -> dict | None:
-    """
-    Pokušaj dekodirati poznate BRP CAN payloade.
-    Returns dict s dekodiranin vrijednostima ili None ako ID nije poznat.
-    """
-    if len(data) < 2:
-        return None
-
-    result = {}
-
-    # RPM: byte[1:3] × 0.25  (potvrđeno iz ECU CODE)
-    if len(data) >= 3:
-        rpm_raw = (data[1] << 8) | data[2]
-        rpm = rpm_raw * 0.25
-        if 0 < rpm < 12000:
-            result['rpm'] = round(rpm, 1)
-
-    # Temp: byte[1] - 40  (potvrđeno iz ECU CODE)
-    if len(data) >= 2:
-        temp = data[1] - 40
-        if -40 <= temp <= 150:
-            result['temp_c'] = temp
-
-    # DTC count: byte[0] direktno
-    dtc = data[0]
-    if dtc < 50:
-        result['dtc_count'] = dtc
-
-    return result if result else None
+# Apsolutni import (me_suite root mora biti u sys.path)
+try:
+    from core.can_decoder import CanDecoder, validate_checksum, extract_rolling_counter
+except ImportError:
+    # Fallback ako se pokreće izvan me_suite roota
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from core.can_decoder import CanDecoder, validate_checksum, extract_rolling_counter
 
 
 # ─── Statistika po ID-u ───────────────────────────────────────────────────────
@@ -65,7 +41,10 @@ class IdStats:
         self.last_data = None
         self.dlc = None
         self.changes = 0
+        self.checksum_errors = 0
+        self.rolling_ctr_jumps = 0  # broj preskočenih rolling counter vrijednosti
         self._prev_data = None
+        self._prev_rolling_ctr = None
 
     def update(self, ts: float, data: bytes):
         self.count += 1
@@ -77,6 +56,19 @@ class IdStats:
             self.changes += 1
         self._prev_data = bytes(data)
         self.last_data = bytes(data)
+
+        # XOR checksum provjera (samo za DLC=8)
+        if len(data) == 8 and not validate_checksum(data):
+            self.checksum_errors += 1
+
+        # Rolling counter jump detekcija
+        if len(data) >= 7:
+            ctr = extract_rolling_counter(data)
+            if self._prev_rolling_ctr is not None:
+                expected = (self._prev_rolling_ctr + 1) & 0x0F
+                if ctr != expected:
+                    self.rolling_ctr_jumps += 1
+            self._prev_rolling_ctr = ctr
 
     @property
     def freq_hz(self) -> float:
@@ -114,7 +106,7 @@ def run_sniffer(bitrate: int, channel: int, output: str | None, duration: float 
     csv_file = None
 
     if output:
-        csv_file = open(output, 'w', newline='')
+        csv_file = open(output, 'w', newline='', encoding='utf-8')
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(['timestamp', 'id_hex', 'dlc', 'data_hex', 'decoded'])
 
@@ -148,8 +140,9 @@ def run_sniffer(bitrate: int, channel: int, output: str | None, duration: float 
 
             stats[mid].update(ts, data)
 
-            decoded = _try_decode(mid, data) or {}
-            dec_str = str(decoded) if decoded else ""
+            # ID-specifičan dekoder iz CanDecoder
+            decoded = CanDecoder.decode(mid, data)
+            dec_str = _format_decoded(decoded)
 
             if csv_writer:
                 csv_writer.writerow([
@@ -180,26 +173,49 @@ def run_sniffer(bitrate: int, channel: int, output: str | None, duration: float 
     _print_stats(stats, elapsed, msg_count, final=True)
 
 
+def _format_decoded(decoded: dict) -> str:
+    """Formatiraj CanDecoder.decode() rezultat u kratki string za CSV/terminal."""
+    if not decoded.get("decoded"):
+        return ""
+    # Izbaci meta polja, prikaži samo korisne vrijednosti
+    skip = {"can_id", "raw", "decoded", "checksum_ok", "rolling_ctr"}
+    parts = []
+    for k, v in decoded.items():
+        if k in skip:
+            continue
+        if isinstance(v, float):
+            parts.append(f"{k}={v:.1f}")
+        else:
+            parts.append(f"{k}={v}")
+    return " ".join(parts)
+
+
 def _print_stats(stats: dict, elapsed: float, total: int, final: bool = False):
     if not stats:
         return
 
     label = "== FINALNA STATISTIKA" if final else f"== {elapsed:.0f}s"
-    print(f"\n  {label} ({total} msg, {len(stats)} ID-ova) {'-'*30}")
-    print(f"  {'ID':>6}  {'DLC':>3}  {'Hz':>7}  {'Promjena':>9}  {'Zadnji bajti':>30}  Dekod")
-    print(f"  {'-'*6}  {'-'*3}  {'-'*7}  {'-'*9}  {'-'*30}  {'-'*20}")
+    print(f"\n  {label} ({total} msg, {len(stats)} ID-ova) {'-'*25}")
+    print(f"  {'ID':>6}  {'DLC':>3}  {'Hz':>7}  {'Promj':>5}  {'CSerr':>5}  {'RCjmp':>5}  {'Zadnji bajti':>23}  Dekod")
+    print(f"  {'-'*6}  {'-'*3}  {'-'*7}  {'-'*5}  {'-'*5}  {'-'*5}  {'-'*23}  {'-'*24}")
 
     for mid in sorted(stats.keys()):
         s = stats[mid]
         data_str = s.last_data.hex(' ').upper() if s.last_data else ""
-        dec = _try_decode(mid, s.last_data) if s.last_data else {}
-        dec_str = str(dec)[:20] if dec else ""
-        print(f"  0x{mid:03X}  {s.dlc:>3}  {s.freq_hz:>6.1f}  {s.changes:>9}  {data_str:>30}  {dec_str}")
+        decoded = CanDecoder.decode(mid, s.last_data) if s.last_data else {}
+        dec_str = _format_decoded(decoded)[:24]
+        cs_flag = f"!{s.checksum_errors}" if s.checksum_errors else "  ok"
+        rc_flag = f"!{s.rolling_ctr_jumps}" if s.rolling_ctr_jumps else "   0"
+        print(
+            f"  0x{mid:03X}  {s.dlc:>3}  {s.freq_hz:>6.1f}"
+            f"  {s.changes:>5}  {cs_flag:>5}  {rc_flag:>5}"
+            f"  {data_str:>23}  {dec_str}"
+        )
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="ME17Suite CAN Sniffer (IXAAT)")
-    p.add_argument('--bitrate',  type=int, default=500000,   help="Bitrate (default 500kbps)")
+    p.add_argument('--bitrate',  type=int, default=500000,   help="Bitrate (default 500kbps=diagnostic, 250kbps=cluster)")
     p.add_argument('--channel',  type=int, default=0,        help="IXAAT kanal (default 0)")
     p.add_argument('--output',   type=str, default=None,     help="CSV log fajl (opcija)")
     p.add_argument('--duration', type=float, default=None,   help="Sekunde snifanja (default=beskonačno)")

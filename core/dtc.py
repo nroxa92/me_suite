@@ -72,7 +72,17 @@ class DtcDef:
 
     @property
     def p_code(self) -> str:
-        return f"P{self.code:04X}"
+        """Prikaži DTC kod s ispravnim SAE prefiksom (P/C/B/U)."""
+        c = self.code
+        cat = (c >> 14) & 3
+        if cat == 0:
+            return f"P{c:04X}"
+        if cat == 1:
+            return f"C{c:04X}"
+        if cat == 2:
+            return f"B{c:04X}"
+        # U-kodovi — BRP U1xxx se enkodira kao 0xDxxx (npr. 0xD6A1 → U16A1)
+        return f"U1{c & 0x0FFF:03X}"
 
     @property
     def mirror_addr(self) -> int:
@@ -295,6 +305,29 @@ DTC_REGISTRY: dict[int, DtcDef] = {d.code: d for d in [
     # ── Main relay ────────────────────────────────────────────────────────────
     # Slot 212 (0xFF)
     _d(0x1679, "ECM", "Main Relay Sticking",               0x0218A8),
+
+    # ── U16Ax — Cluster/IBR CAN timeout (BRP U1xxx = 0xD6xx) ─────────────────
+    # Potvrdjeno iz ME17.8.5 binary (ori_300, SW 10SW066726).
+    # Ovi kodovi generiraju CHECK ENGINE + zvucni alarm na SAT klasteru
+    # kad ECU ne prima ocekivane CAN poruke s klastera (0x0578/0x0400)
+    # ili kad SAT klaster ne prima ECU poruke (0x0186/0x01CD).
+    #
+    # VAZNO: Aktivni U16Ax kodovi dijele en_addr 0x0210B9 (slot 57) s P0231!
+    # Zeriranje 0x0210B9 iskljucuje I fuel pump monitoring (P0231).
+    # Dokumentirano — svjesna kompromis odluka.
+    #
+    # "Already-off" parovi koriste en_addr 0x021083 (slot 3, vec=0x00).
+    _d(0xD6A1, "ECM", "U16A1 Cluster CAN Timeout ID 514h",  0x0217D8, 0x0210B9, 1),
+    _d(0xD6A2, "ECM", "U16A2 Cluster CAN Timeout ID 220h",  0x0217C8, 0x0210B9, 1),
+    _d(0xD6A3, "ECM", "U16A3 Cluster CAN Timeout ID 408h",  0x0217D4, 0x0210B9, 1),
+    _d(0xD6A5, "ECM", "U16A5 IBR CAN Timeout ID 012h",      0x0217D0, 0x0210B9, 1),
+    _d(0xD6A8, "ECM", "U16A8 IBR CAN Checksum ID 012h",     0x0217C4, 0x0210B9, 1),
+    _d(0xD6AB, "ECM", "U16AB Cluster CAN Checksum ID 410h", 0x0217CC, 0x0210B9, 1),
+    # Already-off parovi (en=0x021083=0x00, vec iskljuceni):
+    _d(0xD6A4, "ECM", "U16A4 IBR CAN Timeout ID 010h",      0x0217CE, 0x021083, 1),
+    _d(0xD6A7, "ECM", "U16A7 Cluster CAN Checksum ID 408h", 0x0217CA, 0x021083, 1),
+    _d(0xD6A9, "ECM", "U16A9 IBR CAN Checksum ID 012h",     0x0217C6, 0x021083, 1),
+    _d(0xD6AA, "ECM", "U16AA Cluster CAN Timeout ID 410h",  0x0217D6, 0x021083, 1),
 
 ]}
 
@@ -631,9 +664,9 @@ class DtcEngine:
                 "message": f"DTC OFF nije podrzan za {self._scan.sw_hint}.",
             }
         results = {}
-        for code in DTC_REGISTRY:
+        for code, defn in DTC_REGISTRY.items():
             r = self.dtc_off(code)
-            results[f"P{code:04X}"] = r
+            results[defn.p_code] = r
         changed = sum(1 for r in results.values() if r["status"] == "OK")
         return {
             "status":  "OK",

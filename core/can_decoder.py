@@ -1,327 +1,449 @@
 """
-CAN payload decoder for BRP Sea-Doo ME17.8.5 ECU.
+CAN payload decoder — BRP Sea-Doo ME17.8.5 ECU
+Potvrđeno analizom binarnih fajlova + bench sniff + SDCANlogger sesija (2026-03)
 
-Decoded from binary analysis of:
-  - 300hp ECU flash (10SW066726) @ dumps/2021/1630ace/300.bin
-  - Spark 90hp ECU flash (10SW053774) @ dumps/2021/900ace/spark90.bin
-  - sdtpro hardware_simulator.py (field-verified, 250 kbps BRP bus, engine running)
+=== DVA ODVOJENA CAN BUSA ===
 
-CAN bus parameters: 250 kbps, standard 11-bit frames, BRP proprietary protocol.
+  Diagnostic bus  (500 kbps, OBD konektor / IXXAT bench):
+    IDs: 0x0102, 0x0103, 0x0110, 0x0122, 0x0300, 0x0308, 0x0316, 0x0320, 0x0342, 0x0516, 0x04CD
+    XOR checksum na svim broadcast porukama: byte[7] = XOR(byte[0..6])
+    Rolling counter: byte[6] = 0x00-0x0F (4-bit, inkrement svaki frejm)
 
-CAN TX table locations in ECU flash:
-  - GTI/SC 1630:  0x0433BC (12 IDs, 0x0000 terminated)
-  - Spark 900 HO: 0x042EC4 (12 IDs, 0x0000 terminated)
+  Cluster bus (250 kbps, Delphi 20-pin J1 pin2/3):
+    ECU→SAT IDs: 0x011D-0x01C0 (razlikuje se po modelu)
+    SAT→ECU IDs: 0x0186-0x019B, 0x01CD, 0x04CD (DESS relay)
+    ECU CAN TX table @ 0x0433BC: 0x015B, 0x015C, 0x0148, 0x013C, 0x0138, 0x0108, 0x0214, 0x012C, 0x0110, 0x017C
 
-CAN TX timing (period ms) — from ECU binary table preceding CAN ID list:
-  0x015B → 8ms   | 0x015C → 16ms  | 0x0148 → 22ms  | 0x013C → 22ms
-  0x015C → 22ms  | 0x0138 → 22ms  | 0x0108 → 16-18ms | 0x0214 → 132-148ms
-  0x012C → 196-223ms | 0x0110 → 131-147ms | 0x017C → (event-driven)
+=== CHECKSUM PROTOKOL (potvrđeno sniffom + XOR verifikacijom) ===
 
-sdtpro / field-verified IDs (live broadcast, engine running):
-  0x0316 → EOT (engine oil temp, data[3]*0.943-17.2 °C)
-  0x0342 → MUX broadcast (ECT/MAP/MAT, keyed on data[0])
-  0x0103 → Spark EGT + TPS
-  0x0104 → Spark throttle body
+  byte[7] = XOR(byte[0] ^ byte[1] ^ byte[2] ^ byte[3] ^ byte[4] ^ byte[5] ^ byte[6])
+  byte[6] = rolling counter 0x00-0x0F (inkrementira svaki frejm, wrapa na 0 od 15)
+
+=== CONFIRMED DECODE FORMULE (ECU binary + bench sniff 2026-03) ===
+
+  0x0102:  bytes[1:3] u16 BE × 0.25 = RPM  |  byte[3]-40 = coolant °C  |  byte[4]=SW scalar
+  0x0110:  byte[1]-40 = coolant °C  |  byte[2]-40 = IAT °C  |  byte[3]-40 = oil °C
+  0x0342:  byte[0]=mux key — 0xDE→ECT, 0xAA→MAP hPa, 0xC1→MAT  (sdtpro potvrđeno)
+  0x0316:  byte[3]*0.943-17.2 = EOT °C  (sdtpro potvrđeno)
+  0x012C:  u32 BE bytes[0:4] / 3600 = engine hours
+  0x017C:  byte[0] = DTC count  |  bytes[1:3]+bytes[4:6] = 2× DTC code u16 BE
 """
 
 from __future__ import annotations
+import struct
 
 
-# ─── CAN ID constants ─────────────────────────────────────────────────────────
+# ─── CAN ID tablice ───────────────────────────────────────────────────────────
 
-CAN_RPM          = 0x0108   # Engine speed + TPS + MAP
-CAN_TEMP         = 0x0110   # Coolant + IAT temperatures
-CAN_ENGINE_HOURS = 0x012C   # Engine time / service info
-CAN_THROTTLE     = 0x0138   # Throttle / speed status
-CAN_ENGINE_FLAGS = 0x013C   # Engine status flags
-CAN_MAIN_ECU     = 0x015B   # Main ECU broadcast A
-CAN_SEC_ECU      = 0x015C   # Main ECU broadcast B
-CAN_GTI_SC       = 0x0148   # GTI/SC 1630 specific
-CAN_SPARK_A      = 0x0134   # Spark specific A
-CAN_SPARK_B      = 0x0154   # Spark specific B
-CAN_DTC          = 0x017C   # DTC / fault status
-CAN_DIAG_EXT     = 0x0214   # Extended diagnostics
+# Diagnostic bus (500 kbps, bench sniff potvrđeno)
+DIAG_RPM          = 0x0102   # RPM + coolant + SW scalar  @ 100 Hz
+DIAG_DTC_STATUS   = 0x0103   # DTC + engine status        @ 100 Hz
+DIAG_TEMP         = 0x0110   # Coolant + IAT + oil temps  @  50 Hz
+DIAG_GTI_SC       = 0x0122   # GTI/SC specific            @  50 Hz (10SW053727)
+DIAG_MISC_A       = 0x0300   # Misc broadcast A           @  50 Hz
+DIAG_MISC_B       = 0x0308   # Misc broadcast B           @  50 Hz
+DIAG_EOT          = 0x0316   # Engine oil temp MUX        @  50 Hz (10SW053727)
+DIAG_MISC_C       = 0x0320   # Misc broadcast C           @  50 Hz
+DIAG_MUX          = 0x0342   # ECT/MAP/MAT mux            @  50 Hz
+DIAG_HW_ID        = 0x0516   # HW/Protocol identifier     (constant)
+DIAG_DESS         = 0x04CD   # DESS relay / cluster hb    @   1 Hz
 
-# sdtpro / field-verified IDs (250 kbps BRP bus, engine running)
-CAN_EOT_MUX   = 0x0316   # Engine oil temperature (live broadcast)
-CAN_BROADCAST = 0x0342   # Multiplexed broadcast (ECT / MAP / MAT)
-CAN_SPARK_EGT = 0x0103   # Spark EGT + TPS (live broadcast)
-CAN_SPARK_THB = 0x0104   # Spark throttle body (live broadcast)
+# Cluster bus (250 kbps, ECU binary CAN TX table @ 0x0433BC)
+CAN_MAIN_A        = 0x015B   # Main ECU broadcast A       @   8 ms
+CAN_MAIN_B        = 0x015C   # Main ECU broadcast B       @  16 ms
+CAN_GTI_SPEED     = 0x0148   # GTI/SC speed               @  22 ms
+CAN_ENGINE_FLAGS  = 0x013C   # Engine status flags        @  22 ms
+CAN_THROTTLE      = 0x0138   # Throttle / speed           @  22 ms
+CAN_RPM           = 0x0108   # RPM (cluster bus)          @  18 ms
+CAN_DIAG_EXT      = 0x0214   # Extended diagnostics       @ 148 ms
+CAN_ENGINE_HOURS  = 0x012C   # Engine hours / service     @ 223 ms
+CAN_TEMP          = 0x0110   # Temperature (shared ID)    @ 147 ms
+CAN_DTC           = 0x017C   # DTC / fault codes          (event)
+
+# SW-specific scalars u byte[4] od DIAG_RPM (0x0102)
+SW_SCALAR = {
+    0x14: "10SW066726 (300hp 2020/2021)",
+    0x0E: "10SW053727 (230hp 2020/2021)",
+    0x12: "10SW053729 (130/170hp 2020/2021)",
+}
 
 
-# ─── CAN Decoder ──────────────────────────────────────────────────────────────
+# ─── Checksum utiliti ─────────────────────────────────────────────────────────
+
+def validate_checksum(data: bytes) -> bool:
+    """
+    Provjeri BRP XOR checksum.
+    byte[7] = XOR(byte[0..6])  — potvrđeno bench sniffom.
+    """
+    if len(data) < 8:
+        return False
+    xor = 0
+    for b in data[:7]:
+        xor ^= b
+    return xor == data[7]
+
+
+def extract_rolling_counter(data: bytes) -> int:
+    """
+    Izvuci rolling counter iz byte[6].
+    Vrijednost 0x00-0x0F, inkrement svaki frejm.
+    """
+    if len(data) < 7:
+        return -1
+    return data[6] & 0x0F
+
+
+def calc_checksum(data: bytes) -> int:
+    """Izračunaj XOR checksum za prvih 7 bajta."""
+    xor = 0
+    for b in (data[:7] if len(data) >= 7 else data):
+        xor ^= b
+    return xor
+
+
+# ─── Payload dekoderi ─────────────────────────────────────────────────────────
+
+def _pad(payload: bytes, length: int = 8) -> bytes:
+    if len(payload) >= length:
+        return payload[:length]
+    return payload + bytes(length - len(payload))
+
 
 class CanDecoder:
     """
-    Decodes BRP Sea-Doo ME17 CAN payloads.
-
-    All methods accept a `bytes` payload of exactly 8 bytes (DLC=8).
-    Shorter payloads are zero-padded internally; longer payloads are truncated.
-
-    Payload formats determined by binary analysis of ECU CODE region.
+    Dekoder BRP Sea-Doo ME17.8.5 CAN payloada.
+    Sve metode prihvaćaju bytes payload (DLC=8).
+    Kraći payloadi se dopunjavaju nulama.
     """
 
-    # Temperature offset: raw - 40 = °C  (range: -40..+215 °C)
-    _TEMP_OFFSET: int = 40
+    _TEMP_OFFSET   = 40     # raw - 40 = °C
+    _RPM_SCALE     = 0.25   # raw × 0.25 = RPM
+    _HOURS_DIV     = 3600   # raw seconds / 3600 = hours
 
-    # RPM scaling: raw / 4 = RPM  (or RPM * 4 = raw)
-    _RPM_SCALE: float = 0.25
-
-    # Engine hours: raw seconds / 3600 = hours
-    _SECONDS_PER_HOUR: int = 3600
-
-    # Service interval default (hours)
-    _SERVICE_INTERVAL_H: int = 100
+    # ── Diagnostic bus 0x0102 — RPM + Coolant ─────────────────────────────────
 
     @staticmethod
-    def _pad(payload: bytes, length: int = 8) -> bytes:
-        """Zero-pad or truncate payload to exactly `length` bytes."""
-        if len(payload) >= length:
-            return payload[:length]
-        return payload + bytes(length - len(payload))
+    def decode_0102(payload: bytes) -> dict:
+        """
+        Diagnostic bus RPM broadcast (100 Hz).
 
-    # ── 0x0108 — RPM ──────────────────────────────────────────────────────────
+        Layout:
+          [0]   Status flags
+          [1:3] RPM u16 BE × 0.25
+          [3]   Coolant temp: raw - 40 = °C
+          [4]   SW scalar (0x14=300hp, 0x0E=230hp, 0x12=130/170hp)
+          [5]   Unknown
+          [6]   Rolling counter 0x00-0x0F
+          [7]   XOR checksum = XOR(byte[0..6])
+        """
+        p = _pad(payload)
+        rpm_raw = (p[1] << 8) | p[2]
+        return {
+            "rpm":            round(rpm_raw * 0.25, 0),
+            "coolant_c":      p[3] - 40,
+            "sw_scalar":      f"0x{p[4]:02X}",
+            "sw_hint":        SW_SCALAR.get(p[4], "nepoznat SW"),
+            "status":         f"0x{p[0]:02X}",
+            "rolling_ctr":    p[6] & 0x0F,
+            "checksum_ok":    validate_checksum(p),
+        }
 
     @staticmethod
     def decode_rpm(payload: bytes) -> int:
-        """
-        Decode engine speed from CAN 0x0108.
+        """Brzi RPM iz 0x0102 ili 0x0108 payloada."""
+        p = _pad(payload)
+        return int(((p[1] << 8) | p[2]) * 0.25)
 
-        Payload layout (DLC=8):
-          [0]   Status / engine state flags
-          [1:3] Engine speed (u16 BE, 0.25 RPM/bit)  →  RPM = raw * 0.25
-          [3]   TPS / throttle position (%, 1 %/bit)
-          [4]   MAP (kPa, 1 kPa/bit)
-          [5]   Mode / gear indicator
-          [6:8] Reserved
-
-        Returns: RPM as integer (0–16383).
-        """
-        p = CanDecoder._pad(payload)
-        raw = (p[1] << 8) | p[2]
-        return int(raw * CanDecoder._RPM_SCALE)
+    # ── Diagnostic bus 0x0103 — DTC + Engine status ───────────────────────────
 
     @staticmethod
-    def decode_throttle_from_rpm_msg(payload: bytes) -> float:
+    def decode_0103(payload: bytes) -> dict:
         """
-        Decode TPS % from CAN 0x0108 payload byte[3].
+        Diagnostic bus DTC + status (100 Hz).
 
-        Returns: throttle position 0.0–100.0 %.
+        Layout (djelomično poznat):
+          [0]   DTC count (aktivnih gresaka)
+          [1]   Engine run state: 0=off, 1=cranking, 2=running, 3=limp
+          [2]   MIL / fault flags (bit0=MIL, bit1=service, bit2=limp)
+          [3]   Unknown
+          [4]   Unknown
+          [5]   Unknown
+          [6]   Rolling counter
+          [7]   XOR checksum
         """
-        p = CanDecoder._pad(payload)
-        return round(p[3] * 100.0 / 255.0, 1)
+        p = _pad(payload)
+        state_map = {0: "off", 1: "cranking", 2: "running", 3: "limp"}
+        return {
+            "dtc_count":    p[0] & 0x3F,
+            "engine_state": state_map.get(p[1] & 0x03, f"0x{p[1]:02X}"),
+            "mil_on":       bool(p[2] & 0x01),
+            "service_due":  bool(p[2] & 0x02),
+            "limp_mode":    bool(p[2] & 0x04),
+            "rolling_ctr":  p[6] & 0x0F,
+            "checksum_ok":  validate_checksum(p),
+        }
+
+    # ── Diagnostic/Cluster 0x0110 — Temperature ───────────────────────────────
 
     @staticmethod
-    def decode_map_from_rpm_msg(payload: bytes) -> int:
+    def decode_0110(payload: bytes) -> dict:
         """
-        Decode manifold absolute pressure from CAN 0x0108 payload byte[4].
+        Temperature broadcast — isti ID na oba busa.
 
-        Returns: MAP in kPa (0–255).
+        Layout:
+          [0]   Status flags
+          [1]   Coolant temp: raw - 40 = °C
+          [2]   IAT (intake air temp): raw - 40 = °C
+          [3]   Oil temp: raw - 40 = °C (0xFF = senzor ne postoji)
+          [4:6] Reserved
+          [6]   Rolling counter
+          [7]   XOR checksum
         """
-        p = CanDecoder._pad(payload)
-        return p[4]
-
-    # ── 0x0110 — Temperature ──────────────────────────────────────────────────
+        p = _pad(payload)
+        oil = (p[3] - 40) if p[3] != 0xFF else None
+        return {
+            "coolant_c":    p[1] - 40,
+            "iat_c":        p[2] - 40,
+            "oil_c":        oil,
+            "status":       f"0x{p[0]:02X}",
+            "rolling_ctr":  p[6] & 0x0F,
+            "checksum_ok":  validate_checksum(p),
+        }
 
     @staticmethod
     def decode_coolant_temp(payload: bytes) -> float:
-        """
-        Decode coolant temperature from CAN 0x0110.
-
-        Payload layout (DLC=8):
-          [0]   Sensor status flags
-          [1]   Coolant temp (raw − 40 = °C,  range −40..+215 °C)
-          [2]   IAT — intake air temp (raw − 40 = °C)
-          [3]   Aux sensor / oil temp (raw − 40 = °C, 0xFF = not present)
-          [4:8] Reserved
-
-        Returns: coolant temperature in °C (float).
-        """
-        p = CanDecoder._pad(payload)
-        return float(p[1] - CanDecoder._TEMP_OFFSET)
+        p = _pad(payload)
+        return float(p[1] - 40)
 
     @staticmethod
     def decode_iat(payload: bytes) -> float:
-        """
-        Decode intake air temperature from CAN 0x0110 payload byte[2].
+        p = _pad(payload)
+        return float(p[2] - 40)
 
-        Returns: IAT in °C (float).
-        """
-        p = CanDecoder._pad(payload)
-        return float(p[2] - CanDecoder._TEMP_OFFSET)
+    # ── Diagnostic bus 0x0316 — Engine oil temp (MUX) ─────────────────────────
 
-    # ── 0x0316 — Engine oil temperature ──────────────────────────────────────
+    @staticmethod
+    def decode_0316(payload: bytes) -> dict:
+        """
+        EOT broadcast (sdtpro potvrđeno, 10SW053727 model-specific).
+
+        Formula: byte[3] × 0.943 - 17.2 = °C
+        """
+        p = _pad(payload)
+        eot = round(p[3] * 0.943 - 17.2, 1)
+        return {
+            "eot_c":        eot,
+            "raw_byte3":    p[3],
+            "rolling_ctr":  p[6] & 0x0F,
+            "checksum_ok":  validate_checksum(p),
+        }
 
     @staticmethod
     def decode_eot_316(payload: bytes) -> float:
-        """
-        Decode engine oil temperature from CAN 0x0316.
-
-        Formula (from sdtpro hardware_simulator.py):
-          data[3] * 0.943 - 17.2 = °C
-
-        Returns: EOT in °C.
-        """
-        p = CanDecoder._pad(payload)
+        p = _pad(payload)
         return round(p[3] * 0.943 - 17.2, 1)
 
-    # ── 0x0342 — Multiplexed broadcast (ECT / MAP / MAT) ─────────────────────
+    # ── Diagnostic bus 0x0342 — MUX broadcast (ECT/MAP/MAT/TPS) ──────────────
+
+    @staticmethod
+    def decode_0342(payload: bytes) -> dict:
+        """
+        Multiplexed broadcast (sdtpro potvrđeno).
+
+        MUX key u byte[0]:
+          0xDE → ECT (coolant):  56.9 - 0.0002455 × u16BE(byte[2:4]) °C
+          0xAA → MAP:            u16BE(byte[2:4]) × 0.41265 + 360.63  hPa
+          0xC1 → MAT:            92.353 - 0.00113485 × u16BE(byte[4:6]) °C
+          0x21 → Diagnostic/bench mode (ECU bez SAT)
+          Ostalo → TPS/load Q16: u16BE(byte[2:4]) / 65536 × 100 = %
+
+        Rolling counter + XOR checksum standardni.
+        """
+        p = _pad(payload)
+        mux = p[0]
+        val_23 = (p[2] << 8) | p[3]
+        val_45 = (p[4] << 8) | p[5]
+
+        result: dict = {
+            "mux_key":      f"0x{mux:02X}",
+            "rolling_ctr":  p[6] & 0x0F,
+            "checksum_ok":  validate_checksum(p),
+        }
+
+        if mux == 0xDE:
+            result["ect_c"]   = round(56.9 - 0.0002455 * val_23, 1)
+        elif mux == 0xAA:
+            result["map_hpa"] = round(val_23 * 0.41265 + 360.63, 1)
+        elif mux == 0xC1:
+            result["mat_c"]   = round(92.353 - 0.00113485 * val_45, 1)
+        else:
+            # TPS/load Q16 (bench potvrđeno: 0x9999 = 60.00%)
+            result["load_pct"] = round(val_23 / 65536.0 * 100.0, 2)
+
+        return result
 
     @staticmethod
     def decode_mux_342(payload: bytes) -> dict:
-        """
-        Decode multiplexed broadcast from CAN 0x0342.
+        """Alias za decode_0342 (kompatibilnost)."""
+        return CanDecoder.decode_0342(payload)
 
-        MUX format (from sdtpro hardware_simulator.py):
-          data[0] = mux key
-          0xDE → ECT:  56.9 - 0.0002455 * u16BE(data[2:4])  °C
-          0xAA → MAP:  u16BE(data[2:4]) * 0.41265 + 360.63   hPa
-          0xC1 → MAT:  92.353 - 0.00113485 * u16BE(data[4:6]) °C
-
-        Note: mux key 0x21 with constant 0xDE in byte[1] is seen during
-        bench/diagnostic mode (engine not running). Engine-running mode
-        cycles through 0xDE/0xAA/0xC1.
-
-        Returns: dict with present keys only (ect_c, map_hpa, mat_c).
-        """
-        p = CanDecoder._pad(payload)
-        mux = p[0]
-        val16_23 = (p[2] << 8) | p[3]
-        val16_45 = (p[4] << 8) | p[5]
-        result = {"mux": f"0x{mux:02X}"}
-        if mux == 0xDE:
-            result["ect_c"] = round(56.9 - 0.0002455 * val16_23, 1)
-        elif mux == 0xAA:
-            result["map_hpa"] = round(val16_23 * 0.41265 + 360.63, 1)
-        elif mux == 0xC1:
-            result["mat_c"] = round(92.353 - 0.00113485 * val16_45, 1)
-        return result
-
-    # ── 0x0103 — Spark EGT + TPS (Spark 900 ACE only) ───────────────────────
+    # ── Diagnostic bus 0x0516 — HW/Protocol identifier ────────────────────────
 
     @staticmethod
-    def decode_spark_egt(payload: bytes) -> float:
+    def decode_0516(payload: bytes) -> dict:
         """
-        Decode exhaust gas temperature from Spark-specific CAN 0x0103.
+        HW/Protocol identifier (konstantan za isti HW).
+        Nije SW-specifičan — mijenja se samo s promjenom hardwarea.
 
-        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
-          data[4] * 1.0125 - 60 = °C
-
-        Returns: EGT in °C.
+        Sadržaj je Bosch/BRP proprietary; korisno za identifikaciju HW varijante.
         """
-        p = CanDecoder._pad(payload)
-        return round(p[4] * 1.0125 - 60, 1)
+        p = _pad(payload)
+        return {
+            "hw_id_hex":  p[:8].hex(' ').upper(),
+            "hw_id_raw":  list(p[:8]),
+        }
+
+    # ── Diagnostic bus 0x04CD — DESS relay / Cluster heartbeat ───────────────
 
     @staticmethod
-    def decode_spark_tps_103(payload: bytes) -> float:
+    def decode_04CD(payload: bytes) -> dict:
         """
-        Decode throttle position from Spark-specific CAN 0x0103.
+        DESS transponder relay + cluster keepalive (1 Hz, 8 bytes).
 
-        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
-          (data[6]<<8 | data[7]) * 0.04907 - 25.12 = %
+        SAT čita iCODE transponder s DESS ključa i prosljeđuje podatke ECU-u.
+        Alternira između dva frejmа (alive toggle):
+          Frame A: 00 0B 03 04 20 02 01 21  (init/request)
+          Frame B: F0 AA 00 2D 00 04 00 00  (0xAA = alive byte)
 
-        Returns: TPS in %.
+        Bez valjanog DESS odgovora ECU ne dozvoljava start.
+        Ako je DESS disabled u ECU (BUDS2 opcija), ovaj ID možda nije potreban.
+
+        IDR0=0x99, IDR1=0xA0 → CAN ID = (0x99 << 3) | (0xA0 >> 5) = 0x4CD
         """
-        p = CanDecoder._pad(payload)
-        raw = (p[6] << 8) | p[7]
-        return round(raw * 0.04907 - 25.12, 1)
+        p = _pad(payload)
+        frame_type = "B_alive" if p[1] == 0xAA else "A_request"
+        return {
+            "frame_type":  frame_type,
+            "alive_byte":  f"0x{p[1]:02X}",
+            "raw":         p[:8].hex(' ').upper(),
+        }
 
-    # ── 0x0104 — Spark Throttle Body (Spark 900 ACE only) ────────────────────
+    # ── Cluster bus 0x0108 — RPM (cluster protocol) ───────────────────────────
 
     @staticmethod
-    def decode_spark_throttle_body(payload: bytes) -> float:
+    def decode_0108(payload: bytes) -> dict:
         """
-        Decode throttle body position from Spark-specific CAN 0x0104.
+        RPM na cluster busu (250 kbps, ECU→SAT).
 
-        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
-          (data[0]<<8 | data[1]) / 100
-
-        Unit: unknown (likely %, angle, or raw position).
-        Returns: throttle body position as float.
+        Layout (iz ECU binary CAN TX table @ 0x0433BC):
+          [0]   Status flags
+          [1:3] RPM u16 BE × 0.25
+          [3]   TPS % (1%/bit)
+          [4]   MAP kPa
+          [5]   Mode/gear
+          [6:8] Reserved
         """
-        p = CanDecoder._pad(payload)
-        raw = (p[0] << 8) | p[1]
-        return round(raw / 100.0, 2)
+        p = _pad(payload)
+        rpm_raw = (p[1] << 8) | p[2]
+        return {
+            "rpm":          int(rpm_raw * 0.25),
+            "tps_pct":      round(p[3] * 100.0 / 255.0, 1),
+            "map_kpa":      p[4],
+            "status":       f"0x{p[0]:02X}",
+        }
 
-    # ── 0x012C — Engine hours ─────────────────────────────────────────────────
+    # ── Cluster bus 0x012C — Engine hours ─────────────────────────────────────
+
+    @staticmethod
+    def decode_0012C(payload: bytes) -> dict:
+        """
+        Engine hours + service interval (cluster bus).
+
+        Layout:
+          [0:4] Engine runtime u32 BE (sekunde)
+          [4:6] Service countdown u16 BE (0.1h/bit)
+          [6:8] Reserved/flags
+        """
+        p = _pad(payload)
+        seconds = struct.unpack_from(">I", p, 0)[0]
+        service_raw = struct.unpack_from(">H", p, 4)[0]
+        return {
+            "engine_hours":           round(seconds / 3600.0, 2),
+            "engine_seconds":         seconds,
+            "service_hours_remain":   round(service_raw * 0.1, 1),
+        }
 
     @staticmethod
     def decode_engine_hours(payload: bytes) -> float:
-        """
-        Decode engine hours from CAN 0x012C.
-
-        Payload layout (DLC=8):
-          [0:4] Engine run time (u32 BE, seconds)  →  hours = seconds / 3600
-          [4:6] Service interval countdown (u16 BE, hours remaining, 0.1 h/bit)
-          [6:8] Reserved / flags
-
-        Returns: total engine hours as float (e.g. 123.4 h).
-        """
-        p = CanDecoder._pad(payload)
-        seconds = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]
-        return round(seconds / CanDecoder._SECONDS_PER_HOUR, 2)
+        p = _pad(payload)
+        seconds = struct.unpack_from(">I", p, 0)[0]
+        return round(seconds / 3600.0, 2)
 
     @staticmethod
     def decode_service_hours_remaining(payload: bytes) -> float:
-        """
-        Decode service interval hours remaining from CAN 0x012C payload [4:6].
-
-        Returns: hours until next service (float, 0.1 h resolution).
-        """
-        p = CanDecoder._pad(payload)
-        raw = (p[4] << 8) | p[5]
+        p = _pad(payload)
+        raw = struct.unpack_from(">H", p, 4)[0]
         return round(raw * 0.1, 1)
 
-    # ── 0x017C — DTC ──────────────────────────────────────────────────────────
+    # ── Cluster bus 0x017C — DTC codes ────────────────────────────────────────
+
+    @staticmethod
+    def decode_017C(payload: bytes) -> dict:
+        """
+        DTC fault codes (cluster bus, event-driven).
+
+        Layout:
+          [0]   DTC count (lower nibble, max 2 per frame)
+          [1:3] DTC code #1 u16 BE (BRP internal)
+          [3]   Status byte DTC #1
+          [4:6] DTC code #2 u16 BE
+          [6]   Status byte DTC #2
+          [7]   Frame counter
+        """
+        p = _pad(payload)
+        count = min(p[0] & 0x0F, 2)
+        codes = []
+        for i in range(count):
+            off = 1 + i * 3
+            code = (p[off] << 8) | p[off + 1]
+            if code:
+                codes.append(f"P{code:04X}")
+        return {
+            "dtc_count":  p[0] & 0x0F,
+            "dtc_codes":  codes,
+            "frame_ctr":  p[7],
+        }
 
     @staticmethod
     def decode_dtc(payload: bytes) -> list[int]:
-        """
-        Decode DTC fault codes from CAN 0x017C.
-
-        Payload layout (DLC=8) — BRP proprietary format:
-          [0]   Number of active DTCs in this frame (0–3)
-          [1:3] DTC code #1 (u16 BE, BRP internal code, 0x0000 = empty)
-          [3]   Status byte for DTC #1 (confirmed/pending flags)
-          [4:6] DTC code #2 (u16 BE)
-          [6]   Status byte for DTC #2
-          [7]   Sequence / frame counter
-
-        Note: BRP DTC codes differ from SAE J2012 PIDs.
-        Use core.dtc module to translate to SAE P-codes.
-
-        Returns: list of active DTC codes (integers, up to 2 per frame).
-        """
-        p = CanDecoder._pad(payload)
-        count = min(p[0] & 0x0F, 2)   # clamp to 2 codes per frame
-        codes: list[int] = []
+        p = _pad(payload)
+        count = min(p[0] & 0x0F, 2)
+        codes = []
         for i in range(count):
-            offset = 1 + i * 3
-            code = (p[offset] << 8) | p[offset + 1]
-            if code != 0x0000:
+            off = 1 + i * 3
+            code = (p[off] << 8) | p[off + 1]
+            if code:
                 codes.append(code)
         return codes
 
-    # ── 0x013C — Engine status flags ─────────────────────────────────────────
+    # ── Cluster bus 0x013C — Engine status flags ──────────────────────────────
 
     @staticmethod
-    def decode_engine_status(payload: bytes) -> dict:
+    def decode_013C(payload: bytes) -> dict:
         """
-        Decode engine status flags from CAN 0x013C.
+        Engine status + riding mode flags.
 
-        Payload layout (DLC=8):
-          [0]   Engine run state: 0=off, 1=cranking, 2=running, 3=limp mode
-          [1]   MIL / fault lamp: bit0=MIL on, bit1=service, bit2=limp
-          [2]   Rev limit flags: bit0=soft cut active, bit1=hard cut active
-          [3]   Launch / mode: bit0=neutral, bit1=sport mode, bit2=eco mode
-          [4:8] Extended status (model-specific)
-
-        Returns: dict with decoded fields.
+        Layout:
+          [0]   Engine run state: 0=off, 1=cranking, 2=running, 3=limp
+          [1]   MIL: bit0=MIL, bit1=service due, bit2=limp mode
+          [2]   Rev limit: bit0=soft cut, bit1=hard cut
+          [3]   Mode: bit0=neutral, bit1=sport, bit2=eco, bit3=cruise
+          [4:8] Extended (model-specific)
         """
-        p = CanDecoder._pad(payload)
+        p = _pad(payload)
         state_map = {0: "off", 1: "cranking", 2: "running", 3: "limp"}
         return {
-            "state":        state_map.get(p[0] & 0x03, f"unknown({p[0]})"),
+            "engine_state": state_map.get(p[0] & 0x03, f"0x{p[0]:02X}"),
             "mil_on":       bool(p[1] & 0x01),
             "service_due":  bool(p[1] & 0x02),
             "limp_mode":    bool(p[1] & 0x04),
@@ -330,130 +452,89 @@ class CanDecoder:
             "neutral":      bool(p[3] & 0x01),
             "sport_mode":   bool(p[3] & 0x02),
             "eco_mode":     bool(p[3] & 0x04),
+            "cruise_mode":  bool(p[3] & 0x08),
         }
-
-    # ── 0x0214 — Extended diagnostics ────────────────────────────────────────
 
     @staticmethod
-    def decode_extended_diag(payload: bytes) -> dict:
-        """
-        Decode extended diagnostics from CAN 0x0214 (DLC=8).
+    def decode_engine_status(payload: bytes) -> dict:
+        return CanDecoder.decode_013C(payload)
 
-        Content is Bosch ME17 / BRP proprietary. Format partially known:
-          [0]   Diag request type / session
-          [1:3] Response data (mode-dependent)
-          [3:8] Extended data
+    # ── Spark 900 HO specifično ───────────────────────────────────────────────
 
-        Returns: raw dict with hex strings for manual inspection.
-        """
-        p = CanDecoder._pad(payload)
-        return {
-            "session":  p[0],
-            "data_hex": p[1:].hex(' '),
-        }
+    @staticmethod
+    def decode_spark_egt(payload: bytes) -> float:
+        """EGT iz Spark 0x0103: byte[4] × 1.0125 - 60 = °C (sdtpro)."""
+        p = _pad(payload)
+        return round(p[4] * 1.0125 - 60, 1)
 
-    # ── Universal dispatcher ──────────────────────────────────────────────────
+    @staticmethod
+    def decode_spark_tps_103(payload: bytes) -> float:
+        """TPS iz Spark 0x0103: (byte[6:8] u16 BE) × 0.04907 - 25.12 = %."""
+        p = _pad(payload)
+        raw = (p[6] << 8) | p[7]
+        return round(raw * 0.04907 - 25.12, 1)
+
+    @staticmethod
+    def decode_spark_throttle_body(payload: bytes) -> float:
+        """Throttle body iz Spark 0x0104: byte[0:2] / 100."""
+        p = _pad(payload)
+        return round(((p[0] << 8) | p[1]) / 100.0, 2)
+
+    # ── Universalni dispatcher ────────────────────────────────────────────────
 
     @staticmethod
     def decode(can_id: int, payload: bytes) -> dict:
         """
-        Decode any supported CAN message by ID.
+        Dekodiraj bilo koji podržan CAN ID.
 
-        Returns a dict with all decoded fields.
-        Unknown CAN IDs return {'can_id': hex_str, 'raw': hex_str, 'decoded': False}.
-
-        Example:
-            >>> CanDecoder.decode(0x0108, bytes([0x00, 0x6D, 0x60, 0x64, 0x65, 0x00, 0x00, 0x00]))
-            {'can_id': '0x0108', 'rpm': 7000, 'throttle_pct': 39.2, 'map_kpa': 101, ...}
+        Returns:
+            dict s 'decoded': True ako je ID poznat, False inače.
+            Uvijek uključuje 'can_id' i 'raw'.
+            Za broadcast IDs sa checksumom uključuje 'rolling_ctr' i 'checksum_ok'.
         """
-        p = CanDecoder._pad(payload)
-        base = {"can_id": f"0x{can_id:04X}"}
+        p = _pad(payload)
+        base = {
+            "can_id": f"0x{can_id:04X}",
+            "raw":    p.hex(' ').upper(),
+        }
 
-        if can_id == CAN_RPM:
-            return base | {
-                "rpm":          CanDecoder.decode_rpm(p),
-                "throttle_pct": CanDecoder.decode_throttle_from_rpm_msg(p),
-                "map_kpa":      CanDecoder.decode_map_from_rpm_msg(p),
-                "status_byte":  p[0],
-                "raw":          p.hex(' '),
-                "decoded":      True,
-            }
+        dispatch = {
+            DIAG_RPM:         CanDecoder.decode_0102,
+            DIAG_DTC_STATUS:  CanDecoder.decode_0103,
+            DIAG_TEMP:        CanDecoder.decode_0110,
+            DIAG_EOT:         CanDecoder.decode_0316,
+            DIAG_MUX:         CanDecoder.decode_0342,
+            DIAG_HW_ID:       CanDecoder.decode_0516,
+            DIAG_DESS:        CanDecoder.decode_04CD,
+            CAN_RPM:          CanDecoder.decode_0108,
+            CAN_ENGINE_HOURS: CanDecoder.decode_0012C,
+            CAN_DTC:          CanDecoder.decode_017C,
+            CAN_ENGINE_FLAGS: CanDecoder.decode_013C,
+            # 0x0103 Spark variants
+            0x0103: CanDecoder.decode_0103,
+            0x0104: lambda pl: {
+                "throttle_body": CanDecoder.decode_spark_throttle_body(pl),
+            },
+        }
 
-        if can_id == CAN_TEMP:
-            return base | {
-                "coolant_temp_c": CanDecoder.decode_coolant_temp(p),
-                "iat_c":          CanDecoder.decode_iat(p),
-                "status_byte":    p[0],
-                "raw":            p.hex(' '),
-                "decoded":        True,
-            }
+        fn = dispatch.get(can_id)
+        if fn:
+            result = fn(p)
+            return base | result | {"decoded": True}
 
-        if can_id == CAN_ENGINE_HOURS:
-            return base | {
-                "engine_hours":           CanDecoder.decode_engine_hours(p),
-                "service_hours_remaining": CanDecoder.decode_service_hours_remaining(p),
-                "raw":                    p.hex(' '),
-                "decoded":                True,
-            }
-
-        if can_id == CAN_DTC:
-            return base | {
-                "dtc_count":   p[0] & 0x0F,
-                "dtc_codes":   CanDecoder.decode_dtc(p),
-                "raw":         p.hex(' '),
-                "decoded":     True,
-            }
-
-        if can_id == CAN_ENGINE_FLAGS:
-            return base | CanDecoder.decode_engine_status(p) | {
-                "raw":     p.hex(' '),
-                "decoded": True,
-            }
-
-        if can_id == CAN_DIAG_EXT:
-            return base | CanDecoder.decode_extended_diag(p) | {
-                "raw":     p.hex(' '),
-                "decoded": True,
-            }
-
-        if can_id == CAN_EOT_MUX:
-            return base | {
-                "eot_c":   CanDecoder.decode_eot_316(p),
-                "raw":     p.hex(' '),
-                "decoded": True,
-            }
-
-        if can_id == CAN_BROADCAST:
-            mux_data = CanDecoder.decode_mux_342(p)
-            return base | mux_data | {"raw": p.hex(' '), "decoded": True}
-
-        if can_id == CAN_SPARK_EGT:    # 0x0103 — Spark EGT + TPS
-            return base | {
-                "egt_c":   CanDecoder.decode_spark_egt(p),
-                "tps_pct": CanDecoder.decode_spark_tps_103(p),
-                "raw":     p.hex(' '),
-                "decoded": True,
-            }
-
-        if can_id == CAN_SPARK_THB:    # 0x0104 — Spark throttle body
-            return base | {
-                "throttle_body": CanDecoder.decode_spark_throttle_body(p),
-                "raw":     p.hex(' '),
-                "decoded": True,
-            }
-
-        # Unknown or broadcast IDs — return raw
+        # Nepoznat ID — samo raw
         return base | {
-            "raw":     p.hex(' '),
-            "decoded": False,
+            "decoded":      False,
+            "rolling_ctr":  p[6] & 0x0F if len(p) >= 7 else -1,
+            "checksum_ok":  validate_checksum(p),
         }
 
 
-# ─── CAN TX timing table (from ECU binary analysis) ───────────────────────────
+# ─── CAN TX timing tablice (iz ECU binary) ───────────────────────────────────
 
-#: CAN TX period in ms for GTI/SC 1630 ECU (SW: 10SWxxxxxx)
+#: Cluster bus timing (ms) za GTI/SC 1630 (10SWxxxxxx)
 GTI_SC_CAN_TIMING: dict[int, int] = {
-    0x015B: 8,
+    0x015B:  8,
     0x015C: 16,
     0x0148: 22,
     0x013C: 22,
@@ -462,12 +543,12 @@ GTI_SC_CAN_TIMING: dict[int, int] = {
     0x0214: 148,
     0x012C: 223,
     0x0110: 147,
-    0x017C: 0,     # event-driven (DTC), no fixed period
+    0x017C:   0,    # event-driven (DTC)
 }
 
-#: CAN TX period in ms for Spark 900 HO ECU (SW: 10SW011328 / 1037xxxxxx)
+#: Cluster bus timing (ms) za Spark 900 HO (10SW011328 / 1037xxxxxx)
 SPARK_CAN_TIMING: dict[int, int] = {
-    0x015B: 8,
+    0x015B:  8,
     0x0154: 16,
     0x0134: 20,
     0x013C: 20,
@@ -477,20 +558,59 @@ SPARK_CAN_TIMING: dict[int, int] = {
     0x0214: 132,
     0x012C: 196,
     0x0110: 131,
-    0x017C: 0,     # event-driven
+    0x017C:   0,
+}
+
+#: Diagnostic bus frekvencija (Hz) — bench sniff potvrđeno
+DIAG_FREQ: dict[int, int] = {
+    DIAG_RPM:        100,
+    DIAG_DTC_STATUS: 100,
+    DIAG_TEMP:        50,
+    DIAG_GTI_SC:      50,
+    DIAG_MISC_A:      50,
+    DIAG_MISC_B:      50,
+    DIAG_EOT:         50,
+    DIAG_MISC_C:      50,
+    DIAG_MUX:         50,
+    DIAG_HW_ID:        0,   # sporadično
+    DIAG_DESS:         1,
 }
 
 
 def get_timing(can_id: int, ecu_type: str = "gti300") -> int:
     """
-    Return CAN TX period (ms) for given CAN ID and ECU type.
+    Vrati CAN TX period (ms) za cluster bus.
 
     Args:
-        can_id:   CAN message ID.
-        ecu_type: 'spark' or 'gti300' (default).
+        can_id:   CAN ID.
+        ecu_type: 'spark' ili 'gti300' (default).
 
     Returns:
-        Period in ms, or 0 if event-driven / unknown.
+        Period ms, 0 = event-driven ili nepoznat.
     """
     table = SPARK_CAN_TIMING if ecu_type == "spark" else GTI_SC_CAN_TIMING
     return table.get(can_id, 0)
+
+
+def get_diag_freq(can_id: int) -> int:
+    """Vrati očekivanu frekvenciju (Hz) za diagnostic bus ID. 0 = sporadično."""
+    return DIAG_FREQ.get(can_id, 0)
+
+
+# ─── Riding mode dekoder ─────────────────────────────────────────────────────
+
+RIDING_MODES: dict[int, str] = {
+    0x01: "SPORT",
+    0x02: "ECO",
+    0x03: "CRUISE",
+    0x06: "SKI",
+    0x07: "SLOW SPEED",
+    0x08: "DOCK",
+    0x0F: "LIMP HOME",
+    0x14: "KEY MODE",
+}
+
+
+def decode_riding_mode(mode_byte: int) -> str:
+    """Dekodira riding mode byte iz CAN 0x0141 (ECU→SAT) ili 0x019B (SAT→ECU)."""
+    return RIDING_MODES.get(mode_byte, f"UNKNOWN(0x{mode_byte:02X})")

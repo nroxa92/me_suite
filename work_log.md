@@ -1,5 +1,212 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 25:00 — Full 56-mapa cross-SW audit, nova skripta cross_sw_audit.py
+
+### Sto je napravljeno
+- Kreirana nova skripta `cross_sw_audit.py` (zamjena za staru s 36 mapa) — pokriva svih 56 mapa iz MAPS_REF_FULL
+- Referenca: 2021/1630ace/300.bin (10SW066726), usporedba s 9 dumpova (2018-2021, sve snage)
+- Otkrivena greska u staroj dokumentaciji: 0x02B72A/0x02B73E NISU u16 period-encoded rev limiteri,
+  nego u8 bajtovi ispred ign_00 bloka (RPM cut pragovi u internoj skali, 0x21=33, 0x22=34)
+- Stvarni rev limiter potvrdjen @ 0x028E96 (LE u16 period-encoded)
+
+### Kljucni nalazi
+
+| Kategorija | Nalaz |
+|-----------|-------|
+| **Identicne u svim SW** | rpm_axis_1/2/3, inj_main, mat_corr, lambda_prot, cts_temp_axis (7 mapa, 804B) |
+| **Uvijek razlicite** | torque_main/mirror/opt, lambda_main/bias/trim/adapt/eff_sub, cold_start (9 mapa) |
+| **SC vs NA razlika** | NA: ~70% diff od ref; SC_ista_godiste: ~14%; SC_razlicite: ~48-60% |
+| **Mirror bug** | sc_bypass_1 != sc_bypass_2 unutar reference (26B razlike!) — sumnjivo |
+| **2019/300 == 2020/300** | Identicni u svim mapama (0 diff u 13.6% vs 14.3% od ref) |
+| **Rev cut byte** | 300hp SC: 0x22=34, 130/170 NA: 0x21=33, 230 SC: 0x21/0x23 mix |
+| **inj_main** | 100% identican u svim dumpovima — snaga se ne razlikuje kroz injection |
+| **Ignition** | NA ima ~90-97% diff od SC ref; 230 SC ima 40-78% diff; 2019==2021 300hp SC |
+| **lambda_thresh** | ALL(158) u svima osim 2019/2020 300hp (=== ref) |
+| **kfped** | 2018/300 SC potpuno razlicit (ALL 400B) — drugacija pedal krivulja |
+| **thermal_enrich** | samo SC varijante imaju razliku (NA == ref) |
+| **idle_rpm** | samo 2018/300 razlicit (89B) — svi ostali == ref |
+
+### Fajlovi promijenjeni
+- `cross_sw_audit.py` — nova skripta (zamjena)
+
+## 2026-03-19 14:30 — Cross-SW audit: 10 dumpova 1630 ACE (2018-2021)
+
+### Sto je napravljeno
+- Kreirana skripta `_materijali/cross_sw_audit.py` — cita 10 binarnih dumpova, usporeduje 36 mapa
+- Rezultati u `_materijali/maps_cross_sw_audit.md` (kompletan Markdown sa svim tablicama i interpretacijama)
+
+### Kljucni nalazi
+| Kategorija | Nalaz |
+|-----------|-------|
+| **Invarijantne mape** | rpm_axis_1/2/3, inj_main, inj_mirror — SAME u svim SW verzijama (2018-2021, sve snage) |
+| **Injection** | Bazna tablica IDENTIČNA za 130/170/230/300hp — snaga se ne razlikuje kroz injection nego kroz torque+lambda+ignition |
+| **SW string lokacija** | @ 0x001A (ne 0x0008 kako je ranije dokumentirano) |
+| **2021 NA/230 dumpovi** | Dijele ISTI SW string s 2020 (10SW053727/053729) — razlika samo 80B @ 0x017F02-0x017F73 u CODE |
+| **SC bypass** | 300hp=`2626`, 230hp=`1f1f`, 170/130hp=`1e1e` — svaka snaga ima drugaciji opcode; 2018/2019 imaju starije kodove |
+| **Lambda 2021/300** | Jedini s lambda min < 0.9844 (= 0.9655) — agresivniji bogati uvjeti |
+| **Torque 2021/300** | Najsiri raspon (min 30464, max 39168) od svih SW verzija |
+| **Rev limiter** | 300hp SC: 8223 RPM, 230hp SC: 8168 RPM, 170/130hp NA: 8750 RPM (visi zbog bez SC tlaka) |
+
+### Fajlovi promijenjeni
+- Kreiran: `_materijali/cross_sw_audit.py`
+- Kreiran: `_materijali/maps_cross_sw_audit.md`
+
+---
+
+## 2026-03-19 — Spark 900 ACE + GTI90 kompletan binarni audit
+
+### Što je napravljeno
+- Kreirana skripta `_materijali/spark_gti90_audit.py` — čita 6 dumpova (spark 2018/19/20/21 + gti90 2020/21)
+- Rezultati u `_materijali/spark_gti90_audit.md`
+
+### Ključni nalazi
+| | Spark 900 (10SW039116) | GTI90 (10SW053774) |
+|--|--|--|
+| Rev limiter | **0x028E34** = 5120t = **8081 RPM** | **0x028E7C** = 5875t = **7043 RPM** |
+| Ignition | **~0x026A50** (12×12, stride 144B) | **0x02B730** (= isti kao 1630!) |
+| Lambda main | **~0x024EC4** (mean ≈ 1.0) | 0x0266F0=flat, 0x026C08=aktivna |
+| Injection | ~0x02436C (overlapping) | **0x022066** (GTI legacy!) |
+| DTC tablica | **NIJE @ 0x0217EE** (period ticks!) | **0x0217EE** (kao 1630) |
+| Torque | NEMA na 1630 adresi | 0x02A0D8 i 0x02A5F0 (OK) |
+| CAN IDs | 0x00B9-0x0118 (niži range) | 0x015x-0x07FF (viši) |
+
+- spark_2019 = spark_2020 = spark_2021 (MD5 identičan!)
+- gti90_2020 vs gti90_2021: samo 80 razlika @ 0x017F02 (CODE region)
+- Spark ignition NIJE na 0x02B730 (1630 adresa); treba lokalizirati sve 27 mapa (A/B/B2/C)
+
+## 2026-03-20 00:15 — U16Ax DTC kodovi dodani u DTC_REGISTRY
+
+### Što je napravljeno
+- `core/dtc.py` — dodano 10 U16Ax kodova (0xD6A1-0xD6AB) u DTC_REGISTRY (ukupno 121 kodova)
+- `DtcDef.p_code` property popravljen: sada vraća ispravni SAE prefix (P/C/B/U) umjesto uvijek "P"
+  - U16Ax kodovi prikazuju se kao "U16A1"-"U16AB" (BRP U1xxx = 0xDxxx enkodiranje)
+- `dtc_off_all()` ključevi u results dictu koriste `defn.p_code` umjesto hardkodiranog `f"P{code:04X}"`
+- Testovi prolaze
+
+### Adrese U16Ax (ori_300, SW 10SW066726)
+| Kod   | code_addr  | en_addr    | Napomena |
+|-------|------------|------------|----------|
+| U16A1 | 0x0217D8   | 0x0210B9   | dijeli slot s P0231 (fuel pump)! |
+| U16A2 | 0x0217C8   | 0x0210B9   | dijeli slot s P0231 |
+| U16A3 | 0x0217D4   | 0x0210B9   | dijeli slot s P0231 |
+| U16A5 | 0x0217D0   | 0x0210B9   | dijeli slot s P0231 |
+| U16A8 | 0x0217C4   | 0x0210B9   | dijeli slot s P0231 |
+| U16AB | 0x0217CC   | 0x0210B9   | dijeli slot s P0231 |
+| U16A4 | 0x0217CE   | 0x021083   | već isključen (en=0x00) |
+| U16A7 | 0x0217CA   | 0x021083   | već isključen |
+| U16A9 | 0x0217C6   | 0x021083   | već isključen |
+| U16AA | 0x0217D6   | 0x021083   | već isključen |
+
+Mirror offset: +0x0366 (isti kao P-kodovi).
+
+---
+
+## 2026-03-19 23:55 — SAT cluster firmware analiza: CAN TX routines i heartbeat identifikacija
+
+### Zadatak
+Statička analiza 3 MC9S08DZ128 SAT cluster FLASH dumpa (GTX300_18, GTI_19, GTS90_17) za identifikaciju CAN TX ID-a koje SAT šalje ECU-u.
+
+### Ključni nalazi
+- **MSCAN modul base = $1800** (ne $0160 kako se pretpostavljalo) — startup kod piše na $1802/$1803/$1809/$1800
+- **TX buffer layout**: $1881=IDR0, $1882=IDR1, $1885-$188C=DSR0-7, $188D=DLR
+- **CAN TX ISR** @ $47DD (paged flash), CAN RX ISR @ $4777
+- **SAT TX IDs** iz init tablice (0x03628 / 0x03414): 0x0186, 0x0187, 0x0188, 0x018B, 0x018C, 0x0190-0x0192, 0x019A-0x019B, 0x01CD (GTX/GTI), 0x4CD (DESS)
+- **ECU → SAT**: 0x0578 (267-300ms) + 0x0400 (311-344ms) iz RX watchdog tablice
+- **TX0 MSCAN init**: IDR0=$80, IDR1=$01 → operativni init ID = 0x400 (ali scheduler koristi 0x018x-0x01Cx range)
+- RAM staging buffer: $0190-$0195 (GTX) / $0180-$0185 (GTS) — ISR kopira u $18xx
+
+### Fajlovi
+- Kreiran: `cluster/_materijali/sat_heartbeat_analysis.md`
+- Python skripte za analizu: `C:/Users/SeaDoo/AppData/Local/Temp/can_*.py`
+
+---
+
+## 2026-03-19 17:30 — can_sniffer.py: integracija CanDecoder + checksum/RC tracking
+
+### Promjene
+- `tools/can_sniffer.py` kompletno refaktoriran:
+  - Zamijenjen generički `_try_decode()` s `CanDecoder.decode()` ID-specifičnim dispatcherom
+  - `IdStats` dobio `checksum_errors` (XOR provjera) i `rolling_ctr_jumps` (skokovi RC) tracking
+  - `_print_stats()` prikazuje CS errore i RC jumpove po koloni
+  - CSV output koristi `_format_decoded()` koji filtrira meta polja
+  - Dodan sys.path fallback za pokretanje izvan me_suite roota
+- Svi testovi (test_core.py) prolaze bez promjena
+
+---
+
+## 2026-03-19 — CAN log analiza: BUDS2 DID/LID mapiranje live data parametara
+
+### Zadatak
+Analiza sniff_livedata.csv i sniff_maps24.csv da se identificiraju DID/LID identifikatori
+za 24 BUDS2 live data parametra (svaka sesija ima drugačiji set 24 parametara).
+
+### Metodologija
+- Protokol: UDS SID 0x22 (ReadDataByIdentifier) + KWP SID 0x21 (ReadDataByLocalId)
+- CAN IDs: 0x7E0 (request) / 0x7E8 (response) — standardni OBD adresi, ne 0x710/0x720
+- Identificiran kratki ciklus (34 items) = 24 user-selected + 10 background
+- ECU na stolu (motor hladan/topao, nije u radu)
+
+### Ključni nalazi
+1. **Arhitektura poliranja**: BUDS2 ima 2 faze:
+   - Kratki ciklusi 1-2 (34 items): samo user-selected parametri
+   - Puni ciklusi 4+ (89 items = 73 UDS + 16 KWP): user + kompletni background set
+2. **5 NRC DIDs**: 0x2146, 0x2167, 0x2168, 0x2169, 0x216d — ECU vraća NRC 0x12 (unsupported)
+3. **Temperatura format**: T_C = raw / 2 - 40 (Bosch standard 1-byte)
+   - 0x2120 = 120 → 20°C (Intake Temp, sobna) ✓
+   - 0x2121 = 184 → 52°C (Coolant Temp, topao motor)
+   - 0x2188 = 110 → 15°C (Exhaust Water Temp)
+4. **Pritisak**: 0x2136 = 202 → 202/2 = 101.0 kPa (Ambient Pressure) ✓ verificirano
+5. **Lambda format**: Q7, 128 = 1.000; pet DIDs daje 1.000 na stolu
+6. **sniff_cdid.csv**: 96 podržanih / 27 nepodržanih DIDs (DID discovery scan)
+
+### Fajlovi promijenjeni
+- `tools/did_map.py` NOVO — kompletna DID/LID mapa s fizikalnim dekoderima
+
+### Pouzdanost mapiranja
+- Definitivan (fizikalna provjera): Ambient Pressure (0x2136), Intake Temp (0x2120)
+- Visoka (~): Coolant Temp, Exhaust Water Temp, lambda parametri, lambda=1.0 parametri
+- Nesigurno (?): Engine Speed, Manifold Pressure, Mass Fuel Flow (formula nepoznata)
+- Background/nepoznato: 0x2101, 0x2102, 0x210c, 0x213d, KWP 0x1e, 0x11, 0x17, itd.
+
+## 2026-03-19 22:50 — SDCANlogger analiza: live CAN protokol s pravog plovila
+
+### Zadatak
+Kompletna analiza SDCANlogger projekta (C:\Users\SeaDoo\Desktop\old_pro\SDCANlogger\)
+koji je snimao live CAN s pravog Sea-Doo plovila 2025-07-27.
+
+### Ključni nalazi
+- **Bus brzina**: 250 kbps (cluster/body bus, ne dijagnostički)
+- **Motor status pri snimanju**: ISKLJUČEN (RPM = 5–6 cijelo vrijeme)
+- **Aktivnih CAN ID-ova**: 14 ukupno
+- **Nepoznati ID-ovi**: 0x122, 0x316, 0x4CD, 0x7DF, 0x7E0, 0x7E8
+
+### SAT Heartbeat: 0x4CD (POTVRĐENO)
+- Period: točno 1000ms (1 Hz)
+- Alternira 2 poruke: A=`000B030420020121`, B=`F0AA002D00040000`
+- 0xAA = klasični "alive" byte u embedded sistemima
+- **Ovo je SAT/cluster keepalive** — jedini ne-ECU, ne-dijagnostički ID
+
+### XOR Checksum (potvrđeno na 5 ID-ova)
+- `byte[7] = XOR(byte[0..6])` — vrijedi za 0x102, 0x103, 0x110, 0x122, 0x516
+- 0x300, 0x308, 0x316, 0x320, 0x342 nemaju ovaj CS
+
+### 0x102 dekodiranje potvrđeno
+- `byte[1:3]` = RPM_raw, RPM = raw × 0.25
+- `byte[3]` = coolant_temp_raw, °C = raw − 40 (raspon 50–75°C potvrđen)
+- `byte[6]` = rolling counter 0x00–0x0F
+- `byte[7]` = XOR checksum
+
+### BUDS dijagnostika (0x7E0/0x7E8)
+- 0x7E0 = BUDS → ECU UDS zahtjevi (ReadDataByIdentifier 0x22)
+- 0x7E8 = ECU → BUDS odgovori
+- Aktivnih DIDs: ~85 DID-ova oblika 0x21xx (0x2101–0x2188)
+- 0x7DF = ISO-TP Flow Control (0x30) od BUDS alata
+
+### Fajlovi kreirani/modificirani
+- C:\Users\SeaDoo\Desktop\cluster\_materijali\can_protocol_knowledge.md — NOVI, kompletni CAN protokol nalaz
+
+---
+
 ## 2026-03-19 22:00 — Koraci 1–7: binarna analiza, backup/restore, MapGridTab, diff_maps, UI
 
 ### Korak 1 — Binarna provjera adresa 0x02B72A / 0x02B73E u 2018 SW (10SW023910)
@@ -3860,3 +4067,253 @@ Agent pronašao Y-os za accel enrich i novu Spark knock retard tablicu.
 
 ### Fajlovi promijenjeni
 - `core/map_finder.py`: `_KFPED_DEF`, `_MAT_DEF`, `_scan_kfped()`, `_scan_mat()`
+
+## 2026-03-19 23:30 — CAN log analiza: 6 sniff fajlova, UDS/KWP dekodiranje, EEPROM operacije
+
+### Analizirani fajlovi
+- `tools/sniff_buds2.csv` (244K poruka) — čisti broadcast, bez BUDS2
+- `tools/sniff_live.csv` (2.4M poruka) — EEPROM operacije
+- `tools/sniff_live2.csv` (2.1M poruka) — firmware flash
+- `tools/sniff_cdid.csv` (1.2M poruka) — CDID promjene
+- `tools/sniff_livedata.csv` + `sniff_maps24.csv` — live data reading
+
+### Analitička skripta
+- `tools/analyze_can.py` — kompletna analiza: ID stats, CAN-TP reassembly, UDS decode, EEPROM writes
+
+### Ključni nalazi
+
+#### EEPROM LID mapa (KWP 0x3B WriteDataByLocalId)
+| LID | Sadržaj | Primjer |
+|-----|---------|---------|
+| 0x90 | VIN (17B) | YDV03313L820 |
+| 0x97 | Motor broj (7B) | N123456 |
+| 0x11 | Customer name (30B) | jet |
+| 0x16 | Delivery date (3B BCD) | 26-03-2019 |
+| 0x15 | Dealer/zip code | 60620 |
+| 0x17 | Nepoznato (2B) | 0000 |
+| 0x9F | DESS key (6B) | 260319 01 9871 (datum+idx+keyID) |
+| 0x9A | DESS key slot 2 | isti format |
+| 0x9D | DESS key slot 3 | isti format |
+| 0xA2-0xAB | DESS clear (9B) | 000000000000000000 |
+| 0xCD | CDID record (16B) | byte[7]=model year BCD (0x19=2019, 0x22=2022), byte[9]=checksum? |
+| 0x87 | SW part identifier | .34KB |
+| 0xB4 | HW/SW ident (8B) | 101C872933344B42 |
+| 0xA0 | Config (4B) | 01810400 |
+
+#### SecurityAccess razine
+- 0x01/0x02: EEPROM write (seed=2B, key=2B)
+- 0x03/0x04: Diagnostic extended session
+- 0x05/0x06: Programming session
+- 0x07/0x08: Flash programming (highest level)
+
+#### Firmware Flash (sniff_live2.csv)
+- Sekvenca: TesterPresent → KWP_ReadECUIdent (0x1A/0x89) → Session(0x85) → SecurityAccess(0x03→0x01→0x05→0x07) → KWP_Write(0x9F) → RoutineControl → RequestDownload(0x34) → 33,320 TransferData blokova × 63B → RequestTransferExit → ECU Reset
+- TransferData: 16,659 blokova × 62B + 1 × 14B = ~1MB
+- Max block length iz resp 0x743F = 63 bajta
+
+#### 0x516 broadcast = SW identifier
+- `201C812C32314A42` → bytes[4-7] = '21JB' (2021 model, varijanta JB)  = stari SW
+- `101C872933344B42` → bytes[4-7] = '34KB' = novi SW (nakon flasha)
+- DID 0x2182 = isti podatak kao 0x516 broadcast
+- LID 0xB4 = isti podatak
+
+#### Broadcast ID mapa
+| ID | Hz | Opis |
+|----|----|----|
+| 0x102 | 100 | RPM/temp/status: bytes[1:3]×0.25=RPM, byte[5]=temp+40, bytes[6:8]=counter |
+| 0x103 | 100 | temp/DTC: byte[0]=DTC, bytes[6:8]=rolling counter |
+| 0x110 | 50 | System status: bytes[0:5] const=0x00000025, bytes[5:7]=sub-counter, byte[7]=XOR |
+| 0x300 | 50 | Sve nule (na stolu bez senzora) |
+| 0x308 | 50 | Sensor data: konstant 0x8002000020000200 na stolu |
+| 0x320 | 50 | Misc: konstant 0x00FE000060FE8000 na stolu |
+| 0x342 | 50 | Variable: bytes[2:4] = Q8 vrijednost (lambda ~1.0, temp ~22-38°C) |
+| 0x516 | 50 | SW identifier: 8B, sve konstantno, bytes[4:8]=ASCII model/variant |
+| 0x122 | 100 | BUDS2 dongle status (samo kad je BUDS2 spojen) |
+| 0x316 | 50 | BUDS2 dongle (samo kad je BUDS2 spojen): bytes[0:4]=0x0BB80100, byte[4]=varijabilno |
+
+#### 0x342 dekodiranje
+- bytes[0:2] = 0x0000 (konstantno)
+- bytes[2:4] = Q8 vrijednost rotating parametra (lambda ≈1.0, ili temp 22-38°C)
+- bytes[4:6] = 0x7800 = Q8 120 (coolant temp na stolu = 120°C ili konstanta)
+- bytes[6:8] = 0x0000
+
+#### KWP 0x1A/0x89 ECU Ident
+- Payload: `32382D31312D323002215300...`
+- ASCII početak: `28-11-20` = datum kompilacije 28.11.2020 (SW 10SW053727, 230hp 2020)
+- Potvrđuje da je sniff_live2.csv flash 10SW053727 na ECU koji je bio 10SW066726 (2021 300hp)
+
+#### DID prostor (0x21xx)
+- 97 jedinstvenih DID-ova pronađeno u cdid/livedata sesijama
+- DID 0x2120 = 0x78 = 120 (najčešće čitan)
+- DID 0x2182 = SW identifier (8B)
+- DID 0x2101/0x2102 = 3 (session/mode counter?)
+- DID 0x210C = 1800 (RPM related?)
+- DID 0x2104/0x1027 = 4135 (MPa? kPa?)
+
+### Fajlovi promijenjeni
+- `tools/analyze_can.py` — NOVO: kompletna analitička skripta
+
+## 2026-03-19 20:00 — CAN sniffanje BUDS2 sesije — kompletna analiza
+
+### Sniff sesije (tools/sniff_*.csv):
+- sniff_buds2.csv — broadcast ID-ovi bez BUDS2: 0x102,0x103,0x110,0x300,0x308,0x320,0x342,0x516
+- sniff_live.csv (28MB) — EEPROM operacije
+- sniff_live2.csv (18.5MB) — firmware flash 10SW066726→10SW053727
+- sniff_cdid.csv (12.5MB) — CDID: godina 19→22, usage/version series→racing
+- sniff_livedata.csv (62MB) + sniff_maps24.csv (13.5MB) — live data 48 parametara
+
+### Protokol:
+- EEPROM: KWP2000 0x3B WriteDataByLocalIdentifier, bus 0x710(req)/0x720(resp)
+- Extended addr: 0x710 byte[0]=0x01 (target), 0x720 byte[0]=0xF3 (source)
+- Flash: UDS 0x7E0/0x7E8, SecurityAccess 3 razine (0x01,0x05,0x07), ~1MB transfer
+- SecurityAccess seed/key = 16-bit (seed=0x0000 → no challenge za EEPROM level 1)
+
+### EEPROM LID mapa (potvrđena):
+- 0x90 = VIN (17B ASCII), 0x97 = motor br., 0x11 = customer (30B), 0x16 = delivery date (BCD)
+- 0x9F/0x9A/0x9D = DESS key slots, 0xA2-0xAB = clear DESS slots
+- 0xCD = CDID record (byte[7]=model year BCD, byte[9]=checksum)
+- 0xB4 = SW identifier (8B)
+
+### 0x516 broadcast = SW identifier (mijenja se s flashom)
+- Prije: 20 1C 81 2C 32 31 4A 42 → 10SW066726 (300hp 2021)
+- Nakon: 10 1C 87 29 33 34 4B 42 → 10SW053727 (230hp 2020)
+
+### .gitignore kreiran, sniff CSV-ovi untrackani iz gita
+
+## 2026-03-19 14:30 — CAN Broadcast kompletna analiza + ECU simulator
+
+### Analiza broadcast framova (sniff_buds2, sniff_live, sniff_live2)
+
+**Checksum — POTVRĐENO za sve poruke s counterom:**
+- byte[6] = rolling counter 0..15
+- byte[7] = XOR(byte[0]..byte[6]) — tj. XOR svih 8 bajtova = 0x00
+
+**0x102 (100Hz) — RPM/Temp:**
+- byte[0:2] = 0x0000 (konstanta)
+- byte[1:3] = RPM u16BE / 0.25 (0x0080 = 32 RPM = "ECU on, motor off")
+- byte[3] = Temp+40 (0x14=20 → -20°C)
+- byte[4] = SW-specifičan scalar: 066726=0x14(12.5V×0.625), 053727=0x0E(8.75V×0.625)
+- byte[5] = 0xCA (konstantan status byte)
+- byte[6] = counter, byte[7] = XOR
+
+**0x103 (100Hz) — DTC:**
+- byte[0] = DTC count (066726: uvijek 0x03; 053727: 0x00 ili 0x02)
+- byte[2] = 053727 specifičan status (0x02 kada aktivan)
+- byte[6] = counter, byte[7] = XOR
+
+**0x110 (50Hz) — System status:**
+- byte[3] = SW config: 0x25 (066726) vs 0x39 (053727)
+- byte[5] = mode: 0x02 (066726) vs 0x03 (053727, bit 0 razlika = SC config?)
+- byte[7] = XOR — POTVRĐENO checksuma!
+
+**0x308 (50Hz) — Engine state flags:**
+- byte[0] = 0x80 = engine running flag; 0x00 u flash/boot modu
+- byte[1] = 0x02 normal; 0x10/0x12 = boot mode
+- byte[4] = 0x20 = load sensor; 0x00 = no load
+
+**0x320 (50Hz) — Misc sensors:**
+- byte[1] i byte[5] = 0xFE = "Not Available" (SAE J1939/ISO 11898 konvencija)
+- byte[4] = TPS raw: 0x60=96 (066726), 0xF0=240 (053727)
+- byte[6] = 0x80/0x82 (bit 1 razlika između SW verzija)
+
+**0x342 (50Hz) — Varijabilni parametri:**
+- byte[2:4] = u16BE, encoding = Q16 percentage (0x9999=60.00%, 0x0107=0.4%)
+- Interpretacija: TPS (throttle position sensor) kao U16 percentage
+- byte[4] = 0x78 = 120 (uvijek konstanta, neidentificirano)
+
+**0x516 (50Hz) — ISPRAVAK IZ PRETHODNE SESIJE:**
+- Prethodno zapisano kao "SW identifier koji se mijenja s flashom" — NETOČNO!
+- 0x516 je IDENTIČAN u sniff_buds2, sniff_live (066726) i sniff_live2 (053727): 20 1C 81 2C 32 31 4A 42
+- Ovo je HW/Protocol identifier, NE SW identifier
+- Prethodni zaključak o promjeni 0x516 bio je pogrešan (možda iz sniff_cdid ili sniff_livedata?)
+
+**NOVI ID-ovi u 053727 (sniff_live2):**
+- 0x122 (100Hz): SW-specific frame s counterom + XOR checksum
+  - byte[0]=0x39 = isti SW config byte kao 0x110 byte[3]
+  - byte[3] = 0xD3 = normalan rad, 0x00 = inicijalizacija
+- 0x316 (50Hz): ambijentalna temperatura u byte[4] (°C direktno)
+
+**0x4CD — SAT/Dashboard klaster:**
+- SAMO u sniff_live2 (klaster nije bio prisutan u sniff_live!)
+- 2 tipa framova @ ~50Hz alterniraju:
+  - Tip A: F0 AA 00 2C 00 00 00 00 (AA/BB = klaster status, 0x2C=param)
+  - Tip B: 00 03 03 04 20 02 01 18 (config + flags)
+- ZAKLJUČAK: ECU NE TREBA 0x4CD za rad — 066726 radi perfektno bez njega
+- 0x4CD je klaster koji prima broadcast i šalje display heartbeat za SAT modul
+
+**Dijagnostički protokol (iz sniff_live/live2):**
+- 0x7E0 → 0x7E8: UDS physical (BUDS2 ↔ ECU)
+- 0x710 → 0x720: ISO 15765-2 alternativna adresa (BUDS2 broadcast?)
+- 0x7DF: OBD-II functional (Mode 0x01 = current data)
+- 0x7E8 response: 0x7F=negative, 0x76=pozitivni na 0x36 (TransferData)
+
+### Fajlovi kreirani/modificirani
+- tools/analyze_can2.py — full broadcast analiza (nova)
+- tools/analyze_can3.py — detaljna dekodacija round 2 (nova)
+- tools/analyze_can4.py — 0x122/0x316/0x4CD detalji (nova)
+- tools/ecu_simulator.py — ECU broadcast simulator (nova) — python-can IXXAT backend
+
+## 2026-03-19 — DTC PDF: kompletna ekstrakcija tablice grešaka
+
+### Zadatak
+OCR ekstrakcija svih DTC kodova iz skeniranog PDF-a `_docs/dtc -15.pdf` (39 stranica).
+
+### Metoda
+- pypdfium2 render (scale=2.5) → PNG za svaku stranicu
+- Claude Read tool (multimodal) za OCR svake stranice
+
+### Rezultat
+Fajl: `C:/Users/SeaDoo/Desktop/cluster/_materijali/dtc_pdf_complete.md`
+
+### Ključni nalazi — CAN komunikacija
+**ECM prijavljuje timeout za cluster CAN poruke:**
+- U16A1: Missing CAN ID **514h**
+- U16A2: Missing CAN ID **220h**
+- U16A3: Missing CAN ID **408h**
+- U16A6: Checksum error CAN ID **230h**
+- U16A7: Checksum error CAN ID **408h**
+- U16AA: Missing CAN ID **410h**
+- U16AB: Checksum error CAN ID **410h**
+
+**IBR prijavljuje:**
+- U0457: Cluster CAN messages timeout or validity (obje IBR verzije)
+
+**Cluster TX CAN ID-ovi (koje cluster šalje ECM-u):** 514h, 220h, 230h, 408h, 410h
+
+### Statistika
+- CLUSTER modul: 13 kodova (B2210–B2224 + P0564, P0629)
+- ECM: ~90 kodova (P-kodovi + U16Ax)
+- IBR / IBR 2013: ~25 kodova svaki (C-kodovi)
+- Gateway: U0300
+- U-kodovi CAN: 12 relevantnih
+
+### Fajlovi
+- `cluster/_materijali/dtc_pdf_complete.md` — novo, kreirano
+
+## 2026-03-19 20:30 — 4TEC 1503 audit + CAN cross-SW analiza
+
+### Sto je napravljeno
+- Pokrenut binarni audit 9 dumpova (2018x5, 2019x3, 2020x1) za 4TEC 1503
+- Pokrenut CAN cross-SW audit 6 ACE 1630 dumpova (2018-2021)
+- Skripte: _materijali/run_4tec_audit.py, run_4tec_detail.py, run_can_audit.py, run_can_detail.py
+
+### 4TEC 1503 kljucni nalazi
+- SW string @ 0x001A (ne 0x0008 kao ACE 1630)
+- Ignition: ISTE adrese kao ACE 1630 (0x02B730+, 144B stride, 12x12 u8)
+- Injection: SAMO 0x022066 (GTI legacy format, nema mirrora) — 0x02436C nije injection za 1503
+- Rev limiter: ISTE adrese (formula RPM=40MHz*60/ticks/58 vrijedi); 130/155hp limit ~7892 RPM
+- DTC: double storage, iste adrese (0x0217XX main + 0x021BXX mirror)
+- U16Ax kodovi: postoje u SVIM 1503 SW varijantama na identičnim adresama
+- Identicnost: 130v1==155v1, 130v2==155v2, 2019(130/155/230) svi identični
+- v1->v2 razlika: lambda tablice 0x0262-0x026C + embedded cal 0x012C80 (ukupno ~2625B)
+
+### CAN cross-SW kljucni nalazi
+- 0x0433BC NIJE CAN TX tablica — sadrzaj je lookup tablica perioda, identican svim SW
+- Prava CAN TX tablica: 0x03DF0C (2019+) / 0x03DF1E (2018), pocinje s 0x0578 (cluster primary)
+- Tablica IDENTIČNA za sve 2019-2021 (300hp i 230hp) — CAN TX se ne mijenja medu godistima
+- 2018 vs 2019+: isti sadrzaj, offset za 18B (drugačiji CODE layout)
+- 0x0408 nije GTS-specifican — postoji u svim SW
+
+### Fajlovi
+-  — novo, kreirano
+-  — novo, kreirano

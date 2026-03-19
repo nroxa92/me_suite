@@ -4,6 +4,17 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-19 25:00 — Full 56-mapa cross-SW audit svih 1630 ACE dumpova]**
+👤 VAZNA ISPRAVKA — prethodni popis mapa bio nepotpun (30 umjesto 56). Evo pune liste MAPS_REF_FULL (56 mapa). Za cross-SW analizu: provjeri svaku adresu u svakom 1630 ACE dumpu, izvjesti koliko bajtova se razlikuje vs referenca (2021/300.bin).
+🤖 Audit dovrseni. 7 mapa identicnih u svima (rpm_axis_1/2/3, inj_main, mat_corr, lambda_prot, cts_temp_axis). Bug: sc_bypass_1 != sc_bypass_2 unutar reference (26B). 0x02B72A su u8 bajtovi, ne u16 rev limiter. Stvarni rev cut @ 0x028E96: 300hp=8158RPM, 130/170NA=7892RPM, 230SC=8158RPM.
+
+---
+---
+**[2026-03-19 23:55 — SAT cluster firmware analiza: CAN TX routines]**
+👤 Analiza MC9S08DZ128 SAT cluster firmware dumpova (GTX300_18, GTI_19, GTS90_17) za CAN TX routines i heartbeat poruke. Tražena arhitektura: HCS08, MSCAN TX @ $0170+, search za IDR0/IDR1 i poznate ID-e.
+🤖 MSCAN base je $1800 (ne $0160). SAT TX IDs: 0x0186, 0x0187-0x019B, 0x01CD (GTX/GTI), 0x4CD (DESS). ECU šalje SAT-u na 0x0578 + 0x0400. Kompletan izvještaj: `cluster/_materijali/sat_heartbeat_analysis.md`.
+
+---
 **[2026-03-19 22:45 — Binarna analiza osi za 8 mapa]**
 👤 You are doing binary analysis of ECU flash files to find axis definitions (X and Y axes) for 8 maps: Injection, Lambda prot, Deadtime, Decel RPM ramp, Idle RPM, Lambda eff u8, KFWIRKBA, Accel enrichment.
 🤖 Sve osi pronadjene — detaljan izvjestaj dolje. Kljucni nalaz: deadtime mapa stvarno pocinje na 0x0258AA (ne 0x025900), inject osi su dijeljene (RPM na 0x024F46, Load na 0x02AE30), KFWIRKBA Y-os nije inline vec dijeljena.
@@ -44,6 +55,12 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 **[2026-03-19 22:00 — 4tec1503 kompletna binarna analiza]**
 👤 Kompletni map inventar za Rotax 1503 (4tec1503) — usporedba 130/155/230hp 2019 i 2020, GTI injection/ignition extra provjera, rev limiter potvrda, SC bypass i SC boost factor analiza.
 🤖 DEO 1: 130/155/230hp 2019 su byte-for-byte identicni (0 razlika). DEO 2: 1503 vs 1630 = 17389B CODE razlika u 660 blokova; kljucne mape razlicite (injection, lambda, torque, ignition), ali RPM os i rev limiter identicni. DEO 3: GTI injection i 8 extra ignition mapa aktivne u 1503. DEO 4: Rev limiter = 7892 RPM (5243 ticks) za 2019/2020 (KOREKCIJA: 7700 RPM vrijedi samo za 10SW025752/2018). DEO 5: SC bypass NA (iste vrijednosti kao 1630 NA); anomalija SC boost factor +41.2% (flat 23130). DEO 6: 2019 vs 2020 = 536B razlika, mape identicne. Azurirani map_finder.py, MAPS_REFERENCE.md, ENGINE_SPECS.md, SW_VERSIONS.md.
+
+---
+---
+**[2026-03-19 — Spark 900 ACE + GTI90 kompletan binarni audit]**
+👤 Kompletan audit za Sea-Doo 900 ACE (Spark + GTI90) ME17.8.5 binarnih fajlova — mape, DTC-ovi, CAN tablice. 6 dumpova: spark 2018/19/20/21 + gti90 2020/21.
+🤖 Spark ign: ~0x026A50 (ne 0x02B730!), rev=8081RPM, lambda main ~0x024EC4; GTI90: ign=0x02B730 (=1630), rev=7043RPM, inj@0x022066, DTC@0x0217EE. spark_2019=2020=2021 identični. Izvještaj: `_materijali/spark_gti90_audit.md`.
 
 ---
 ---
@@ -852,5 +869,70 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 **[2026-03-19 22:00]**
 👤 Radi na ME17Suite projektu. Implementiraj sljedećih 7 koraka: (1) provjeri adrese 0x02B72A/0x02B73E u 2018 SW, (2) diff 2019 ORI vs NPRo STG2, (3) diff Spark 2018 vs 2021, (4) backup/restore u MapEditor, (5) Mape tab u GUI, (6) diff_maps() + UI, (7) work_log.md
 🤖 Svi koraci dovršeni. Ključni nalazi: 0x02B72A/0x02B73E su ignition data u 2018 SW (ne rev limiter); NPRo STG2 mijenja ignition/injection/torque/lambda ali ne RPM os; Spark 2018≈2021 (identične ign mape). backup/restore, MapGridTab i diff_maps implementirani. Svi testovi prolaze (56/54/62 mapa).
+
+---
+
+---
+**[2026-03-19 23:30]**
+👤 Analiziraj sve CAN log fajlove u tools/ — statistike, UDS dekod, EEPROM operacije, firmware flash, broadcast parametri, DID mapiranje.
+🤖 Kompletna analiza 6 fajlova (ukupno ~8.4M CAN poruka). Ključni nalazi: EEPROM LID mapa dekodirana (VIN=0x90, motor=0x97, customer=0x11, date=0x16, DESS=0x9F/9A/9D/A2-AB, CDID=0xCD byte[7]=model year BCD). Firmware flash = 33,320 blokova × 63B ≈ 1MB, 4 SecurityAccess razine (0x01-0x08). KWP 0x1A/0x89 otkriva datum kompilacije 28-11-2020 (SW 10SW053727). 0x516 broadcast bytes[4:8] = ASCII SW identifier ('21JB'→'34KB' nakon flasha). 95 + 94 DID-ova u livedata sesijama, svi u 0x21xx prostoru.
+
+---
+**[2026-03-19 22:50]**
+👤 Analiziraj stari SDCANlogger projekt koji je snimao live CAN s pravog Sea-Doo plovila. Cilj: pronaći SAT→ECU heartbeat i kompletni cluster CAN protokol.
+🤖 Analiza 217K linija CAN logova završena. Ključno: 0x4CD je SAT heartbeat (1Hz, alternira 2 poruke, 0xAA alive byte). XOR checksum potvrđen na 5 ECU ID-ova. 0x7E0/0x7E8 = BUDS dijagnostika s ~85 aktivnih DID-ova. Kompletni nalazi zapisani u cluster/_materijali/can_protocol_knowledge.md.
+
+---
+**[2026-03-19 14:30]**
+👤 Detaljna analiza ECU broadcast heartbeat framova iz CAN logova — dekodacija svakog ID-a, SW usporedba 066726 vs 053727, klaster heartbeat identifikacija, Python simulator.
+🤖 Sve broadcast poruke dekodovane, checksumi potvrđeni (XOR byte[0:7]=0). Ključno: 0x516 je HW/Protocol ID (nije SW-specific). Novi IDs u 053727: 0x122 i 0x316. 0x4CD = klaster display heartbeat, ECU ga ne treba za rad. Simulator tools/ecu_simulator.py napisan s IXXAT backendom, generira bitno-identičan output kao snimljeni logovi.
+
+---
+
+---
+**[2026-03-19 23:30]**
+👤 dtc -15.pdf prouci ovo imamo "u" greske koje ecu prikazuje.... ispominje se canid missingfromcluster...ajdetiopet prodi taj doc i vidi kako da iskljucimo i te can greske...
+🤖 PDF (sm/2013-006) je za stari 4-TEC 1503 platform (2013), ne naš 1630 ACE. CAN IDs 0x230/0x408/0x410/0x514 vrijede za 1503. Naš ME17.8.5 klaster mora slati na 0x0186+0x01CD (iz SAT firmware analize). U0457 ne može se isključiti DTC OFF mehanizmom — treba implementirati heartbeat u ESP32.
+
+---
+---
+---
+**[2026-03-19 — CAN log analiza: BUDS2 DID/LID mapiranje]**
+👤 Analiziraj CAN log fajlove da mapiras DID/LID identifikatore na nazive BUDS2 live data parametara. Dvije sesije: sniff_livedata.csv (24 livedata params) + sniff_maps24.csv (24 maps params). Protokol KWP2000 over CAN, 0x710/0x720 extended addr.
+🤖 Protokol je UDS 0x22 + KWP 0x21 na 0x7E0/0x7E8 (ne 0x710/0x720). Kratki ciklus 34 items = 24 user + 10 background. 5 DIDs vraca NRC 0x12 (unsupported). Definitivan match: 0x2136=101 kPa (Ambient Pressure), 0x2120=20C (Intake Temp), 0x2121=52C (Coolant Temp). Generirano tools/did_map.py s kompletnom mapom.
+
+---
+**[2026-03-19 — Spark klaster na 1630 ECU]**
+👤 mozemo li promijenitk can poruke koje ecu ceka od sat, situacija 230motor sa spark cluster?
+🤖 Teorijski da (CAN RX tablica negdje u CODE regiji) ali: (1) CAN RX tablica nije pronađena u binarnom — samo TX @ 0x0433BC; (2) Spark SAT firmware enkriptiran — ne znamo koje IDs šalje na 250kbps; (3) payload format nepoznat. Realniji pristup: ESP32 translator koji prevodi Spark IDs → GTX/GTI IDs koje 1630 ECU očekuje. Treba: live sniff Spark SAT + live sniff 1630 ECU s originalnim SAT.
+
+---
+**[2026-03-19 — can_sniffer.py integracija CanDecoder]**
+👤 implementirajmo sve kfeni o analize i sve i implementirajmo svee
+🤖 Implementirano sve: core/can_decoder.py kompletno prepisano (XOR checksum, rolling counter, 11 ID-specifičnih dekodera, riding mode, DIAG/cluster bus podjela). tools/can_sniffer.py refaktoriran — koristi CanDecoder.decode() dispatcher, prikazuje checksum errore i RC jumpove po ID-u. tools/did_map.py bio već kompletan. Svi testovi prolaze.
+
+---
+---
+**[2026-03-19 — DTC PDF ekstrakcija: kompletna tablica grešaka]**
+👤 Pročitaj PDF dtc -15.pdf (skenirani), renderaj sve stranice, OCR, izvuci kompletnu DTC tablicu s modulima, posebno CAN/cluster kodovi. Spremi u cluster/_materijali/dtc_pdf_complete.md
+🤖 Renderirano 39 stranica (pypdfium2 scale=2.5), OCR svake stranice. Kompletna tablica: CLUSTER (15 kodova), ECM (~90 kodova), IBR/IBR2013 (~25 kodova), Gateway (1 kod), U-kodovi CAN (12 kodova). Cluster CAN ID-ovi koje ECM prati: 514h, 220h, 408h, 230h, 410h.
+
+---
+**[2026-03-19 — U16Ax kodovi dodani u DTC_REGISTRY]**
+👤 [nastavak prethodne sesije — implementacija U16Ax DTC OFF]
+🤖 Dodano 10 U16Ax kodova (0xD6A1-0xD6AB) u DTC_REGISTRY. Popravljen p_code property za P/C/B/U prefix prikaz (U16A1 umjesto PD6A1). dtc_off_all koristi defn.p_code. Ukupno registriranih kodova: 121. Testovi prolaze.
+
+---
+
+---
+**[2026-03-19 20:30]**
+👤 Zadatak A: 4TEC 1503 audit (9 dumpova 2018-2020) — SW strings, ign/inj mape, rev limiter, DTC. Zadatak B: CAN cross-SW analiza 6 ACE 1630 dumpova — 0x0433BC provjera, 0x0578 lokacija, diff između godišnjaka.
+🤖 4TEC 1503: ign iste adrese kao ACE 1630, injection SAMO na 0x022066 (nema mirrora), DTC double storage identičan ACE. CAN: 0x0433BC nije CAN TX tablica — prava je na 0x03DF0C; identična svim 2019-2021 SW/snagama. Izvještaji: tec1503_audit.md, can_cross_sw_audit.md.
+---
+
+---
+**[2026-03-19 14:30 -- Cross-SW audit 10 dumpova 1630 ACE]**
+Korisnik trazi cross-SW audit za sve 1630 ACE dumpove (2018-2021), usporedbu 36 mapa s referencom 2021/300hp, identifikaciju invarijantnih/tuning mapa i razlika po snazi.
+Skripta cross_sw_audit.py pokrenuta na 10 dumpova. Kljucni nalazi: inj_main IDENTICAN svim SW verzijama (snaga NE kroz injection), 2021 NA/230 = 2020 SW + 80B patch @ 0x017F00, SW string @ 0x001A, lambda/ignition/torque su prave tuning varijable. Rezultati: maps_cross_sw_audit.md.
 
 ---
