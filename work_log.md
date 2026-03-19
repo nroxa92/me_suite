@@ -1,5 +1,152 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 22:00 — Koraci 1–7: binarna analiza, backup/restore, MapGridTab, diff_maps, UI
+
+### Korak 1 — Binarna provjera adresa 0x02B72A / 0x02B73E u 2018 SW (10SW023910)
+- Ove adrese sadrže vrijednost 0x2222 = 8738 — to je IGNITION DATA, ne rev limiter
+- 0x22 u8 = 34 raw = 25.5°BTDC, LE u16 0x2222 = 8738 (slučajna numerička podudarnost)
+- U 2018 SW IGN_BASE je @ 0x02B72C (4B ranije nego 2019+ @ 0x02B730)
+- Stvarni period-encoded rev limiter u 2018 SW: 0x028E94 = 5072 ticks = 8158 RPM (isti limit, 2B ranije)
+- Rev limiter adrese u scan ostaju — vraćaju krivi podatak za 2018, ali je to istraživački artifact
+
+### Korak 2 — Diff 2019 ORI (10SW040039) vs NPRo STG2 (isti SW string)
+- NPRo mijenja: sve 19 ignition mapa (+3–4°), injection (+196% avg goriva), torque (+11%),
+  lambda protection (saturirana), knock thresholds (podignuti), KFWIRKBA (saturiran za bypass),
+  lambda thresholds (bypass), cold start [0] = 100 (prigušen)
+- NPRo NE mijenja: RPM os, lambda main, MAT korekciju
+- BOOT: 140B | CODE: 7087B | CAL: 169912B razlike
+
+### Korak 3 — Diff Spark 2018 (10SW011328) vs Spark 2021 (10SW039116)
+- SVE ignition mape IDENTIČNE na istim adresama
+- Razlike: injection sub-tablice @ 0x02471C (injektori/tlak goriva), lambda cal @ 0x025408,
+  fuel scalar @ 0x027E6A
+- Glavne mape (injection, lambda, torque, knock) identične
+
+### Korak 4 — backup() i restore() u MapEditor (core/map_editor.py)
+- backup(suffix): timestampirana kopija u istom folderu, vraća Path
+- restore(backup_path): učitava backup kao aktivni fajl
+- Koristi self.eng._path (privatni atribut ME17Engine, nema javnog propertija)
+
+### Korak 5 — MapGridTab u GUI (ui/main_window.py)
+- Nova klasa MapGridTab(QWidget): QListWidget + search + QTableWidget, heatmap boje
+- Read-only prikaz 2D mapa s float vrijednostima po scale veličini
+- Integrirana u _build_ui() kao tab "Mape", populira se u _done1()
+
+### Korak 6 — diff_maps() u MapFinder + Map Diff toolbar button
+- diff_maps() u core/map_finder.py: {name: (vals_s, vals_o, max_diff_pct)}
+- btn_map_diff u toolbar: aktivan kad su oba fajla učitana
+- _show_map_diff_dialog() implementirana: delegira na _show_map_diff() → Map Diff tab
+- Fajlovi: core/map_finder.py, ui/main_window.py
+
+### Testovi — svi prolaze: 56 mapa ORI/STG2, 54 Spark, 62 GTI90, 3/3 EEPROM
+
+## 2026-03-19 25:30 — Binarna analiza "rizičnih" mapa: Injection, Torque, KFPED, KFWIRKBA, AE, MAT
+
+### Što je napravljeno
+Duboka binarna analiza 6 tema — samo istraživanje, bez promjena koda.
+Korišteni dumpovi: 300sc/130na/stg2 (2020/1630ace), spark (2020/900ace), 1503 (2019/4tec1503).
+
+### 1. Injection Q15 format verifikacija
+
+**KLJUČNI NALAZ: 0x02436C NIJE 2D fuel mapa!**
+
+- Sve 16 redova tablice su UNIFORMNI (svaka ćelija u redu == ista vrijednost)
+- Ovo je **injector linearization curve** (1D lookup enkodiran kao 2D blok)
+  - Bosch ME17 čuva 1D karakteristiku injektora kao 16×12 blok gdje svaki "red" = jedna Q15 vrijednost ponovljena 12x
+- Vrijednosti (Q15 /32768): `[0, 0, 0.01, 0.026, 0.041, 0.061, 0.08, 0.114, 0.18, 0.27, 0.394, 0.52, 0.696, 0.98, 1.5, 2.0]`
+- Interpretacija: injector duty breakpoints od idle (0%) do max (200% = 2.0 → full open)
+- **SC == NA** (identični stock — isti injektori i tlak goriva)
+- **STG2 mijenja ovu tablicu značajno**: nizak load 0.01 → 0.04 (4×), mid-range proporcionalno veće
+  - To indicira VEĆE INJEKTORE u NPRo (isti fizički otvarači ali drugačija kalibracija toka)
+- "Mirror" @ 0x0244EC je DRUGAČIJA tablica (rows 11,13,14 se razlikuju) → dvije zasebne karakteristike
+- Tablica počinje od 0x02436C i proteže se do 0x0246E3 (cijeli blok)
+- **GTI 1503 @ 0x022066 jest prava 2D mapa** (varijacija po kolonama + redovima, SC vs NA razlikuju)
+- Prava 2D fuel mapa 1630 ACE NIJE pronađena u ovoj sesiji — zasebna istraživanje potrebno
+
+### 2. Torque limiter analiza
+
+**Ključni nalaz: fizička krivulja momenta @ 0x029FD4**
+
+- **0x029FD4**: 30-točkasta krivulja momenta motora u fizikalnim jedinicama (u16 LE /100 = Nm)
+  - SC: `[48, 64, 72, 78, 90, 104, 110, 120, 128, 140, 152, 164, 172, 180, 188, 196, 206, 216, 224, 234, 240, 252, 260, 270, 280, 296, 308, 320, 328, 340]` Nm
+  - NA: `[52, 64, 68, 72, 78, 86, 92, 105, 116, 124, 129, 136, 144, 150, 160, 169, 185, 193, 206, 222, 232, 240, 254, 264, 273, 284, 292, 304, 320, 332]` Nm
+  - SC max = 340 Nm, NA max = 332 Nm (SC viši kroz cijeli raspon)
+- **0x02A010**: 20-točkasta Y-os (vrijednosti 266-2344, razlikuju SC/NA) = torque demand/efficiency osa
+- **0x02A038** (count=30@0x029FD0, count=20@0x029FD2): 30×20 tablica (efficiency/correction map)
+- **0x02A0D8** (map_finder "torque"): Unutar 30×20 tablice — vrijednosti 109-150 u16 LE
+  - SC vrijednosti NIŽE (109-140) od NA (128-150) → SC ograničava niže?
+  - Dimenzija 16×16 u16 → možda drugačija organizacija nego 30×20
+  - Vrijednosti /256 (Q8 frakcija): 0.43-0.59 = throttle efficiency ili torque scale factor
+- **Mirror @ 0x02A5F0** identičan primarnom (0 razlika)
+
+### 3. KFPED Y-os analiza
+
+**KLJUČNI NALAZ: SC i NA koriste DRUGAČIJE X-osi!**
+
+- **Header @ 0x029528**: count_x=10, count_y=20
+- **SC X-os (MAP kPa gauge, signed u8)**: raw=[176,216,236,246,0,15,30,40,60,90]
+  - Signed: `[-80, -40, -20, -10, 0, 15, 30, 40, 60, 90]` kPa (relativno prema atm)
+  - **SC koristi BOOST/VAKUUM kao input** — mjerenje tlaka usisa
+- **NA X-os (pedal %, u8)**: `[0, 2, 5, 10, 20, 30, 40, 50, 60, 70]` %
+  - **NA koristi PEDALIN KUT** kao input
+- **Y-os (20pt u8)**: SC=[38-213]/128=0.30-1.66, NA=[25-213]/128=0.20-1.66 = load/RPM frakcija
+- **Output (10×20 u8)**: vrijednosti 20-191 = throttle valve command (0-100%)
+- **Transponirana tablica (10 rows=X, 20 cols=Y)** je pravilna: svaki red monotono raste
+  - Npr. X[-80 kPa]: output [34→191]% kroz 20 load točaka
+  - X[+90 kPa]: output [84→148]% (manji raspon = SC ograničava gasišnje pri visokom boosту)
+- **Mirror @ 0x029630**: IDENTIČAN (0 razlika)
+- **Injection X-os** [5,10,15,20,25,30,35,40,45,50]% NIJE ista kao KFPED NA osa
+
+### 4. KFWIRKBA (Lambda efficiency 41×18) istraživanje
+
+- **X-os (18pt u16 LE @ 0x02AE32)**: [100, 200, 400, 800, 1280, 2560, 3200, 3840, 4480, 5120, 5760, 6400, 7040, 7680, 8320, 8960, 9600, 10240]
+  - /32768: [0.003 - 0.313] = air mass load frakcija (lambda-load os)
+- Tablica NIJE jednostavni 41×18 — row 20 i row 30 sadrže markere/granice (moguće više konkateniranih sub-tablica)
+- **SC vs NA**: znatno različiti (SC=0.66-1.8, NA=0.61-1.32 u visoko-opterećenim zonama)
+  - SC 36% veće vrijednosti pri punom opterećenju (SC treba više goriva)
+- **STG2 mijenja 225 ćelija** — postavlja high-load ćelije na 2.0 (max Q15 = 65536)
+  - Obrazac: progresivno više ćelija = 2.0 kako se row povećava
+  - Efektivno DISABLIRA gornju granicu lambda enrichmenta pri visokom boosту
+  - ORI max bio 1.8, STG2 podiže na 2.0 = 11% više goriva pri peak-u
+- **OPASNO za tuning bez razumijevanja strukture** (41-row interpretacija nije 100% potvrđena)
+- Row 9 identičan SC/NA (granica/separator)
+- Row 20 sadrži iste vrijednosti kao X-os (ugrađena os unutar podataka)
+- Row 30 sadrži markere (1.976, 1.988, 1.994, 1.997 = gotovo 1.0 u Q16)
+
+### 5. Accel Enrich (AE) analiza
+
+- **Format potvrđen**: 1B global + 5×22B sub-tablica (svaka: 6×u16 X-os + 5×u16 data)
+- **Global byte @ 0x028059**:
+  - SC=4, NA=4 (stock): koristi 4 temperaturne zone
+  - STG2=2: samo 2 temperaturne zone (reducirani AE na hladnom?)
+  - Interpretacija: broj aktivnih CTS temperaturnih segmenata
+- **X-os svih sub-tablica (SC/NA isti)**: [5, 0, 150, 200, 350, 1500] (throttle rate ili ms?)
+  - STG2 mijenja X-os: [5, 0, 150, **300, 600, 900**] — pomak na kasnijem raspadu
+- **Y-os (enrichment frakcija Q15)**:
+  - SC >NA kroz sve sub-tablice (10-15% više enrichmenta na SC)
+  - Sub 3: SC=[0.6, **1.04**, 1.04, 0.74, 0.84] (>1.0 = enrichment iznad stoich)
+  - Sub 4 (max): SC=[0.6, **1.24**, 1.24, 0.74, 0.84]
+- **STG2 Y-vrijednosti**: niže pri X[0]=5 ali VIŠE pri X[2-5] — drugačiji profil
+  - Manje početnog enrichmenta ali produljeni i snažniji na sredini
+
+### 6. MAT garbage zona — ISPRAVLJENO
+
+**PRETHODNI NALAZ BIO POGREŠAN — NEMA GARBAGE ZONE**
+
+- **MAT @ 0x022726 je ČISTA tablica** koja monotono pada od -3°C do +171°C:
+  - Temp os (u8 - 40 offset): `[-3, 11, 24, 37, 51, 64, 77, 91, 111, 131, 151, 171]` °C
+  - Korekcija (u8 /128): `[1.039, 1.016, 1.000, 0.984, 0.969, 0.953, 0.938, 0.922, 0.898, 0.883, 0.859, 0.844]`
+  - Savršeno monotono — hladni = +3.9% goriva, vrući = -15.6% goriva
+  - **SC, NA i GTI imaju IDENTIČNU MAT tablicu** (razlika = 0)
+- "Garbage" koje je primijećeno u prethodnoj sesiji nalazi se NA 0x02273E (IZA tablice od 24B) — to su NEPOVEZANI podaci
+- **Spark 900 @ 0x022726**: potpuno drugačiji podaci (nije MAT za Spark)
+  - Spark koristi DRUGAČIJU adresu za MAT (nije pronađena u ovoj sesiji)
+
+### Fajlovi promijenjeni
+- Nema — čisto istraživanje
+
+---
+
 ## 2026-03-19 24:00 — Binarna analiza: 4 neidentificirane mape (KFPED, MAT, MAP-fuel, Boost)
 
 ### Što je napravljeno

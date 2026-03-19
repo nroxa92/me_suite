@@ -842,3 +842,15 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 🤖 KFPED (pedalka 10×20 u8, Y=papučica kut 0-70°/SC do 90°) i MAT (12pt Q15, temp −3→64°C, faktor 1.020→0.847) implementirani i logirani. 1630ace: 54→56 mapa. 2018 1630ace (10SW023910): KFPED header offset -2B (0x029526 umjesto 0x029528) — fallback dodan. Svi testovi prolaze.
 
 ---
+---
+**[2026-03-19 25:30]**
+👤 Istraži "rizične" mape: Injection Q15 format, Torque limiter, KFPED Y-os, KFWIRKBA, Accel enrich, MAT garbage zona. Bez promjena koda, samo binarni dokazi.
+🤖 6 tema istraženo: (1) 0x02436C NIJE 2D fuel mapa — injector linearization curve (1D blok), STG2 4x veće vrijednosti = veći injektori; (2) fizička krivulja momenta @ 0x029FD4 (SC=340Nm, NA=332Nm); (3) KFPED: SC koristi MAP kPa X-os [-80,+90], NA koristi pedal % [0,70] — RAZLIČITE osi!; (4) KFWIRKBA: STG2 postavlja 225 ćelija na 2.0 (max), tablica nije jednostavni 41×18; (5) AE global byte = broj aktivnih temp zona (SC=4, STG2=2), STG2 mijenja X-os breakpoints; (6) MAT ČISTA tablica -3 do 171°C — prethodni "garbage" nalaz bio kriv.
+
+---
+---
+**[2026-03-19 22:00]**
+👤 Radi na ME17Suite projektu. Implementiraj sljedećih 7 koraka: (1) provjeri adrese 0x02B72A/0x02B73E u 2018 SW, (2) diff 2019 ORI vs NPRo STG2, (3) diff Spark 2018 vs 2021, (4) backup/restore u MapEditor, (5) Mape tab u GUI, (6) diff_maps() + UI, (7) work_log.md
+🤖 Svi koraci dovršeni. Ključni nalazi: 0x02B72A/0x02B73E su ignition data u 2018 SW (ne rev limiter); NPRo STG2 mijenja ignition/injection/torque/lambda ali ne RPM os; Spark 2018≈2021 (identične ign mape). backup/restore, MapGridTab i diff_maps implementirani. Svi testovi prolaze (56/54/62 mapa).
+
+---

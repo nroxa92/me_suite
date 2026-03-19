@@ -2307,6 +2307,190 @@ class ScanWorker(QThread):
         self.finished.emit(f.find_all(progress_cb=lambda m: self.progress.emit(m)))
 
 
+# ─── Map Grid Tab — simple read-only map browser ──────────────────────────────
+
+class MapGridTab(QWidget):
+    """
+    Read-only map browser tab with QListWidget (left) + QTableWidget (right).
+    Displays decoded float values with row/column axis headers.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._maps: list[FoundMap] = []
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ── Left: map list ────────────────────────────────────────────────────
+        left = QWidget()
+        left.setFixedWidth(260)
+        left.setStyleSheet("background:#1C1C1F; border-right:1px solid #2A2A32;")
+        left_lo = QVBoxLayout(left)
+        left_lo.setContentsMargins(0, 0, 0, 0)
+        left_lo.setSpacing(0)
+
+        hdr = QLabel("  MAPE")
+        hdr.setStyleSheet(
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
+        )
+        left_lo.addWidget(hdr)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("  Pretraži...")
+        self._search.setFixedHeight(28)
+        self._search.setStyleSheet(
+            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
+            "border-radius:0; padding:3px 10px; color:#C8C8D0; font-size:12px;"
+        )
+        self._search.textChanged.connect(self._filter)
+        left_lo.addWidget(self._search)
+
+        self._list = QListWidget()
+        self._list.setStyleSheet(
+            "QListWidget { background:#1C1C1F; border:none; font-size:12px; outline:none; }"
+            "QListWidget::item { padding:5px 10px; border-bottom:1px solid #1a1a1d; }"
+            "QListWidget::item:hover { background:#111113; }"
+            "QListWidget::item:selected { background:#1A2F4A; color:#4FC3F7; }"
+        )
+        self._list.currentItemChanged.connect(self._on_item_changed)
+        left_lo.addWidget(self._list, 1)
+        root.addWidget(left)
+
+        # ── Right: map grid ───────────────────────────────────────────────────
+        right = QWidget()
+        right_lo = QVBoxLayout(right)
+        right_lo.setContentsMargins(0, 0, 0, 0)
+        right_lo.setSpacing(0)
+
+        # Info bar
+        self._info_bar = QWidget()
+        self._info_bar.setStyleSheet("background:#141418; border-bottom:1px solid #2A2A32;")
+        ib_lo = QHBoxLayout(self._info_bar)
+        ib_lo.setContentsMargins(10, 4, 10, 4)
+        ib_lo.setSpacing(8)
+        self._lbl_title = QLabel("Odaberi mapu")
+        self._lbl_title.setObjectName("lbl_map_title")
+        self._lbl_meta = QLabel("")
+        self._lbl_meta.setObjectName("lbl_addr")
+        ib_lo.addWidget(self._lbl_title)
+        ib_lo.addWidget(self._lbl_meta)
+        ib_lo.addStretch()
+        right_lo.addWidget(self._info_bar)
+
+        # Table
+        self._table = QTableWidget()
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table.horizontalHeader().setDefaultSectionSize(72)
+        self._table.verticalHeader().setDefaultSectionSize(22)
+        self._table.verticalHeader().setMinimumWidth(52)
+        right_lo.addWidget(self._table, 1)
+
+        root.addWidget(right, 1)
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def set_maps(self, maps: list[FoundMap]) -> None:
+        """Populate the list with all found maps."""
+        self._maps = maps
+        self._rebuild_list(maps)
+
+    # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _rebuild_list(self, maps: list[FoundMap]) -> None:
+        self._list.clear()
+        for fm in maps:
+            dims = f"{fm.defn.rows}×{fm.defn.cols}"
+            item = QListWidgetItem(f"  {fm.defn.name}")
+            item.setToolTip(f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n{fm.defn.description}")
+            item.setData(Qt.ItemDataRole.UserRole, fm)
+            color = CATEGORY_COLORS.get(fm.defn.category, "#C8C8D0")
+            item.setForeground(QBrush(QColor(color)))
+            self._list.addItem(item)
+
+    def _filter(self, text: str) -> None:
+        t = text.lower()
+        filtered = [fm for fm in self._maps if t in fm.defn.name.lower()] if t else self._maps
+        self._rebuild_list(filtered)
+
+    def _on_item_changed(self, current: QListWidgetItem, _prev) -> None:
+        if current is None:
+            return
+        fm = current.data(Qt.ItemDataRole.UserRole)
+        if fm:
+            self._show_map(fm)
+
+    def _show_map(self, fm: FoundMap) -> None:
+        defn = fm.defn
+        dims = f"{defn.rows}×{defn.cols}" if defn.rows > 1 else "scalar"
+        self._lbl_title.setText(defn.name)
+        self._lbl_meta.setText(
+            f"  0x{fm.address:06X}  |  {dims}  |  {defn.dtype} {defn.byte_order}  "
+            f"|  ×{defn.scale}  |  {defn.unit}"
+        )
+
+        # Build display values
+        vals_2d = fm.get_2d_display()
+        rows = defn.rows
+        cols = defn.cols
+
+        # Axis labels
+        x_labels = []
+        if defn.axis_x and defn.axis_x.values:
+            for v in defn.axis_x.values[:cols]:
+                scaled = v * defn.axis_x.scale
+                x_labels.append(f"{scaled:.1f}".rstrip("0").rstrip("."))
+        else:
+            x_labels = [str(c) for c in range(cols)]
+
+        y_labels = []
+        if defn.axis_y and defn.axis_y.values:
+            for v in defn.axis_y.values[:rows]:
+                scaled = v * defn.axis_y.scale
+                y_labels.append(f"{scaled:.1f}".rstrip("0").rstrip("."))
+        else:
+            y_labels = [str(r) for r in range(rows)]
+
+        self._table.setRowCount(rows)
+        self._table.setColumnCount(cols)
+        self._table.setHorizontalHeaderLabels(x_labels[:cols])
+        self._table.setVerticalHeaderLabels(y_labels[:rows])
+
+        # Compute range for heatmap
+        all_raw = fm.data
+        raw_min = min(all_raw) if all_raw else 0
+        raw_max = max(all_raw) if all_raw else 1
+
+        for r in range(rows):
+            raw_row = fm.data[r * cols:(r + 1) * cols]
+            for c in range(cols):
+                raw_val = raw_row[c] if c < len(raw_row) else 0
+                disp_val = vals_2d[r][c] if r < len(vals_2d) and c < len(vals_2d[r]) else 0.0
+                # Format display
+                if defn.scale < 0.01:
+                    txt = f"{disp_val:.4f}"
+                elif defn.scale < 0.1:
+                    txt = f"{disp_val:.3f}"
+                elif defn.scale < 1.0:
+                    txt = f"{disp_val:.2f}"
+                else:
+                    txt = f"{disp_val:.1f}"
+
+                item = QTableWidgetItem(txt)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                # Heatmap color
+                bg, fg = _cell_colors_cat(raw_val, raw_min, raw_max, defn.category)
+                item.setBackground(QBrush(bg))
+                item.setForeground(QBrush(fg))
+                self._table.setItem(r, c, item)
+
+        self._table.resizeColumnsToContents()
+
+
 # ─── Main Window ──────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
@@ -2376,6 +2560,11 @@ class MainWindow(QMainWindow):
         self.btn_diff = _btn("Diff")
         self.btn_diff.clicked.connect(self._show_diff)
         self.btn_diff.setEnabled(False); tb.addWidget(self.btn_diff)
+
+        self.btn_map_diff = _btn("Map Diff")
+        self.btn_map_diff.setToolTip("Usporedi mape između Fajla 1 i Fajla 2  (diff_maps)")
+        self.btn_map_diff.clicked.connect(self._show_map_diff_dialog)
+        self.btn_map_diff.setEnabled(False); tb.addWidget(self.btn_map_diff)
 
         tb.addSeparator()
 
@@ -2462,6 +2651,10 @@ class MainWindow(QMainWindow):
 
         self.can_logger_widget = CanLoggerWidget()
         self._can_logger_tab = self.tabs.addTab(self.can_logger_widget, "CAN Logger")
+
+        # Map Grid — read-only pregled mapa s listom i tablicom
+        self.map_grid_tab = MapGridTab()
+        self._map_grid_tab_idx = self.tabs.addTab(self.map_grid_tab, "Mape")
 
         # Vizualno naglasavanje kljucnih tabova
         _tb = self.tabs.tabBar()
@@ -2721,6 +2914,7 @@ class MainWindow(QMainWindow):
             self.log_strip.log(f"Fajl 2: {name}", "ok")
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
             self.btn_diff.setEnabled(True)
+            self.btn_map_diff.setEnabled(True)
             self.tabs.setTabVisible(self._diff_tab, True)
             self.tabs.setTabVisible(self._map_diff_tab, True)
             w = ScanWorker(eng); w.finished.connect(self._done2); w.start(); self._w2 = w
@@ -2816,6 +3010,7 @@ class MainWindow(QMainWindow):
         self._scan_timer.stop()
         self.progress.hide()
         self.map_lib.populate(maps)
+        self.map_grid_tab.set_maps(maps)
         self.log_strip.log(f"Pronadjeno {len(maps)} mapa.", "ok")
         self.status.showMessage(f"✓ {len(maps)} mapa učitano.")
         # Update maps count badge in status bar
@@ -3110,6 +3305,10 @@ class MainWindow(QMainWindow):
             self.log_strip.log("Map Diff: gotovo.", "ok")
         except Exception as e:
             self.log_strip.log(f"Map Diff greska: {e}", "err")
+
+    def _show_map_diff_dialog(self):
+        """Toolbar button handler — delegates to _show_map_diff (opens Map Diff tab)."""
+        self._show_map_diff()
 
     # ── Checksum analiza ──────────────────────────────────────────────────────
 

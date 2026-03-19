@@ -289,8 +289,10 @@ def _make_ign_def(idx: int) -> MapDef:
         unit         = "degBTDC" if not is_knock else "deg",
         axis_x       = _RPM_AXIS_12,
         axis_y       = _LOAD_AXIS_12,
+        # knock #08: ORI ima do 227 (format nepoznat, nije čisti retard) — raw 0-255
+        # knock #09: ORI max=40 (retard delta 0-30°) — raw 0-40
         raw_min      = 0  if (is_knock or is_partial) else 16,
-        raw_max      = 40 if is_knock else 58,
+        raw_max      = (255 if idx == 8 else 40) if is_knock else 58,
         mirror_offset= 0,
         notes        = (
             f"Adresa: 0x{addr:06X}. Scale: 0.75deg/bit. "
@@ -1040,7 +1042,7 @@ _MAT_DEF = MapDef(
     unit          = "faktor (Q15)",
     axis_x        = _MAT_X,
     axis_y        = None,
-    raw_min       = 27000,
+    raw_min       = 27000,   # Q15 ~0.82 (tablica čista 12pt, nema garbage — potvrđeno 2026-03-19)
     raw_max       = 34500,
     mirror_offset = 0,
     notes         = (
@@ -1093,7 +1095,7 @@ _THERM_ENRICH_DEF = MapDef(
     axis_y        = AxisDef(count=8, byte_order="LE", dtype="u16",
                              scale=1.0, unit="°C",
                              values=[80, 90, 100, 110, 120, 130, 140, 150]),
-    raw_min       = 8192,   # 128%
+    raw_min       = 6000,   # ~94% (ORI min=6720; spušteno radi Spark 2018 min=8741 variante)
     raw_max       = 16384,  # 256%
     mirror_offset = 0,
     notes         = (
@@ -1523,7 +1525,7 @@ _TORQUE_OPT_DEF = MapDef(
     unit          = "%",
     axis_x        = _RPM_AXIS_16,
     axis_y        = _LOAD_AXIS_16,
-    raw_min       = 24576,   # 75%
+    raw_min       = 20000,   # ~61% (ORI min=24576=75%, spušteno radi margine)
     raw_max       = 40960,   # 125%
     mirror_offset = 0,
     notes         = (
@@ -1695,7 +1697,7 @@ _DECEL_RPM_CUT_DEF = MapDef(
                             values=[6000, 7200, 8800, 10400, 12000, 14000, 16000, 18000,
                                     20000, 22000, 24000, 26000, 28000, 30000, 32000, 36000]),
                             # @ 0x028BEA (60–360 mg/hub)
-    raw_min       = 1000,  # ticks: ~34571 RPM max (nerealno visoko)
+    raw_min       = 0,     # load os col[3..10] može biti 0 (prvi segment); col[0..2]=ticks>1000 ali validacija je inline
     raw_max       = 65535,
     mirror_offset = 0,
     notes         = (
@@ -4751,8 +4753,13 @@ class MapFinder:
             return
 
         from dataclasses import replace as _rep
+        # SC: Y-os = MAP tlak kPa gauge (signed, npr. -80..+90 kPa)
+        # NA: Y-os = papučica % (0..70)
+        # Razlikujemo po prvom bajtu Y-osi: SC ima 0 ili low (0=0kPa vakuum), NA kreće od 0
+        # Oba slučaja čitamo raw — UI prikazuje stvarne vrijednosti iz binarnog
+        y_unit = "MAP [kPa gauge]" if y_raw[0] == 0 and any(v > 80 for v in y_raw) else "papučica [°/%]"
         y_ax = AxisDef(count=rows, byte_order="LE", dtype="u8",
-                       scale=1.0, unit="papučica [°]", values=y_raw)
+                       scale=1.0, unit=y_unit, values=y_raw)
         x_ax = AxisDef(count=cols, byte_order="LE", dtype="u8",
                        scale=1.0/128.0, unit="load", values=x_raw)
         defn = _rep(_KFPED_DEF, axis_x=x_ax, axis_y=y_ax)
@@ -4807,6 +4814,68 @@ class MapFinder:
         if cb: cb(f"  MAT @ 0x{addr:06X}  12pt Q15  "
                   f"temp=[{temp_raw[0]-40}–{temp_raw[5]-40}°C korisno]  "
                   f"faktor=[{vals[0]/32768:.3f}–{vals[5]/32768:.3f}]")
+
+    # ── Map diff ──────────────────────────────────────────────────────────────
+
+    def diff_maps(self, other_engine: ME17Engine,
+                  maps_self: list["FoundMap"] | None = None,
+                  maps_other: list["FoundMap"] | None = None,
+                  ) -> dict[str, tuple[list[float], list[float], float]]:
+        """
+        Compare identically-named maps between this engine and other_engine.
+
+        Parameters
+        ----------
+        other_engine : ME17Engine
+            The second binary to compare against.
+        maps_self : list[FoundMap] | None
+            Pre-scanned maps for this engine. If None, a fresh scan is run.
+        maps_other : list[FoundMap] | None
+            Pre-scanned maps for other_engine. If None, a fresh scan is run.
+
+        Returns
+        -------
+        dict  {map_name: (self_display_vals, other_display_vals, max_diff_pct)}
+
+        max_diff_pct is the maximum absolute percentage difference between
+        any matching cell, relative to the self value.
+        Only maps present in both files are returned.
+        """
+        # Scan if not provided
+        if maps_self is None:
+            maps_self = MapFinder(self.eng).find_all()
+        if maps_other is None:
+            maps_other = MapFinder(other_engine).find_all()
+
+        # Index by name
+        idx_self  = {fm.defn.name: fm for fm in maps_self}
+        idx_other = {fm.defn.name: fm for fm in maps_other}
+
+        result: dict[str, tuple[list[float], list[float], float]] = {}
+
+        for name, fm_s in idx_self.items():
+            fm_o = idx_other.get(name)
+            if fm_o is None:
+                continue
+
+            vals_s = fm_s.display_values
+            vals_o = fm_o.display_values
+
+            # Compute max absolute diff percentage
+            max_diff = 0.0
+            for a, b in zip(vals_s, vals_o):
+                if a != 0:
+                    pct = abs(b - a) / abs(a) * 100.0
+                elif b != 0:
+                    pct = 100.0
+                else:
+                    pct = 0.0
+                if pct > max_diff:
+                    max_diff = pct
+
+            result[name] = (vals_s, vals_o, max_diff)
+
+        return result
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

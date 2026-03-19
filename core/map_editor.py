@@ -8,7 +8,10 @@ Podrzava: u8, u16 BE/LE, i16 BE/LE
 """
 
 from __future__ import annotations
+import shutil
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from .engine import ME17Engine, CAL_START, CAL_END, CODE_START, CODE_END
 from .map_finder import FoundMap, MapDef
@@ -205,6 +208,39 @@ class MapEditor:
         if defn.dtype.startswith("i") and size == 2 and raw >= 0x8000:
             raw -= 65536
         return raw
+
+    # ── Backup / Restore ──────────────────────────────────────────────────────
+
+    def backup(self, suffix: str | None = None) -> Path:
+        """
+        Save a timestamped copy of the current loaded file in the same directory.
+        Returns the Path of the created backup file.
+
+        suffix: optional extra label appended before timestamp, e.g. "pre_edit"
+        Filename format: <original_stem>_bak_YYYYMMDD_HHMMSS[_suffix].bin
+        """
+        src = self.eng._path
+        if src is None or not src.exists():
+            raise FileNotFoundError(f"Nema ucitanog fajla: {src}")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        extra = f"_{suffix}" if suffix else ""
+        stem = src.stem if src.suffix else src.name
+        bak_name = f"{stem}_bak_{ts}{extra}.bin"
+        dst = src.parent / bak_name
+
+        shutil.copy2(src, dst)
+        return dst
+
+    def restore(self, backup_path: Path) -> None:
+        """
+        Load a previously saved backup as the active file.
+        Equivalent to eng.load(backup_path) but keeps the editor instance intact.
+        """
+        backup_path = Path(backup_path)
+        if not backup_path.exists():
+            raise FileNotFoundError(f"Backup fajl nije pronaden: {backup_path}")
+        self.eng.load(str(backup_path))
 
     def _write_one(self, addr: int, raw: int, defn: MapDef) -> None:
         """Pisi jednu vrijednost na adresu, koristeci format iz MapDef."""
