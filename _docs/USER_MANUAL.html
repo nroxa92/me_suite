@@ -407,7 +407,7 @@ Residue:    0x6E23044F (fixed for all valid ECU files)
 
 <h2 id="eeprom">9. EEPROM Viewer</h2>
 
-<p>The EEPROM viewer reads a separate 32KB EEPROM dump from the ECU.</p>
+<p>The EEPROM viewer reads a 32KB Data Flash (DFlash) dump from the TC1762 MCU. DFlash and PFlash (firmware+maps) are both internal to the same TC1762 chip — they are separate memory banks, not separate chips.</p>
 
 <h3>Loading an EEPROM file</h3>
 <ol class="steps">

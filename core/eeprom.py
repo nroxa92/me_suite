@@ -239,3 +239,99 @@ class EepromParser:
             return result
         finally:
             os.unlink(tmp.name)
+
+
+class EepromEditor:
+    """
+    Editor za BRP/Bosch ME17 EEPROM dump (32KB).
+
+    EEPROM nema checksum — izmjene se direktno upisuju.
+    Sigurna polja za edit: hull_id, dealer_name, datumi, prog_count.
+    NE mijenjati: serial_ecu, mpem_sw, service_sw, odo (circular buffer).
+
+    Primjer:
+        editor = EepromEditor("path/to/eeprom.bin")
+        editor.set_hull_id("YDV89660M123")
+        editor.set_dealer_name("MY SHOP")
+        editor.set_date_first_prog("01-01-24")
+        editor.set_date_last_update("01-01-24")
+        editor.set_prog_count(1)
+        editor.save("path/to/eeprom_modified.bin")
+    """
+
+    # Offseti (isti kao EepromParser)
+    DATE_OFFSET_1  = EepromParser.DATE_OFFSET_1   # 0x0013
+    DATE_OFFSET_2  = EepromParser.DATE_OFFSET_2   # 0x001E
+    MPEM_SW_OFFSET = EepromParser.MPEM_SW_OFFSET  # 0x0032
+    SVC_SW_OFFSET  = EepromParser.SVC_SW_OFFSET   # 0x0040
+    PROG_CNT_OFF   = EepromParser.PROG_CNT_OFF    # 0x004C
+    ECU_SER_OFFSET = EepromParser.ECU_SER_OFFSET  # 0x004D
+    HULL_OFFSET    = EepromParser.HULL_OFFSET      # 0x0082
+    DEALER_OFFSET  = EepromParser.DEALER_OFFSET    # 0x0102
+
+    def __init__(self, path: str):
+        self._path = str(path)
+        data = Path(path).read_bytes()
+        if len(data) != EEPROM_SIZE:
+            raise ValueError(f"EEPROM veličina {len(data)}B != {EEPROM_SIZE}B (32KB)")
+        self._data = bytearray(data)
+
+    @classmethod
+    def from_bytes(cls, data: bytes, source: str = "<bytes>") -> "EepromEditor":
+        """Kreira editor iz byte buffera (bez čitanja fajla)."""
+        obj = object.__new__(cls)
+        obj._path = source
+        if len(data) != EEPROM_SIZE:
+            raise ValueError(f"EEPROM veličina {len(data)}B != {EEPROM_SIZE}B")
+        obj._data = bytearray(data)
+        return obj
+
+    def _write_ascii(self, offset: int, length: int, value: str) -> None:
+        """Upisuje ASCII string na offset, padira s 0x00."""
+        encoded = value.encode('ascii', errors='replace')[:length]
+        self._data[offset:offset + length] = encoded.ljust(length, b'\x00')
+
+    # ── Javne metode za editiranje ────────────────────────────────────────────
+
+    def set_hull_id(self, hull_id: str) -> None:
+        """Upisuje Hull ID / VIN (max 12 ASCII znakova, format YDVxxxxxxxxx)."""
+        if len(hull_id) > 12:
+            raise ValueError(f"Hull ID max 12 znakova (dobiveno: {len(hull_id)})")
+        self._write_ascii(self.HULL_OFFSET, 12, hull_id)
+
+    def set_dealer_name(self, name: str) -> None:
+        """Upisuje dealer naziv (max 16 ASCII znakova)."""
+        if len(name) > 16:
+            raise ValueError(f"Dealer naziv max 16 znakova (dobiveno: {len(name)})")
+        self._write_ascii(self.DEALER_OFFSET, 16, name)
+
+    def set_date_first_prog(self, date: str) -> None:
+        """Upisuje datum prvog programiranja (format DD-MM-YY, npr. '01-01-24')."""
+        if len(date) > 8:
+            raise ValueError(f"Datum max 8 znakova DD-MM-YY (dobiveno: '{date}')")
+        self._write_ascii(self.DATE_OFFSET_1, 8, date)
+
+    def set_date_last_update(self, date: str) -> None:
+        """Upisuje datum zadnjeg ažuriranja (format DD-MM-YY)."""
+        if len(date) > 8:
+            raise ValueError(f"Datum max 8 znakova DD-MM-YY (dobiveno: '{date}')")
+        self._write_ascii(self.DATE_OFFSET_2, 8, date)
+
+    def set_prog_count(self, count: int) -> None:
+        """Upisuje broj programiranja (u8, 0–255)."""
+        if not 0 <= count <= 255:
+            raise ValueError(f"Broj programiranja mora biti 0–255 (dobiveno: {count})")
+        self._data[self.PROG_CNT_OFF] = count
+
+    def get_bytes(self) -> bytes:
+        """Vraća modificirani EEPROM kao bytes."""
+        return bytes(self._data)
+
+    def save(self, path: str) -> None:
+        """Sprema modificirani EEPROM na disk."""
+        Path(path).write_bytes(self._data)
+
+    def get_info(self) -> "EepromInfo":
+        """Parsira trenutno stanje i vraća EepromInfo."""
+        parser = EepromParser()
+        return parser.parse_bytes(self.get_bytes(), source=self._path)

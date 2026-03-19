@@ -12,11 +12,11 @@
 
 | Variant | SW ID | Maps found |
 |---------|-------|-----------|
-| 300hp SC | 10SW066726 | **53** |
-| 300hp SC STG2 | 10SW040039 | **53** |
-| 230hp SC | 10SW053727 | **52** |
-| 130/170hp NA | 10SW053729 | **61** |
-| GTI SE 90 | 10SW053774 | **59** |
+| 300hp SC | 10SW066726 | **54** |
+| 300hp SC STG2 | 10SW040039 | **54** |
+| 230hp SC | 10SW053727 | **53** |
+| 130/170hp NA | 10SW053729 | **62** |
+| GTI SE 90 | 10SW053774 | **60** |
 | Spark 90 (2019+) | 10SW039116 | **52** (27 ign A/B/B2/C + 4λ + 3 inj + 14 aux) |
 | GTI SE 155 | 10SW025752 | 9 GTI-specific + shared |
 | GTI/GTS 130/155/230hp 1503 2019 | 10SW040008 | GTI layout (injection+8 ign mapa) |
@@ -27,6 +27,7 @@
 > **2026-03-18**: +2 nove mape (Lambda adapt 0x0268A0, Decel RPM ramp 0x028C30); knock params ispravljen 24→52 u16.
 > **2026-03-19 (a)**: SC boost fuel Y-os potvrđena load%; Thermal enrichment X-os potvrđena load%; Lambda Prot. X-os=lambda skala (dijagonalna mapa, bez standardne osi); Deadtime dimenzije finalne (14×7, skala 0.5µs/raw); Ign Corr. osi identificirane (Y=RPM raw×40, X=load% raw/2.55); Lambda Adapt confidence 85→90%; Decel RPM Ramp confidence 75→80%, Spark negativno potvrđen; KFWIRKBA 2D sub: STG2=ORI (0/70), varijanta-specifično.
 > **2026-03-19 (b)**: 4tec1503 kompletna analiza — 130/155/230hp 2019 identični binariji (0 razlika, potvrđeno "isti SW za sve snage"); 2020 vs 2019: 536B CODE razlika (25 blokova, bez promjene u mapama); rev limiter 7892 RPM @ 0x028E96 (isti kao 1630 130hp NA); SC boost factor = +41.2% (flat 23130, anomalija u 1503); GTI injection @ 0x022066 aktivno i razlikuje se od 1630; 8 extra ignition mapa @ 0x028310 prisutne i aktivne.
+> **2026-03-19 (c)**: NPRo ORI19 vs STG2 diff: 4482B / 83 bloka u CODE regiji. DEO 4: 130hp == 170hp (0 razlika, obje 2020 i 2021). DEO 5: godišnja evolucija 300hp (2019→2020: 1838B, 2020→2021: 2891B). DEO 3: 300hp vs 230hp SC: 15752B razlika. DEO 2: SC vs NA: 20309B. +2 nove mape: Lambda Eff U8 (0x0275FD, 4×16×16) + Lambda Thresh (0x02B378, 1×79 Q15). Implementirane u map_finder.py s _scan metodama.
 
 ---
 
@@ -287,15 +288,121 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 
 ## 10. Spark-Specific Aux Maps (10SW039116)
 
+> **Ažurirano 2026-03-19**: kompletni map inventar za Spark 2019+ i 2016 layout. Ukupno 52 mape (27 ignition + 4 lambda + 3 osi + 18 aux).
+
+### Osi (Axes)
+
+| Address | Name | Format | Dims | Notes |
+|---------|------|--------|------|-------|
+| **0x02225A** | Spark RPM os (20pt) | u16 LE | 1×20 | raw/4 = RPM. Raspon: 1920–6656 RPM. **Identičan u 2016 i 2019+!** |
+| **0x022282** | Spark load os (30pt) | u16 LE | 1×30 | raw/64 = load%. Raspon: 3999–33600. **Identičan u 2016 i 2019+!** |
+| **0x025378** | Spark load os kopija 2 | u16 LE | 1×30 | Parnjak za lambda trim 2. STG2 proširuje gornji raspon. |
+| **0x024775** | Spark lambda X-os (16pt u8) | u8 | 1×16 | /128 = lambda. ORI: 0.258–1.094λ. STG2 proširuje: 0.313–1.875λ. Neporavnata adresa! |
+| **0x0253B4** | Spark lambda col axis (20pt) | u16 LE | 1×20 | Raw [640–4693]. Za lambda trim 2. |
+
+### Ignition mape
+
+#### Serija A (8 mapa) — glavne ignition tablice
+| Address | Dims | Range | STG2 | Notes |
+|---------|------|-------|------|-------|
+| 0x026A76 | 12×12 u8 | 9.0–42.75° | diff=0 | Serija A #0 |
+| 0x026B06 | 12×12 u8 | 15.75–42.0° | diff=0 | Serija A #1 |
+| 0x026B96 | 12×12 u8 | 3.75–42.75° | diff=0 | Serija A #2 |
+| 0x026C26 | 12×12 u8 | 15.75–42.0° | diff=0 | Serija A #3 |
+| 0x026CB6 | 12×12 u8 | 3.75–42.75° | diff=0 | Serija A #4 |
+| 0x026D46 | 12×12 u8 | 15.75–40.5° | diff=0 | Serija A #5 |
+| **0x026DD6** | 12×12 u8 | 3.75–42.75° | diff=0 | **Serija A #6 — NOVO, ranije propušteno** |
+| **0x026E66** | 12×12 u8 | 14.25–40.5° | diff=0 | **Serija A #7 — NOVO, ranije propušteno** |
+
+> Serija A nije modificirana od NPRo STG2 — to su bazne tablice koje ostaju nepromijenjene.
+
+#### Serija C (3 mape) — u16LE format, visoke vrijednosti × 0.25°/bit
+| Address | Format | Range | STG2 | Notes |
+|---------|--------|-------|------|-------|
+| **0x02803A** | 72× u16LE | 27.5–31.25° | diff=38 | Serija C #0. Smještena UNUTAR torque bloka — nastavak iza torque @ 0x027E3A+512 |
+| **0x0280CA** | 72× u16LE | 27.0–30.75° | diff=45 | Serija C #1 |
+| **0x02815A** | 72× u16LE | 27.5–30.75° | diff=47 | Serija C #2 |
+
+> Serija C: svaka vrijednost je u16LE s MSB uvijek=0. Efektivno 72 u8 vrijednosti 110–125 × 0.25°/bit. STG2 povećava za +0.5–1.0°.
+
+#### Serija B (8 mapa) — uski raspon 20–27°, modificirane od STG2
+| Address | Range | STG2 diff | Notes |
+|---------|-------|-----------|-------|
+| **0x0295C0** | 20.25–24.75° | 75B | Serija B #0 |
+| **0x029650** | 20.25–27.0° | 107B | Serija B #1 |
+| **0x0296E0** | 20.25–27.0° | 98B | Serija B #2 |
+| **0x029770** | 20.25–24.75° | 116B | Serija B #3 |
+| **0x029800** | 20.25–27.0° | 54B | Serija B #4 |
+| 0x029890 | **flat 20.25°** | 0B | Serija B #5 — flat fallback |
+| 0x029920 | **flat 20.25°** | 0B | Serija B #6 — flat fallback |
+| 0x0299B0 | **flat 20.25°** | 0B | Serija B #7 — flat fallback |
+
+> Serija B: vjerojatno knock-adaptation ili partial-load uvjeti. Manji raspon nego serija A/A2.
+
+#### Serija B2 (8 mapa) — SVI modificirani od STG2
+| Address | Range | STG2 diff | Notes |
+|---------|-------|-----------|-------|
+| **0x029B60** | 21.0–26.25° | 65B | Serija B2 #0 |
+| **0x029BF0** | 20.25–27.0° | 65B | Serija B2 #1 |
+| **0x029C80** | 20.25–26.25° | 55B | Serija B2 #2 |
+| **0x029D10** | 20.25–27.0° | 88B | Serija B2 #3 |
+| **0x029DA0** | 20.25–24.75° | 100B | Serija B2 #4 |
+| **0x029E30** | 24.75–27.0° | 121B | Serija B2 #5 |
+| **0x029EC0** | 20.25–27.0° | 88B | Serija B2 #6 |
+| **0x029F50** | 24.75–27.0° | 123B | Serija B2 #7 |
+
+> Serija B2: identičan format kao B. Vjerojatno warm-up ili adaptation uvjeti.
+
+### Lambda i fuel mape
+
+| Address | Name | Format | Dims | Notes |
+|---------|------|--------|------|-------|
+| **0x025F5C** | Spark lambda kopija 1 | u16 LE Q15 | 8×16 | λ 0.737–1.004. STG2 mijenja. |
+| **0x02607E** | Spark lambda kopija 2 | u16 LE Q15 | 8×16 | +0x122 od kopije 1 |
+| **0x0261A0** | Spark lambda kopija 3 | u16 LE Q15 | 8×16 | +0x244 od kopije 1 |
+| **0x0262C2** | Spark lambda kopija 4 | u16 LE Q15 | 8×16 | +0x366 od kopije 1 |
+| **0x024EC4** | Lambda trim 1 (30×20) | u16 LE Q15 | 30×20 | STG2 diff=480. Trim korekcija λ×(RPM,load). |
+| **0x0253DC** | Lambda trim 2 (30×20) | u16 LE Q15 | 30×20 | **NOVO.** ORI flat 0.984. STG2 diff=650. Osi @ 0x025378+0x0253B4. Završava 0x02588C. |
+| **0x024468** | Spark overtemp lambda | u16 LE Q15 | 1×63 | Identičan GTI90. λ 0.165–1.423. |
+| **0x0222C0** | Spark lambda zaštita | u16 LE Q15 | 12×18 | 0.015–0.066. Mirror +0x518. |
+
+### Aux tablice (misc/fuel)
+
 | Address | Name | Format | Dims | Notes |
 |---------|------|--------|------|-------|
 | 0x021748 | Spark DFCO RPM thresholds | u16 LE | 1×7 | Spark DFCO |
-| 0x0241F8 | Spark cold start enrichment | u16 LE | 1×6 | Same as GTI90 |
-| **0x0287A4** | Spark deadtime | u16 LE | 8×8 = 64 | Period-encoded ticks 9632–13440; potvrđeno binarnim skanom 2026-03-18 |
-| 0x02408C | Spark knock thresholds | u16 LE | 1×24 | Same as GTI90 |
-| 0x024676 | Spark start injection | u16 LE | 1×6 | Spark-specific |
-| 0x024786 | Spark warm-up enrichment | u16 LE Q14 | 1×156 | |
+| 0x0241F8 | Spark cold start enrichment | u16 LE | 1×6 | Identičan GTI90 |
+| **0x0287A4** | Spark deadtime | u16 LE | 8×8 | Period ticks 9632–13440 |
+| 0x02408C | Spark knock thresholds | u16 LE | 1×24 | Identičan GTI90 |
+| 0x024676 | Spark start injection | u16 LE | 1×6 | [341,565,1001,2397,4363,5089] |
+| 0x024786 | Spark warm-up enrichment | u16 LE Q14 | 1×156 | ORI 0.816 flat. STG2 +83% |
+| **0x0248C2** | Spark therm enrichment 2 | u16 LE Q14 | 1×42 | **NOVO.** ORI 0.706–0.816. STG2 diff=77. Low-temp fuel trim. |
 | 0x0224A0 | Spark idle RPM target | u16 LE | 5×12 | |
+| **0x027E3A** | Spark torque limit | u16 BE Q8 | 16×16 | 86.7–99.2%. Mirror +0x518. |
+| **0x025BAA** | Spark therm enrichment | u16 LE | 8×7 | /64=%. 152–225%. |
+| 0x0237AC | Spark neutral correction | u16 LE Q14 | 1×80 | Flat 16384 = 1.0 |
+
+---
+
+### Spark 2016 vs 2019+ layout — potvrda adresa
+
+**ZAKLJUČAK**: Mape na SVIM gore navedenim adresama su **identične između 2016 (10SW011328) i 2019+ (10SW039116)** — iste adrese, samo drugačije kalibrirane vrijednosti!
+
+| Provjera | 2016 vs 2019+ |
+|----------|--------------|
+| Injection @ 0x0222BE | **IDENTIČAN** (0B diff) |
+| RPM axis @ 0x02225A | **IDENTIČAN** (0B diff) |
+| Load axis @ 0x022282 | **IDENTIČAN** (0B diff) |
+| Rev limiter @ 0x028E34 | **IDENTIČAN** (5120 ticks = 8081 RPM) |
+| Ign series A @ 0x026A76 | **IDENTIČAN** (0B diff u 2016 vs 2019) |
+| Ign series B @ 0x0295C0 | **IDENTIČAN** (0B diff) |
+| Ign series B2 @ 0x029B60 | **IDENTIČAN** (0B diff) |
+| Lambda copies @ 0x025F5C | Različite *vrijednosti* (823B diff) — ISTE adrese |
+| Lambda trim 1 @ 0x024EC4 | ISTE adrese, diff u vrijednostima |
+| Torque @ 0x027E3A | ISTE adrese, 117B diff |
+| Warm-up @ 0x024786 | ISTE adrese, sve vrijednosti drugačije |
+
+> **map_finder.py NE treba zasebne adrese za 2016 Spark** — sve adrese su identične. Samo kalibracijske vrijednosti se razlikuju.
 
 ---
 
@@ -484,3 +591,140 @@ Spark ORI 2019 == Spark ORI 2021: **0 razlika** (identični binariji, isti SW 10
 | Thermal enrichment | 0x025BAA | 112B | STG2 mijenja korekciju |
 
 > Spark 2019 i 2021 su **identični** — isti SW, nema razlike u binariju.
+
+---
+
+## 16. NPRo STG2 vs ORI19 — Kompletni diff (2026-03-19)
+
+**Baze:** `_materijali/dumps/2019/1630ace/300.bin` (10SW040039 ORI) vs `_materijali/dumps/2020/1630ace/300_stg2` (10SW040039 STG2)
+**Rezultat:** 4482B razlika u CODE regiji (0x010000–0x05FFFF), 83 bloka
+
+> NAPOMENA: NPRo STG2 temelji se na 10SW040039 (2019 SW), NE na 10SW066726 (2021).
+> Usporedba STG2 vs ORI21 (7087B, 331 blok) uključuje i evoluciju SW — nije čisti NPRo diff.
+
+### Svi promijenjeni blokovi (CODE regija)
+
+| Blok | Adresa od | Adresa do | Veličina | U map_finder? | Napomena |
+|------|-----------|-----------|---------|--------------|---------|
+| 1 | 0x012C80 | 0x012CFB | 124B | NE | Embedded cal u ranom CODE-u |
+| 2 | 0x01E6C0 | 0x01E6C3 | 4B | NE | Neidentificirano |
+| 3 | 0x01EC32 | 0x01EC35 | 4B | NE | Neidentificirano |
+| 4 | 0x01FCD2 | 0x01FCD5 | 4B | NE | Neidentificirano |
+| 5 | 0x020534 | 0x020537 | 4B | **DA** | SC bypass shadow — NPRo NE mijenja ovdje (blok 5=shadow) |
+| 6 | 0x020544 | 0x020547 | 4B | NE | Parametri blizu SC bypass |
+| 7 | 0x0205A8 | 0x0205D0 | 41B | **DA** | SC bypass aktivan (0x0205A8) |
+| 8 | 0x020620 | 0x020623 | 4B | NE | Neidentificirano |
+| 9 | 0x020A20 | 0x020A23 | 4B | NE | Neidentificirano |
+| 10 | 0x020B54 | 0x020B57 | 4B | NE | Neidentificirano |
+| 11 | 0x020B68 | 0x020B6B | 4B | NE | Neidentificirano |
+| 12 | 0x0215FC | 0x0215FF | 4B | NE | Neidentificirano |
+| 13 | 0x021606 | 0x02160B | 6B | NE | Neidentificirano |
+| 14 | 0x022018 | 0x02202B | 20B | NE | Blizu DFCO pragova (0x02202E) |
+| 15 | 0x022096 | 0x022097 | 2B | **DA** | Rev limiter prag 1 |
+| 16 | 0x0220B6 | 0x0220B7 | 2B | **DA** | Rev limiter prag 2 |
+| 17 | 0x0220C0 | 0x0220C1 | 2B | **DA** | Rev limiter prag 3 |
+| 18 | 0x022374 | 0x022383 | 16B | **DA** | Ignition correction 2D u8 |
+| 19 | 0x024316 | 0x024317 | 2B | NE | Parametar blizu injection osi |
+| 20 | 0x02436C | 0x02446B | 256B | **DA** | Injection main (KFTIPMF) |
+| 21 | 0x0244EC | 0x0245EB | 256B | **DA** | Injection mirror (+0x180) |
+| 22 | 0x02469C | 0x024719 | 126B | **DA** | Lambda protection |
+| 23 | 0x024AB4 | 0x024AD9 | 38B | NE | Neidentificirano (~38B parametri) |
+| 24 | 0x024B12 | 0x024B13 | 2B | NE | Parametar |
+| 25 | 0x0256F8 | 0x025757 | 96B | **DA** | Knock threshold params |
+| 26 | 0x025ADA | 0x025B17 | 62B | **DA** | Lambda overtemp protection |
+| 27 | 0x025B58 | 0x025B95 | 62B | **DA** | Lambda neutral correction Q14 |
+| 28 | 0x025CDC | 0x025CF5 | 26B | **DA** | Start injection |
+| 29 | 0x025CF6 | 0x025D0F | 26B | **DA** | Start injection mirror |
+| 30 | 0x025DF8 | 0x025E3F | 72B | **DA** | SC base fuel factor |
+| 31 | 0x025E50 | 0x026043 | 500B | **DA** | CTS warm-up correction |
+| 32 | 0x0265D6 | 0x026659 | 132B | **DA** | Lambda bias |
+| 33 | 0x0266F0 | 0x0267AF | 192B | **DA** | Lambda main |
+| 34 | 0x026C08 | 0x026CC7 | 192B | **DA** | Lambda mirror |
+| 35 | 0x026DB8 | 0x026E77 | 192B | **DA** | Lambda trim |
+| 36 | 0x0275FD | 0x027963+256B | ~1160B | **DA (NOVO)** | Lambda Eff U8 (4×16×16, stride 290B) |
+| 37 | 0x027A00 | 0x027A7F | 128B | NE | Neidentificirano (blizu lambda eff u8 bloka) |
+| 38 | 0x028059 | 0x028087 | 41B | **DA** | Accel enrichment Q14 |
+| 39 | 0x028C30 | 0x028D90 | 353B | **DA** | Decel RPM ramp table |
+| 40 | 0x029993 | 0x0299C8 | 54B | **DA** | SC bypass extra kopija |
+| 41 | 0x02A0D8 | 0x02A1D7 | 256B | **DA** | Torque main |
+| 42 | 0x02A5F0 | 0x02A6EF | 256B | **DA** | Torque mirror |
+| 43 | 0x02AA42 | 0x02AASF | ~56B | **DA** | Thermal enrichment |
+| 44 | 0x02AE5E | 0x02B05D | 512B | **DA** | Lambda eff KFWIRKBA |
+| 45–55 | 0x02B378 | 0x02B415 | 158B | **DA (NOVO)** | Lambda thresh (79× u16 LE Q15) |
+| 56–70 | 0x02B72A | 0x02B73D | 20B | **DA** | Rev limiter scalars |
+| 71–83 | 0x02B730 | 0x02C1F7 | 2760B | **DA** | Ignition 19× mapa (sve 19) |
+| — | 0x03FDB0 | 0x03FDB5 | 6B | NE | "NOREAD" string — NPRo marker/signature |
+
+> **Statistika:** 83 bloka, 4482B ukupno. Oko 60% blokova već prepoznato u map_finder.py.
+> Neidentificirani blokovi su uglavnom mali parametri (<20B) ili neistraženi regioni.
+
+---
+
+## 17. DEO 4 — 130hp vs 170hp identičnost (potvrđeno)
+
+**POTVRĐENO: 130hp == 170hp — 0 razlika u CODE regiji!**
+
+| Usporedba | Razlike | Status |
+|-----------|---------|--------|
+| 2021 130hp vs 2021 170hp (CODE) | **0B** | IDENTIČNI |
+| 2021 130hp vs 2021 170hp (BOOT) | 0B | IDENTIČNI |
+| 2021 130hp vs 2021 170hp (CAL) | 0B | IDENTIČNI |
+| 2020 130hp vs 2020 170hp (CODE) | **0B** | IDENTIČNI |
+| 2020 130hp vs 2020 170hp (BOOT) | 0B | IDENTIČNI |
+
+**Zaključak:** Razlika 130hp vs 170hp je ISKLJUČIVO mehanička (propeler/prijenosni omjer), ista ECU kalibracija.
+Isto ponašanje kao 1503 130hp/155hp/230hp (isti SW = isti binarij).
+
+---
+
+## 18. DEO 5 — Godišnja evolucija 300hp SC
+
+| Usporedba | CODE razlika | Blokova | Napomena |
+|-----------|-------------|---------|---------|
+| 2019 vs 2020 (10SW040039→10SW054296) | **1838B** | ~30 | Umjereni SW update |
+| 2020 vs 2021 (10SW054296→10SW066726) | **2891B** | ~45 | Veći SW update |
+| 2019 vs 2021 (10SW040039→10SW066726) | **4423B** | ~75 | Ukupna evolucija u 2 god. |
+
+**Ključni nalaz:** MAP mape (injection, torque, ignition) se mijenjaju između godina — razlika između ORI19 i ORI21 nije samo SW parametri, već i kalibracijske vrijednosti.
+
+---
+
+## 19. DEO 2/3 — SC vs NA, 300hp vs 230hp
+
+| Usporedba | CODE razlika | Ključne mape koje se razlikuju |
+|-----------|-------------|-------------------------------|
+| 300hp SC vs 130hp NA (2021) | **20309B** | Injection, lambda, torque, ignition, SC bypass, lambda eff u8, lambda thresh |
+| 300hp SC vs 230hp SC (2021) | **15752B** | Injection, torque, lambda, ignition timing, SC bypass, lambda thresh |
+| 130hp vs 170hp | **0B** | IDENTIČNI |
+
+---
+
+## 20. Nove mape identificirane NPRo analizom (2026-03-19)
+
+### Lambda Efficiency U8 Lookup (4 kopije × 16×16)
+
+| Atribut | Vrijednost |
+|---------|-----------|
+| Adrese | 0x0275FD, 0x02771F, 0x027841, 0x027963 |
+| Stride | 290B (256B data + 34B X-os padding) |
+| Format | 16×16 u8, /128 = faktor |
+| SC 300hp raspon | 0.125–1.094 |
+| NA 130hp raspon | 0.836–0.938 (kompaktiji) |
+| SC vs NA razlika | 222/256 ćelija (86%) |
+| NPRo promjena | C0,C1 svih redova +5 do +8 (lean-side povećanje) |
+| Confidence | **70%** — analogno KFWIRKBA ali u8 format |
+| Implementacija | `_scan_lambda_eff_u8()` u MapFinder |
+
+### Lambda Threshold Parametri (KFWIRKBA pragovi)
+
+| Atribut | Vrijednost |
+|---------|-----------|
+| Adresa | 0x02B378 |
+| Format | 1×79 u16 LE Q15 = 158B |
+| ORI 300hp SC raspon | λ 0.43–1.80 |
+| ORI 130hp NA raspon | λ 0.61–1.32 |
+| SC vs NA razlika | 79/79 (100%) — kompletno različiti |
+| NPRo STG2 | Sve na 0xFFFF = bypass svih lambda zaštita |
+| Lokacija | Odmah ispred ignition bloka (0x02B730 − 952B = 0x02B378) |
+| Confidence | **75%** — Q15 lambda format potvrđen |
+| Implementacija | `_scan_lambda_thresh()` u MapFinder |

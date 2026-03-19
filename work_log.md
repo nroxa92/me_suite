@@ -1,5 +1,105 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 — 7-DEO binarna analiza: NPRo diff, SC/NA, godišnja evolucija, +2 nove mape
+
+### Sto je napravljeno
+
+Kompletna 7-dijelna binarna analiza za ME17.8.5 Rotax 1630 varijante:
+
+**DEO 1 — NPRo ORI19 vs STG2 diff:**
+- Ispravna usporedba: STG2 vs ORI19 (isti SW 10SW040039), ne vs ORI21
+- Rezultat: 4482B razlika, 83 bloka u CODE regiji (0x010000–0x05FFFF)
+- ~60% blokova već prepoznato u map_finder.py
+- Nova otkrića: Lambda Eff U8 @ 0x0275FD, Lambda Thresh @ 0x02B378
+
+**DEO 2/3 — SC vs NA, 300hp vs 230hp:**
+- 300hp SC vs 130hp NA: 20309B razlika
+- 300hp SC vs 230hp SC: 15752B razlika (injection/torque/ignition različiti)
+
+**DEO 4 — 130hp vs 170hp:**
+- POTVRĐENO: 0 razlika u CODE regiji (obje 2020 i 2021)
+- Razlika je ISKLJUČIVO mehanička (propeler/prijenosnik)
+
+**DEO 5 — Godišnja evolucija 300hp SC:**
+- 2019→2020: 1838B (umjereni SW update)
+- 2020→2021: 2891B (veći SW update)
+
+**DEO 6 — Nove identificirane mape (confidence >70%):**
+- `Lambda Eff U8` @ 0x0275FD: 4×16×16 u8, /128=faktor, stride 290B. Confidence 70%.
+- `Lambda Thresh` @ 0x02B378: 1×79 u16 LE Q15. SC=0.43–1.80λ, NA=0.61–1.32λ. STG2=0xFFFF bypass. Confidence 75%.
+
+**DEO 7 — Mape s neidentificiranim osima:**
+- 0x02220E, 0x02AA42, 0x02469C — osi potvrđene kao neidentificirane, ali mape su inače poznate.
+- Nisu rješavane prema specifikaciji.
+
+### Fajlovi promijenjeni
+
+- `core/map_finder.py` — +2 MapDef (LAMBDA_EFF_U8 + LAMBDA_THRESH), +2 scan metode, wired u find_all()
+- `_docs/MAPS_REFERENCE.md` — +5 novih sekcija (16–20): NPRo diff tablica, DEO 4, DEO 5, DEO 2/3, nove mape
+
+### Kljucni rezultati
+
+- Map count: 300hp=54, 230hp=53, 130/170hp=62, GTI90=60, Spark=52
+- Svi testovi prolaze
+- NPRo STG2 signature: "NOREAD" string @ 0x03FDB0
+
+---
+
+## 2026-03-19 — EEPROM editor + Spark ignition scan fix + docs update
+
+### Što je napravljeno
+1. **`core/eeprom.py`** — dodana `EepromEditor` klasa s metodama:
+   - `set_hull_id()`, `set_dealer_name()`, `set_date_first_prog()`, `set_date_last_update()`, `set_prog_count()`
+   - `save()`, `get_bytes()`, `get_info()`, `from_bytes()` (classmethod)
+   - EEPROM nema checksum → izmjene direktne, bezopasne za editabilna polja
+2. **`ui/eeprom_widget.py`** — kompletni rewrite s edit podrškom:
+   - Editabilna polja: Hull ID, dealer naziv, datumi (×2), broj programiranja (SpinBox)
+   - Read-only: ECU serial, MPEM SW, HW tip, radni sati (circular buffer)
+   - Gumbi: "Spremi izmjene" (overwrite original), "Spremi kao..." (novi fajl)
+   - Status indikator (● nespremljene izmjene / ✔ Spremljeno)
+3. **`core/map_finder.py`** — `_scan_spark_ignition` provjerena: sve 4 serije se skeniraju (A×8+B×8+B2×8+C×3=27)
+4. **`_docs/MAPS_REFERENCE.md`** — dodana sekcija 14 (Spark kompletna mapa lista), Quick Summary ažuriran s točnim testnim brojevima (300hp=53, Spark=52, GTI90=59, 230hp=52, 130hp=61)
+5. **`memory/MEMORY.md`** — SW map counts ažurirani
+
+### Checksum situacija
+- **EEPROM**: NEMA checksuma — direktno editiranje sigurno
+- **ECU BOOT (0x0000–0x7EFF)**: CRC32-HDLC, CS @ 0x30 (u32 BE), implementirano u `core/checksum.py`
+- **CODE mape (0x010000+)**: ne zahtijevaju promjenu checksuma
+
+
+## 2026-03-19 23:55 — Spark kompletni map inventar: 2016 vs 2019+ layout, NPRo diff, nove mape
+
+### Sto je napravljeno
+
+Kompletna binarna analiza Spark 900 ACE mapa:
+- NPRo STG2 diff: 2021 ORI vs STG2 — 73 bloka, 6428 byteova
+- Otkrivene **4 potpuno nove serije ignition mapa** (B, B2, C) prethodno neskenirane
+- Otkrivene **4 nove aux mape** (lambda trim 2, load axis 2, lambda X-os, therm enrich 2)
+- Potvrda: 2016 Spark (10SW011328) koristi **iste adrese** kao 2019+ (identičan layout)
+- DEO 3: GTI90 adrese NE postoje u Spark binariju (nule na svim GTI adresama)
+- DEO 4: RPM os 1920–6656 RPM (20pt), Load os 3999–33600 (30pt) — iste u oba SW
+
+**Fajlovi promijenjeni:** `core/map_finder.py`, `_docs/MAPS_REFERENCE.md`
+
+### Kljucni rezultati
+
+**Spark ignition layout (27 mapa u 4 serije):**
+- Serija A (#00–#07 @ 0x026A76): 8 mapa, STG2 ne mijenja — ranije skenirao samo 6!
+- Serija B (#00–#07 @ 0x0295C0): 8 mapa, 5 modificirane STG2, 3 flat fallback
+- Serija B2 (#00–#07 @ 0x029B60): 8 mapa, sve modificirane STG2 (+2–7°)
+- Serija C (#00–#02 @ 0x02803A): 3 mape u u16LE formatu, ×0.25°/bit (27.5–31.25°)
+
+**Nove lambda/fuel mape:**
+- Lambda trim 2 @ 0x0253DC (30×20 Q15): ORI flat 0.984, STG2 diff=650 — veliki uticaj
+- Load axis copy 2 @ 0x025378: parnjak za trim 2, STG2 proširuje raspon
+- Lambda X-os @ 0x024775 (16pt u8): /128=lambda, STG2 proširuje lean-side (0.258→1.875)
+- Therm enrich 2 @ 0x0248C2 (42 u16 Q14): ORI 0.706–0.816, STG2 mijenja sve vrijednosti
+
+**Spark 2016 vs 2019+ adrese:** IDENTIČAN layout! map_finder ne treba posebne adrese.
+
+**Ukupno:** Spark scanner sada pronalazi 52 mape (ranije 27).
+
+---
 
 ## 2026-03-19 22:00 — 4tec1503 kompletna binarna analiza
 
@@ -2795,3 +2895,75 @@ Ručni pregled svih _docs/*.md fajlova i CLAUDE.md — pronađene i ispravljene 
 
 ### Testovi
 - test_core.py: sve 3 EEPROM provjere prolaze (064/063/062)
+
+## 2026-03-19 — EEPROM ispravak docs + old_pro analiza + CAN bus findings
+
+### Ispravci dokumentacije
+- `_docs/EEPROM_GUIDE.md`: ispravljen netočan navod "separate 32KB chip" → TC1762 DFlash (unutar MCU)
+- `_docs/USER_MANUAL.html`: ista ispravka u EEPROM poglavlje
+- Točno: TC1762 = PFlash 1.5MB (firmware+mape) + DFlash 64KB (EEPROM emulacija) — oba INTERNO u čipu
+
+### old_pro/ analiza
+Istraži Desktop/old_pro/ na zahtjev korisnika. Tri projekta:
+
+**SDCANlogger** (ključni):
+- `sniffcan.py` — Python sniffer, IXXAT adapter @ 250kbps, bilježi u txt fajl + screenshot hints
+- `main.py` (ESP32 MicroPython) — WiFi AP "SeaDooLog", WebSocket live stream, filtrira [0x316, 0x342, 0x103, 0x104], binarno snimanje
+- Stvarni CAN logovi: 2 sesije, 27.07.2025., ECU na stolu
+- Alati: muxfilter0x342.py (filtrira ID 0x342), infofilter.py (extrahira N linija prije screenshota), log splitter.py
+
+**SACC** — React+TypeScript+Vite+Firebase, termostat/klima projekt (CircularThermostat, Admin/Client/Master view)
+**sdtpro** — zasebni git projekt, nije dalje istražen
+
+### CAN bus dekodiranje iz logova
+CAN IDs na BRP busu (250kbps):
+- 0x102: ~100Hz, bytes[4:5]=59CB const, byte[6]=rolling counter
+- 0x103: ~100Hz, rolling counter
+- 0x110: ~20Hz
+- 0x122: ~100Hz, bytes[0:2]=360D const
+- 0x300: periodic, `0000 5468 0065 0100` — djelomično const
+- 0x308: periodic, `0010 0000 0000 0100` — gotovo const
+- 0x316: const `023C 026E 9600 0000`
+- 0x320: const `0000 0000 6000 8200`
+- 0x342: MUX poruka, ciklusi ~8 različitih u16 vrijednosti svakih ~80ms
+- 0x516: sve nule
+- 0x4CD: povremeno
+- 0x7E0/0x7E8: BUDS2 UDS (ReadDataByIdentifier 0x22/0x62)
+
+**Ključna tehnika**: korelacija BUDS2 DID requesti (0x7E0) + ECU odgovori (0x7E8) + live prikaz u BUDS2 = otkrivanje adresa mapa i parametara.
+
+Primjeri uhvaćenih DID-ova:
+- DID 0x2183 → 0x40 (64 decimal)
+- DID 0x2175 → 0x01
+- DID 0x2176 → 0x00
+
+### Mogući sljedeći koraci (CAN)
+- Ciljana BUDS2 sniff sesija za preostale neidentificirane parametre (0x028C30, 0x012C80...)
+- Testiranje writable DIDs → live tuning via UDS
+
+## 2026-03-19 — sdtpro analiza
+
+### Projekt
+sdtpro = Sea-Doo Tool Pro, 3-dijelni hardware/SW projekt iz Desktop/old_pro/sdtpro/
+
+**Komponente:**
+- `firmw/src/main.cpp` — ESP32 Arduino/PlatformIO: WiFi AP "SeaDoo_Tool_AP", WebSocket /ws, ACAN_ESP32, decodira CAN → JSON svaki 250ms
+- `pico_firmw/src/main.cpp` — RP2040 Pico: čita byte ID iz AT24Cxx EEPROM (I2C), postaje I2C Slave na addr 8 → ESP32 identifikacija POD-a
+- `sdtapp/` + `mobile_app/` — Flutter (Dart): live dashboard, DataTiles za RPM/ECT/EOT/speed/throttle/MAP/MAT/EGT/iBR/voltage, WebSocket klient, Hive DB, dark/light tema
+
+**CAN ID dekodiranje u ESP32 firmwareu:**
+| ID | Parametar | Formula |
+|----|-----------|---------|
+| 0x0CF00400 (J1939) | RPM + gas | (d[4]*256+d[3])*0.125, d[1]*0.4 |
+| 0x18FEEE00 (J1939) | ECT1 + EOT1 | d[0]-40, (d[3]*256+d[2])*0.03125-273.15 |
+| 0x18FEF100 (J1939) | Brzina | (d[1]*256+d[0])/256.0 |
+| 0x18FEF200 (J1939) | Gorivo | d[1]*0.4 |
+| 0x342 mux AA | MAP | (d[2]*256+d[3])*0.41265+360.63 hPa |
+| 0x342 mux DE | ECT2 | 56.9-(0.0002455*(d[2]*256+d[3])) °C |
+| 0x342 mux C1 | MAT | 92.353-(0.00113485*(d[4]*256+d[5])) °C |
+| 0x316 | EOT2 | d[3]*0.943-17.2 °C |
+| 0x103 | EGT | d[4]*1.0125-60 °C |
+
+**⚠️ Kritična greška: ACAN_ESP32_Settings settings(500*1000)** — Sea-Doo CAN je 250kbps! ESP32 nikad nije primao podatke.
+
+**⚠️ 0x342 MUX nepodudaranje:** IXXAT logovi pokazuju byte[0]=0x21 i byte[1]=0xDE uvijek. Firmware provjerava byte[0] za 0xAA/0xDE/0xC1. Mux byte je možda byte[1] ili ove vrijednosti nisu prisutne u snimljenim sesijama. Treba verifikacija s radnim ESP32 @ 250kbps.

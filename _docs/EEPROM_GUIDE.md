@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-The EEPROM is a **separate 32KB chip** from the main ECU flash. It stores:
+The EEPROM je **Data Flash (DFlash) unutar Infineon TC1762 MCU** — nije zasebni čip. TC1762 ima interno: 1.5MB Program Flash (PFlash, firmware + mape) i 64KB Data Flash (EEPROM emulacija). Oba se čitaju/pišu kroz isti MCU (BDM/BSL interface). EEPROM (DFlash) pohranjuje:
 - Vehicle identification (Hull ID / VIN)
 - Programming history (dates, count)
 - Odometer / operating hours (circular buffer)
@@ -203,7 +203,7 @@ print(info.mpem_model_guess()) # "300hp (RXP-X / GTX 300 / RXT-X 300)"
 ## 9. Notes
 
 - EEPROM size must be exactly 32,768 bytes; parser continues with warnings if different
-- EEPROM is read/written separately from the main ECU flash dump
+- EEPROM (DFlash) i firmware (PFlash) su oba unutar TC1762 — čitaju se zasebno jer su različite memorijske banke, ali kroz isti fizički čip
 - The dealer name field (0x0102) can be up to 16 ASCII characters
 - Service SW ID (0x0040) is always `1037500313` across all known samples — hardcoded by BUDS2
 - **RXT-X 260 "nepoznati epprom"**: 2MB container dump, aktivan sadržaj 128KB @ offset 0x020000. SW=1037524060, Bosch part `7A1124OA0RDS1`. Nije standard 32KB format — EepromParser nije kompatibilan.

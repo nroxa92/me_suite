@@ -4,6 +4,23 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-19 — 7-DEO binarna analiza]**
+👤 7-dijelna binarna analiza: DEO1=NPRo diff (sve promijenjene regije CODE); DEO2=SC vs NA razlike; DEO3=300hp vs 230hp SC; DEO4=130hp vs 170hp identičnost; DEO5=godišnja evolucija 2019/2020/2021; DEO6=identifikacija nepoznatih blokova; DEO7=mape s neidentificiranim osima. Implementirati u map_finder.py + ažurirati docs.
+🤖 DEO1: ORI19 vs STG2 = 4482B/83 bloka (ispravna usporedba — isti SW 10SW040039). DEO4: 130hp==170hp, 0 razlika. DEO5: 2019→2020: 1838B, 2020→2021: 2891B. DEO6: +2 nove mape implementirane — Lambda Eff U8 @ 0x0275FD (4×16×16 u8, confidence 70%) + Lambda Thresh @ 0x02B378 (1×79 Q15, confidence 75%). Map count: 300hp=54, svi testovi prolaze.
+
+---
+---
+**[2026-03-19 — nastavak sesije]**
+👤 trebamo mogucnost editiranja eeproma i trebamo checksum lokaciju i tip za kalkuliranje nakon izmjena???!!
+🤖 Dodan `EepromEditor` u `core/eeprom.py` (set_hull_id, set_dealer_name, set_date_first/last_prog, set_prog_count, save/get_bytes). EEPROM widget kompletno rewritten s edit podrškom — editable polja s validacijom, "Spremi"/"Spremi kao" gumbi. EEPROM nema checksum. ECU flash: CRC32-HDLC @ 0x30, samo BOOT region (0x0000–0x7EFF) — CODE mape NE zahtijevaju update checksuma.
+
+---
+---
+**[2026-03-19 23:55]**
+👤 Kompletni Spark map inventar — 2016 layout vs 2019+ layout. DEO 1: NPRo STG2 diff analiza (ORI 2019+ vs STG2). DEO 2: Spark 2016 vs 2019+ diff (trebaju li zasebne adrese?). DEO 3: usporedba s GTI90. DEO 4: RPM i Load osi. Implementirati nađene mape u map_finder.py, ažurirati MAPS_REFERENCE.md.
+🤖 Spark scanner prosiren sa 27 na 52 mape. 4 nove ignition serije (B, B2, C = 19 mapa), 4 nove aux mape (lambda trim 2 @ 0x0253DC, load axis 2 @ 0x025378, lambda X-os @ 0x024775, therm enrich 2 @ 0x0248C2). 2016 Spark korististi iste adrese kao 2019+ — posebne adrese nisu potrebne. GTI90 adrese ne postoje u Spark binariju.
+
+---
 **[2026-03-19 22:00 — 4tec1503 kompletna binarna analiza]**
 👤 Kompletni map inventar za Rotax 1503 (4tec1503) — usporedba 130/155/230hp 2019 i 2020, GTI injection/ignition extra provjera, rev limiter potvrda, SC bypass i SC boost factor analiza.
 🤖 DEO 1: 130/155/230hp 2019 su byte-for-byte identicni (0 razlika). DEO 2: 1503 vs 1630 = 17389B CODE razlika u 660 blokova; kljucne mape razlicite (injection, lambda, torque, ignition), ali RPM os i rev limiter identicni. DEO 3: GTI injection i 8 extra ignition mapa aktivne u 1503. DEO 4: Rev limiter = 7892 RPM (5243 ticks) za 2019/2020 (KOREKCIJA: 7700 RPM vrijedi samo za 10SW025752/2018). DEO 5: SC bypass NA (iste vrijednosti kao 1630 NA); anomalija SC boost factor +41.2% (flat 23130). DEO 6: 2019 vs 2020 = 536B razlika, mape identicne. Azurirani map_finder.py, MAPS_REFERENCE.md, ENGINE_SPECS.md, SW_VERSIONS.md.
@@ -643,5 +660,40 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 **[2026-03-18 23:55]**
 👤 samo upoi agente neka rade.. ima mnogo nedostajucih i nedefeniniranih mala
 🤖 Pokrenuta 3 agenta: (1) ignition aux #10-#18 — sve 19 mapa identificirane, #15 SC-specifična, #18 fallback identičan #11.R04-R06; (2) komprehensivni CODE scan — 2 nove mape: lambda adapt @0x0268A0 (85%) + decel RPM ramp @0x028C30 (75%), 300hp sad 53 mape; (3) KFWIRKBA + Spark/GTI — TODO uklonjen, GTI90 koristi lambda mirror kao primarnu, Spark 27 mapa potvrđeno kompletno.
+
+---
+**[2026-03-19]**
+👤 Istraži Tihomir Kotarski i Sea-Doo Spark utrke — vozio NPRo mapu, korisnik mu lagao mehaniku. Provjeri web + lokalne fajlove za "kotarski"/"tihomir", NPRo Spark tuninge, i postoji li drugi NPRo Spark dump osim 1037544876.
+🤖 Kotarski = poznati hrvatski enduro vozač (TK Racing), AlpeAdria Jet Ski prvak GP3 2019 i GP4 2020/22/23 — jet ski je potvrđeni hobi/natjecanje. U lokalnim fajlovima nema nikakve reference na Kotarskog. NPRo Spark dumps: samo jedan postoji (2018/spark_stg2 = SW 1037544876), drugi NPRo Spark (2019+ STG2) ima SW 10SW039116 bez NPRo oznake. Ne postoji drugi NPRo Spark dump u repozitoriju.
+
+---
+---
+**[2026-03-19]**
+👤 Kaže da su s prijateljem kopali po EEPROM/mapama Sparkova i jetovi nisu palili — prijatelj rekao da je problem checksum. Pita je li možda problem bio nešto drugo, ne checksum?
+🤖 Checksum NIJE bio problem: EEPROM nema checksum, CODE mape ne trebaju checksum update. Najvjerojatniji uzroci: (1) DESS/MPEM pairing — izmjena hull_id/serial u EEPROM-u prekida immobilizer vezu → motor ne pali bez greške; (2) pisanje u CAL regiju (TriCore bytekod) što crashuje ECU; (3) pogrešne vrijednosti mapa. Naš editor ne dira DESS podatke i ne zahtijeva checksum za CODE promjene.
+
+---
+---
+**[2026-03-19]**
+👤 Nema drugih NPRo dumpova — dva koja ima su jedina. Kotarski istraga je bila samo za provjeru prvenstava. Traži istragu "NPRo tune" — "neki sveđanin koji je stari dius3 nekako hakirao i ubacio svoje mape, ima sve mape za sve Sea-Doo".
+🤖 NProtune = koriste IXXAT/MPI adapter (BRP CAN kanal), fajlovi emailom. "Sveđanin s Dius3 hackom" = najvjerojatnije Vtechtuned/Maptun Performance (Švedska) koji su razvili MaptunerX (vlastiti HW, reverse-engineered BRP flash protokol). Oba dostavljaju full firmware dump — isto što i mi imamo kao raw binary fajlove.
+
+---
+---
+**[2026-03-19]**
+👤 Imaju X-Horse Multiprog za čitanje/pisanje. Našao grešku u docs: piše da je EEPROM odvojen od MCU, ali to nije točno — i EEPROM i mape su u TC1762.
+🤖 Točno: TC1762 ima interno PFlash (1.5MB, firmware+mape) i DFlash (64KB, EEPROM emulacija) — oba u istom čipu. Ispravljena greška u EEPROM_GUIDE.md i USER_MANUAL.html. X-Horse Multiprog = bench BDM/BSL, najjači alat za TC1762 rad.
+
+---
+---
+**[2026-03-19]**
+👤 U old_pro/ su ne samo CAN logovi nego i skripte kojima je sniffao IXXAT dok BUDS2 radi — tako je dolazio do adresa. Pita mogu li i dalje sniffati ako treba.
+🤖 Pronađeno: SDCANlogger (sniffcan.py + ESP32 firmware), SACC (React termostat projekt), sdtpro (git projekt). CAN logovi od 27.07.2025. sadrže BUDS2 UDS DID requeste (0x7E0/0x7E8) — korelacija DID + vrijednost + BUDS2 prikaz = metoda za otkrivanje adresa. Da, možemo ciljano sniffati za preostale neidentificirane adrese ili testirati writable DIDs za live tuning.
+
+---
+---
+**[2026-03-19]**
+👤 sdtpro istraži — to je trebao biti hardware
+🤖 sdtpro = Sea-Doo Tool Pro, 3 dijela: ESP32 (CAN+WiFi+WebSocket, Arduino/PlatformIO), Pico (POD ID reader via AT24C EEPROM), Flutter app (live dashboard, DataTiles za RPM/ECT/EOT/speed/throttle/MAP/MAT/EGT/iBR/voltage). Kritična greška: CAN na 500kbps umjesto 250kbps — zbog toga nikad nije radio. Jedna linija ispravka. 0x342 MUX dekodiranje treba verifikaciju jer IXXAT logovi pokazuju drugačiji pattern.
 
 ---
