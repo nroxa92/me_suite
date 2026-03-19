@@ -32,6 +32,7 @@ EMPTY_START     = 0x160000
 # Poznati SW stringovi (na adresi 0x001A, 10 bajtova)
 KNOWN_SW = {
     b"10SW066726": "ORI baseline (Sea-Doo 300hp SC, stock)",
+    b"10SW023910": "300hp SC 2018 ORI (Sea-Doo RXP/RXT/GTX 300hp, 2018 model — prijelazni SW; 61 mapa: 2×injection + 2×ignition seti (GTI legacy @ 0x022066/0x028310 + standard @ 0x02436C/0x02B730); ~146KB razlika od 2019)",
     b"10SW040039": "300hp SC 2019 ORI / NPRo STG2 base (SW string nepromijenjen u NPRo tunu — 4482B CODE razlika između 2019 ORI i NPRo verzije)",
     b"10SW004672": "RXP/RXT 300hp SC (2016)",
     b"10SW082806": "300hp SC variant (backup_flash)",
@@ -40,6 +41,7 @@ KNOWN_SW = {
     b"10SW053729": "GTI SE 130/170 2020-2021 (NA, Rotax 1630 NA — isti SW, 2020 vs 2021 = 80B razlika samo u hash bloku)",
     b"10SW053727": "GTI SE 230 / Wake Pro 230 2021 (SC, Rotax 1630 SC)",
     b"10SW054296": "300hp SC 2020 ORI (Sea-Doo RXP/RXT/GTX 300hp, 2020 model)",
+    b"10SW025021": "GTI/GTS 230hp 1503 2018 SC (Rotax 1503 SC — 59 mapa; SC bypass aktivan s fizičkim ventilom @ 0x020534; ~19KB razlika od NA verzije 10SW025022)",
     b"10SW025022": "GTI/GTS 130hp 1503 2018 v1 (Rotax 1503 NA — 60 mapa, nema therm enrich @ 0x02AA42; SC bypass aktivan u kodu ali bez fizičkog ventila)",
     b"10SW040008": "GTI/GTS 130/155/230hp 1503 2019 (Rotax 1503, identičan binary za sve 3 snage — razlika samo u HW)",
     b"10SW040962": "GTI/GTS 130hp 1503 NA 2020 (Rotax 1503 NA)",

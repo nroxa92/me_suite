@@ -9,9 +9,19 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 🤖 Sve osi pronadjene — detaljan izvjestaj dolje. Kljucni nalaz: deadtime mapa stvarno pocinje na 0x0258AA (ne 0x025900), inject osi su dijeljene (RPM na 0x024F46, Load na 0x02AE30), KFWIRKBA Y-os nije inline vec dijeljena.
 
 ---
+**[2026-03-19 24:00 — Binarna analiza 4 neidentificirane mape]**
+👤 Traži 4 neidentificirane mape u ME17.8.5 ECU firmware-u: KFPED (pedal/throttle), MAT korekcija, fuel rail pressure korekcija, boost target/SC MAP. Metoda: diff SC 300hp vs NA 130hp + signature search.
+🤖 KFPED: 10×20 u8 @ 0x029528/0x029548 (mirror 0x029630), X=pedal°, Y=RPM. MAT: shared 12pt @ 0x022726, SC-spec 8pt @ 0x023702. Fuel/MAP mapa: 12×16 Q15 @ 0x022066. Boost: threshold table @ 0x020534 + correction map 10×8 Q14 @ 0x02220E (NA=flat, SC aktivno).
+
+---
 **[2026-03-19 23:30 — KFWIRKBA ispravka (nastavak sesije)]**
 👤 [kontekst nastavka prethodne sesije — KFWIRKBA Y-os ostala nepoznata]
 🤖 KFWIRKBA je 14×10 u8 (ne 7×10 u16 Q15). Count bytes 0x0E/0x0A na 0x0259C2. Y-os: 14 lambda u8/100 na 0x0259C4; X-os: 10 lambda u8/100 na 0x0259D2; mapa na 0x0259DC, dtype u8 /128=1.0.
+
+---
+**[2026-03-19 23:30 — Binarna analiza osi: Spark IGN A/B/C + Lambda DEF + Therm Enrich]**
+👤 Zadatak: SAMO ISTRAŽIVANJE. Pronađi osi (X/Y) za Spark ignition mape i dvije ostale mape (Lambda DEF, Therm Enrich). Vrati detaljne nalaze.
+🤖 IGN A potvrđeno: Y-os (load) @ 0x0269AF [2-120%], X-os (RPM) @ 0x026A1E [1500-8000], obje identične 2018/2021. IGN C: X-os RPM 0x027C7C [3500-8500], Y-os load 0x027D36 [4000-12600]. Therm Enrich Y-os: warmup sekunde [15-125s] @ 0x025B50. Lambda DEF X-os @ 0x025F4C s anomalnim val[0]=151; mapa ima 4 lambda grupne razine (0.965/0.922).
 
 ---
 **[2026-03-19 — 7-DEO binarna analiza]**
@@ -793,5 +803,42 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 **[2026-03-19 14:15]**
 👤 Ispravi 3 false positive definicije u core/map_finder.py — Spark torque na pogrešnoj adresi (0x027E3A umjesto 0x027D9A, 16×16 umjesto 30×20), _SPARK_IDLE_RPM_DEF i _SPARK_LAMBDA_PROT_DEF su unutar injection tablice.
 🤖 Sve tri ispravke napravljene: torque ispravljen na 0x027D9A 30×20 s osima (mirror 0x0282B2 potvrđen binarno), idle RPM i lambda prot zakomentiran kao false positivi. Spark mape: 52 (s 54 - 2 false positiva). Svi testovi prolaze.
+
+---
+**[2026-03-19 23:55]**
+👤 Implementiraj osi za Spark ignition mape u core/map_finder.py na temelju potvrđenih binarnih nalaza. Provjeri Y os @ 0x0269AF i X os @ 0x026A1E. Provjeri i IGN B osi. Pokreni testove.
+🤖 Dodane konstante _SPARK_IGN_A_X i _SPARK_IGN_A_Y (binarnno verificirano na 2018+2021 sparkovima, identično). IGN B osi ostavljene bez promjene — nema jasno identificirane u16 RPM osi blizu B tablice. Svi testovi prolaze, Spark = 52 mape.
+
+---
+---
+**[2026-03-19 23:58]**
+👤 Pošalji poruku agentu ac64764456506745c s implementacijom osi za Spark IGN A/B/B2/C, Therm Enrich i Lambda DEF.
+🤖 SendMessage alat nije dostupan — osi implementirane direktno. IGN B i B2 sada dijele _SPARK_IGN_A_X/_Y; IGN C dobio vlastite 8pt/9pt osi; Therm Enrich X=CTS temp/Y=warmup sek; Lambda DEF Y=RPM/X=lambda ref (val[0]=151 anomalija zadržana). Svi testovi prolaze, Spark=52 mape.
+
+---
+
+---
+**[2026-03-19]**
+👤 kako nije? [155v2 dump je bio spreman u folderu]
+🤖 155v2 analiziran: identičan 130v2 (0B razlika), SW=10SW025752. 130v1=155v1=10SW025022, 130v2=155v2=10SW025752. Razlika v1→v2: 2901B u 35 blokova (ignition+lambda+injection mape). BUDS2 nudi 2 kalibracijska profila za isti fizički model.
+
+---
+**[2026-03-19]**
+👤 Analiziraj Spark 900 ACE binarni dump i pronađi: 1) Accel enrichment Y-os (na 0x028059 za 1630ace, traži za Spark), 2) Spark IGN B/B2 osi (dijele li IGN A ili imaju zasebne?), 3) Provjera completeness — ima li nešto tipično ME17 a nije u 52 mape.
+🤖 Y-os pronađena (identična u oba ECU): `[5,19,27,53,67]`°C @ 0x028046 (1630) / 0x026912 (spark), 19B ispred global byte; Spark X-os razlikuje se na 4.-6. točki [300,600,900] vs [200,350,1500]. IGN B/B2 dijele IGN A osi (nema zasebnih). Bonus nalaz: nova neidentificirana Spark knock retard tablica @ 0x029AC0 (8×8 u8, X=load, Y=RPM×80).
+
+---
+
+---
+**[2026-03-19]**
+👤 ubrzanje 5x5 me vise zanima, uposli agenta za 900ace... sve osi su bitne, jesmo nasli bas sve svemape bitne za tuning?
+🤖 Agent pronašao: accel Y-os = CTS temp [5,19,27,53,67]°C @ addr-19 (isto za 1630ace i Spark); Spark accel enrich nova mapa @ 0x026925; Spark knock retard 8×8 @ 0x029AC0 (nova, nije bila u katalogu). Spark: 52→54 mape. Svi testovi prolaze.
+
+---
+
+---
+**[2026-03-19]**
+👤 naravno implementiramo, logiramo
+🤖 KFPED (pedalka 10×20 u8, Y=papučica kut 0-70°/SC do 90°) i MAT (12pt Q15, temp −3→64°C, faktor 1.020→0.847) implementirani i logirani. 1630ace: 54→56 mapa. 2018 1630ace (10SW023910): KFPED header offset -2B (0x029526 umjesto 0x029528) — fallback dodan. Svi testovi prolaze.
 
 ---

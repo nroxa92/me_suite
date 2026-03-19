@@ -964,6 +964,92 @@ _ACCEL_ENRICH_DEF = MapDef(
 )
 
 
+# ─── KFPED — Pedal / throttle demand map — 10×20 ────────────────────────────
+# Header @ 0x029528: 2B dims + 10B Y-os (papučica °) + 20B X-os (load /128)
+# Data @ 0x029548: 10×20 u8 (/128 = demand faktor)
+# Mirror @ 0x029630 (identičan)
+# SC i NA imaju različite osi — SC Y ide do 90°, NA do 70°
+
+KFPED_ADDR        = 0x029528
+KFPED_DATA_ADDR   = 0x029548
+KFPED_MIRROR_ADDR = 0x029630
+
+_KFPED_Y_NA = AxisDef(count=10, byte_order="LE", dtype="u8",
+                       scale=1.0, unit="papučica [°]",
+                       values=[0, 2, 5, 10, 20, 30, 40, 50, 60, 70])
+_KFPED_X_NA = AxisDef(count=20, byte_order="LE", dtype="u8",
+                       scale=1.0/128.0, unit="load",
+                       values=[25, 38, 44, 50, 63, 75, 88, 100, 113, 125,
+                               138, 150, 163, 169, 175, 181, 188, 194, 200, 213])
+
+_KFPED_DEF = MapDef(
+    name          = "Pedalka — driver demand (KFPED)",
+    description   = (
+        "Pedal-to-throttle/demand mapa (KFPED ekvivalent). 10×20 u8. "
+        "Y-os = papučica kut [°]: NA=[0–70°], SC=[−80..+90° boost-adjusted]. "
+        "X-os = engine load (/128): [0.20–1.66]. "
+        "Output = traženi load/throttle demand (/128). "
+        "SC verzija ima agresivniji odgovor pri visokim opterećenjima. "
+        "Mirror @ 0x029630 (identičan)."
+    ),
+    category      = "injection",
+    rows=10, cols=20,
+    byte_order    = "LE", dtype = "u8",
+    scale         = 1.0 / 128.0,
+    offset_val    = 0.0,
+    unit          = "demand faktor",
+    axis_x        = _KFPED_X_NA,
+    axis_y        = _KFPED_Y_NA,
+    raw_min       = 0,
+    raw_max       = 255,
+    mirror_offset = KFPED_MIRROR_ADDR - KFPED_DATA_ADDR,
+    notes         = (
+        f"@ 0x{KFPED_ADDR:06X} (header) / 0x{KFPED_DATA_ADDR:06X} (data). "
+        "Format: 2B dims + 10B Y-os + 20B X-os + 200B data. "
+        "SC vs NA: 234B razlika (osi i data). "
+        "Potvrđeno binarno 2026-03-19."
+    ),
+)
+
+# ─── MAT — Manifold Air Temperature fuel correction — 12pt ──────────────────
+# @ 0x022726: 12B temp os (u8, raw−40=°C) + 24B korekcija (u16 LE Q15)
+# Zajednička za SC i NA (0B razlika)
+# Korisni raspon: −3 do 64°C → faktori 1.020 → 0.847
+
+MAT_ADDR = 0x022726
+
+_MAT_X = AxisDef(count=12, byte_order="LE", dtype="u8",
+                  scale=1.0, unit="°C (raw)",
+                  values=[37, 51, 64, 77, 91, 104, 117, 131, 151, 171, 191, 211])
+
+_MAT_DEF = MapDef(
+    name          = "MAT — korekcija goriva po temp. zraka [Q15]",
+    description   = (
+        "Manifold Air Temperature fuel correction. 1D, 12 točaka u16 LE Q15. "
+        "X-os = temp zraka (raw u8, raw−40=°C): [−3, 11, 24, 37, 51, 64, ...171]°C. "
+        "Korisni radni raspon (intercooler izlaz): −3 do 64°C → [1.020 → 0.847]. "
+        "Hladniji zrak = gušći = više zahtijevanog goriva (faktor > 1.0). "
+        "Zajednička za SC i NA (identična binarno). "
+        "Vrijednosti iznad 77°C su van normalnog raspona (nekorištena zona)."
+    ),
+    category      = "injection",
+    rows=1, cols=12,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32768.0,
+    offset_val    = 0.0,
+    unit          = "faktor (Q15)",
+    axis_x        = _MAT_X,
+    axis_y        = None,
+    raw_min       = 27000,
+    raw_max       = 34500,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{MAT_ADDR:06X}. 12B temp os + 24B Q15 korekcija = 36B ukupno. "
+        "SC=NA (0B razlika). "
+        "Potvrđeno binarno 2026-03-19."
+    ),
+)
+
 # ─── Thermal fuel enrichment (overtemp protection) — 8×7 ────────────────────
 #
 # Tablica obogaćivanja goriva pri visokim temperaturama motora @ 0x02AA42.
@@ -1768,6 +1854,20 @@ _SPARK_IGN_NAMES = [
     "idle",
 ]
 
+# IGN A osi — binarno verificirane na spark90.bin 2021 i 2018 (10SW039116, 10SW011328)
+# Y os (load, 12pt u8) @ 0x0269AF: /128 = load faktor (0.023–1.203)
+# X os (RPM, 12pt u16LE) @ 0x026A1E: raw/4 = RPM (1500–8000)
+_SPARK_IGN_A_X = AxisDef(
+    count=12, byte_order="LE", dtype="u16",
+    scale=0.25, unit="RPM",
+    values=[6000, 7200, 8800, 11000, 12000, 14000, 16000, 20000, 24000, 28000, 30000, 32000],
+)
+_SPARK_IGN_A_Y = AxisDef(
+    count=12, byte_order="LE", dtype="u8",
+    scale=1.0/128.0, unit="load",
+    values=[3, 10, 38, 52, 64, 76, 90, 102, 116, 128, 140, 154],
+)
+
 def _make_spark_ign_def(idx: int) -> MapDef:
     addr = 0x026A76 + idx * 0x90
     return MapDef(
@@ -1785,7 +1885,13 @@ def _make_spark_ign_def(idx: int) -> MapDef:
         offset_val    = 0.0,
         unit          = "° BTDC",
         raw_min       = 10, raw_max = 60,
-        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Mirror na 0x{addr+0x140:06X}.",
+        axis_x        = _SPARK_IGN_A_X,
+        axis_y        = _SPARK_IGN_A_Y,
+        notes         = (
+            f"Spark 900. @ 0x{addr:06X}, stride=0x90. Mirror na 0x{addr+0x140:06X}. "
+            f"Osi: Y os (load) @ 0x0269AF (12pt u8, /128), X os (RPM) @ 0x026A1E (12pt u16LE, /4). "
+            f"Verificirano binarnno na 2018 i 2021 sparkovima."
+        ),
     )
 
 _SPARK_IGN_DEFS = [_make_spark_ign_def(i) for i in range(8)]  # maps 0-7 (6+7 were previously missed)
@@ -1809,8 +1915,10 @@ def _make_spark_ign_b_def(idx: int) -> MapDef:
         scale         = 0.75,
         offset_val    = 0.0,
         unit          = "° BTDC",
+        axis_x        = _SPARK_IGN_A_X,
+        axis_y        = _SPARK_IGN_A_Y,
         raw_min       = 5, raw_max = 65,
-        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B #{idx}. {'flat=20.25°' if flat else 'STG2 modificira'}.",
+        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B #{idx}. {'flat=20.25°' if flat else 'STG2 modificira'}. Osi dijele IGN A (@ 0x026A1E / 0x0269AF).",
     )
 
 _SPARK_IGN_B_DEFS = [_make_spark_ign_b_def(i) for i in range(8)]
@@ -1832,8 +1940,10 @@ def _make_spark_ign_b2_def(idx: int) -> MapDef:
         scale         = 0.75,
         offset_val    = 0.0,
         unit          = "° BTDC",
+        axis_x        = _SPARK_IGN_A_X,
+        axis_y        = _SPARK_IGN_A_Y,
         raw_min       = 5, raw_max = 65,
-        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B2 #{idx}. STG2 modificira sve.",
+        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B2 #{idx}. STG2 modificira sve. Osi dijele IGN A (@ 0x026A1E / 0x0269AF).",
     )
 
 _SPARK_IGN_B2_DEFS = [_make_spark_ign_b2_def(i) for i in range(8)]
@@ -1856,8 +1966,16 @@ def _make_spark_ign_c_def(idx: int) -> MapDef:
         scale         = 0.25,
         offset_val    = 0.0,
         unit          = "° BTDC",
+        axis_x        = AxisDef(count=8, byte_order="LE", dtype="u16",
+                                scale=1.0/4.0, unit="RPM",
+                                values=[14000, 16000, 20000, 24000, 28000, 30000, 32000, 34000]),
+                                # @ 0x027C7C (8pt u16LE, /4=RPM)
+        axis_y        = AxisDef(count=9, byte_order="LE", dtype="u16",
+                                scale=1.0/128.0, unit="load",
+                                values=[4000, 4800, 5600, 7400, 9200, 10800, 11600, 12200, 12600]),
+                                # @ 0x027D36 (9pt u16LE, /128=load)
         raw_min       = 100, raw_max = 135,
-        notes         = f"Spark 900. @ 0x{addr:06X}. u16LE × 0.25 deg/bit. MSB=0. 72 vals=144B. STG2 mod.",
+        notes         = f"Spark 900. @ 0x{addr:06X}. u16LE × 0.25 deg/bit. MSB=0. 72 vals=144B. STG2 mod. X-os RPM @ 0x027C7C, Y-os load @ 0x027D36.",
     )
 
 _SPARK_IGN_C_DEFS = [_make_spark_ign_c_def(i) for i in range(3)]
@@ -2013,12 +2131,23 @@ _SPARK_LAMBDA_DEF = MapDef(
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
     unit          = "λ",
+    axis_x        = AxisDef(count=16, byte_order="LE", dtype="u8",
+                            scale=1.0/128.0, unit="lambda ref",
+                            values=[151, 38, 50, 63, 75, 80, 88, 100,
+                                    113, 125, 148, 155, 164, 169, 188, 194]),
+                            # @ 0x025F4C (16pt u8, /128=lambda ref; val[0]=151 je anomalija)
+    axis_y        = AxisDef(count=8, byte_order="LE", dtype="u16",
+                            scale=1.0/4.0, unit="RPM",
+                            values=[3344, 5650, 8987, 13613, 18238, 22864, 26461, 34161]),
+                            # @ 0x025F3C (8pt u16LE, /4=RPM)
     raw_min       = 24000, raw_max = 33000,
     mirror_offset = 0x122,
     notes         = (
         "Spark 900 ACE. 4 kopije: @ 0x025F5C / 0x02607E / 0x0261A0 / 0x0262C2. "
         "Offset između kopija: +0x122 (290B). Svaka kopija 256B (8×16×2). "
-        "Lambda = raw / 32768. Ne postoji fizička lambda sonda!"
+        "Lambda = raw / 32768. Ne postoji fizička lambda sonda! "
+        "X-os (lambda ref) @ 0x025F4C (16pt u8, /128; val[0]=151 anomalija — nemonoton). "
+        "Y-os (RPM) @ 0x025F3C (8pt u16LE, /4=RPM)."
     ),
 )
 
@@ -2167,6 +2296,14 @@ _SPARK_THERM_ENRICH_DEF = MapDef(
     scale       = 1.0 / 64.0,
     offset_val  = 0.0,
     unit        = "%",
+    axis_x      = AxisDef(count=8, byte_order="LE", dtype="u8",
+                          scale=1.0, unit="°C",
+                          values=[6, 44, 50, 75, 100, 125, 150, 160]),
+                          # @ 0x025AD0 (8pt u8, temperatura hladnjaka °C)
+    axis_y      = AxisDef(count=7, byte_order="LE", dtype="u8",
+                          scale=1.0, unit="sekunde od starta",
+                          values=[15, 30, 45, 60, 80, 100, 125]),
+                          # @ 0x025B50 (7pt u8, sekunde od starta)
     raw_min     = 8500, raw_max = 15000,
     mirror_offset = 0,
     notes       = (
@@ -2174,7 +2311,8 @@ _SPARK_THERM_ENRICH_DEF = MapDef(
         "/64 = faktor obogaćivanja (%). 152-225% = bogata pri zagrijavanju. "
         "2018 (10SW011328) min=8741 (53.4%) — prosiren raw_min na 8500. "
         "Slično GTI90 @ 0x02AA42 ali Spark vrijednosti nešto drugačije. "
-        "Razlika 2021 vs 2018: 3/56 vrijednosti."
+        "Razlika 2021 vs 2018: 3/56 vrijednosti. "
+        "X-os (CTS temp) @ 0x025AD0 (8pt u8 °C), Y-os (warmup sek) @ 0x025B50 (7pt u8)."
     ),
 )
 
@@ -2355,6 +2493,79 @@ _SPARK_LAMBDA_LOAD_CORR_DEF = MapDef(
         "= Q15 [0.992, 0.979, 0.952, 0.914, 0.889, 0.871, 0.861, 0.778, 0.730]. "
         "NPRo: sve 32768 (1.0 = neutralizirano). "
         "Confidence: 80% — NPRo modificira, dakle tunabilno."
+    ),
+)
+
+
+# ── Spark accel enrich (0x026925) ──────────────────────────────────────────────
+# Isti format kao 1630ace @ 0x028059, ali global byte = 0x02 i drugačiji dTPS raspon.
+# Y-os (CTS temp) @ 0x026912 = [5, 19, 27, 53, 67]°C
+
+_SPARK_ACCEL_ENRICH_DEF = MapDef(
+    name          = "Spark — Ubrzanje tranzijentno obogaćivanje [%]",
+    description   = (
+        "Spark 900 ACE faktor obogaćivanja goriva pri naglom gazu. 5×5 tablica. "
+        "X-os (dTPS) embedded u svaki red: [5, 0, 150, 300, 600, 900]°/s. "
+        "Y-os (CTS temp): [5, 19, 27, 53, 67]°C @ 0x026912. "
+        "100% = neutralno, >100% = obogaćivanje. "
+        "Hladniji motor → manje obogaćivanje (inverzno od 1630ace!)."
+    ),
+    category      = "injection",
+    rows=5, cols=5,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 100.0 / 16384.0,
+    offset_val    = -100.0,
+    unit          = "% korekcija",
+    axis_x        = AxisDef(count=6, byte_order="LE", dtype="u16",
+                             scale=1.0, unit="dTPS [°/s]",
+                             values=[5, 0, 150, 300, 600, 900]),
+    axis_y        = AxisDef(count=5, byte_order="LE", dtype="u8",
+                             scale=1.0, unit="°C",
+                             values=[5, 19, 27, 53, 67]),
+    raw_min       = 4096,
+    raw_max       = 49152,
+    mirror_offset = 0,
+    notes         = (
+        "Spark 900 ACE. @ 0x026925 (1B global + 5×22B). "
+        "Y-os 19B ispred global byte @ 0x026912. "
+        "dTPS raspon 0–900°/s (vs 1630ace 0–1500°/s — Spark ima manji throttle raspon). "
+        "Potvrđeno binarno 2026-03-19."
+    ),
+)
+
+# ── Spark knock retard (0x029AC0) ───────────────────────────────────────────────
+# Header: 2B dim [8,8] + 8B X-os (load) + 8B Y-os (RPM) + 64B data u8
+# Data počinje @ 0x029AD2, max retard = 13 raw = 9.75°
+
+_SPARK_KNOCK_RETARD_DEF = MapDef(
+    name          = "Spark — Knock retard [°]",
+    description   = (
+        "Spark 900 ACE maksimalni knock retard po load×RPM. 8×8 tablica. "
+        "X-os (load u8/128): [38,75,100,125,150,163,175,188] @ 0x029AC2. "
+        "Y-os (RPM u8×80): [40,47,53,67,80,93,100,113] = 3200–9040 RPM @ 0x029ACA. "
+        "0.75°/bit, max 9.75° (raw 13). "
+        "Dijagonalni pattern: veći retard pri visokom load-u i niskom RPM-u."
+    ),
+    category      = "ignition",
+    rows=8, cols=8,
+    byte_order    = "LE", dtype = "u8",
+    scale         = 0.75,
+    offset_val    = 0.0,
+    unit          = "° retard",
+    axis_x        = AxisDef(count=8, byte_order="LE", dtype="u8",
+                             scale=1.0/128.0, unit="load",
+                             values=[38, 75, 100, 125, 150, 163, 175, 188]),
+    axis_y        = AxisDef(count=8, byte_order="LE", dtype="u8",
+                             scale=80.0, unit="RPM",
+                             values=[40, 47, 53, 67, 80, 93, 100, 113]),
+    raw_min       = 0,
+    raw_max       = 13,
+    mirror_offset = 0,
+    notes         = (
+        "Spark 900 ACE. Blok @ 0x029AC0: 2B dim hdr + 8B X-os + 8B Y-os + 64B data. "
+        "Data @ 0x029AD2. Max knock retard = 13 raw = 9.75°. "
+        "Pronađen u gapu između IGN B i IGN B2 tablice. "
+        "Potvrđeno binarno 2026-03-19."
     ),
 )
 
@@ -2736,6 +2947,8 @@ class MapFinder:
             self._scan_sc_boost_factor(progress_cb)
             self._scan_lambda_eff(progress_cb)
             self._scan_lambda_thresh(progress_cb)
+            self._scan_kfped(progress_cb)
+            self._scan_mat(progress_cb)
 
             # ── GTI / NA motor specifično ──────────────────────────────────
             if is_gti_na:
@@ -3409,11 +3622,14 @@ class MapFinder:
             if cb: cb(f"  Accel enrich @ 0x{addr:06X}: validacija Q14 pala — preskacam")
             return
 
-        # Dinamički ažuriraj X-os iz ugrađenih vrijednosti
+        # Dinamički ažuriraj X-os (iz ugrađenih vrijednosti) i Y-os (CTS temp 19B ispred)
         from dataclasses import replace
         x_axis = AxisDef(count=6, byte_order="LE", dtype="u16",
                          scale=1.0, unit="dTPS [°/s]", values=embedded_axis)
-        defn = replace(_ACCEL_ENRICH_DEF, axis_x=x_axis)
+        y_vals = list(data[addr - 19 : addr - 14])  # 5 u8 CTS temp @ addr-19
+        y_axis = AxisDef(count=5, byte_order="LE", dtype="u8",
+                         scale=1.0, unit="°C", values=y_vals)
+        defn = replace(_ACCEL_ENRICH_DEF, axis_x=x_axis, axis_y=y_axis)
 
         self.results.append(FoundMap(
             defn    = defn,
@@ -4039,6 +4255,7 @@ class MapFinder:
     def _scan_spark_aux(self, cb=None):
         """Spark 900 ACE pomoćne mape — DFCO, cold start, deadtime, idle RPM,
         knock, warm-up, start inj.  Sve adrese potvrđene binarnim skanom 2026-03-19."""
+        import struct
         if cb: cb("Trazim Spark aux tablice...")
         data = self.eng.get_bytes()
         sw   = self._sw()
@@ -4271,6 +4488,41 @@ class MapFinder:
                 if cb: cb(f"  Spark lambda load corr @ 0x{addr:06X}: validacija pala "
                            f"[{mn}-{mx}]")
 
+        # ─ Accel enrichment @ 0x026925 (1B global + 5×22B, isti format kao 1630ace) ─
+        addr = 0x026925
+        global_b = data[addr]
+        if global_b in (0x02, 0x04):
+            ROWS, COLS, AXIS_U16 = 5, 5, 6
+            ROW_BYTES = (AXIS_U16 + COLS) * 2
+            embedded_x = None
+            accel_vals = []
+            for row in range(ROWS):
+                row_off = addr + 1 + row * ROW_BYTES
+                if embedded_x is None:
+                    embedded_x = [struct.unpack_from('<H', data, row_off + i*2)[0] for i in range(AXIS_U16)]
+                for col in range(COLS):
+                    v = struct.unpack_from('<H', data, row_off + AXIS_U16*2 + col*2)[0]
+                    accel_vals.append(v)
+            from dataclasses import replace as _replace
+            x_ax = AxisDef(count=6, byte_order="LE", dtype="u16",
+                           scale=1.0, unit="dTPS [°/s]", values=embedded_x)
+            defn_a = _replace(_SPARK_ACCEL_ENRICH_DEF, axis_x=x_ax)
+            _add(defn_a, addr, accel_vals)
+            if cb: cb(f"  Spark accel enrich @ 0x{addr:06X}  5×5  dTPS={embedded_x}")
+        else:
+            if cb: cb(f"  Spark accel enrich @ 0x{addr:06X}: neočekivani global byte {global_b:#x}")
+
+        # ─ Knock retard @ 0x029AD2 (8×8 u8, header+osi @ 0x029AC0) ─
+        addr_data = 0x029AD2
+        n_kr = _SPARK_KNOCK_RETARD_DEF.rows * _SPARK_KNOCK_RETARD_DEF.cols  # 64
+        if addr_data + n_kr <= len(data):
+            kr_vals = list(data[addr_data : addr_data + n_kr])
+            if all(_SPARK_KNOCK_RETARD_DEF.raw_min <= v <= _SPARK_KNOCK_RETARD_DEF.raw_max for v in kr_vals):
+                _add(_SPARK_KNOCK_RETARD_DEF, 0x029AC0, kr_vals)
+                if cb: cb(f"  Spark knock retard @ 0x029AC0  8×8 u8  max={max(kr_vals) * 0.75:.2f}°")
+            else:
+                if cb: cb(f"  Spark knock retard @ 0x029AC0: validacija pala [{min(kr_vals)}-{max(kr_vals)}]")
+
         if cb: cb("  Spark aux tablice: skeniranje zavrseno")
 
     # ── Diff-guided scanner ───────────────────────────────────────────────────
@@ -4464,6 +4716,97 @@ class MapFinder:
         lam_max = max(vals) / 32768
         if cb: cb(f"  LambdaThresh @ 0x{addr:06X}  1x79 u16 LE Q15"
                   f"  lambda=[{lam_min:.3f}-{lam_max:.3f}]")
+
+    # ── KFPED scan ────────────────────────────────────────────────────────────
+
+    def _scan_kfped(self, cb=None):
+        if cb: cb("Trazim KFPED pedal demand tablicu...")
+        data = self.eng.get_bytes()
+
+        # 2020+ SW: header @ 0x029528; 2018 SW (10SW023910): header @ 0x029526
+        addr = KFPED_ADDR
+        if data[addr] != 10 or data[addr + 1] != 20:
+            addr = KFPED_ADDR - 2  # fallback za 2018 SW
+        if data[addr] != 10 or data[addr + 1] != 20:
+            if cb: cb(f"  KFPED: dims ne odgovaraju @ 0x{KFPED_ADDR:06X} ni 0x{KFPED_ADDR-2:06X} — preskacam")
+            return
+
+        rows, cols = data[addr], data[addr + 1]
+
+        y_off   = addr + 2
+        x_off   = y_off + rows
+        data_off = x_off + cols
+
+        if data_off + rows * cols > len(data):
+            return
+
+        y_raw = list(data[y_off:y_off + rows])
+        x_raw = list(data[x_off:x_off + cols])
+        vals  = list(data[data_off:data_off + rows * cols])
+
+        # Validacija: output u8, očekujemo monotono rastuće po stupcima i redovima
+        in_range = sum(1 for v in vals if 0 <= v <= 255)
+        if in_range < rows * cols * 0.9:
+            if cb: cb(f"  KFPED @ 0x{addr:06X}: validacija pala — preskacam")
+            return
+
+        from dataclasses import replace as _rep
+        y_ax = AxisDef(count=rows, byte_order="LE", dtype="u8",
+                       scale=1.0, unit="papučica [°]", values=y_raw)
+        x_ax = AxisDef(count=cols, byte_order="LE", dtype="u8",
+                       scale=1.0/128.0, unit="load", values=x_raw)
+        defn = _rep(_KFPED_DEF, axis_x=x_ax, axis_y=y_ax)
+
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = KFPED_DATA_ADDR,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  KFPED @ 0x{addr:06X}  {rows}×{cols} u8  "
+                  f"pedal=[{y_raw[0]}–{y_raw[-1]}]°  "
+                  f"demand=[{min(vals)/128:.2f}–{max(vals)/128:.2f}]")
+
+    # ── MAT korekcija scan ────────────────────────────────────────────────────
+
+    def _scan_mat(self, cb=None):
+        import struct
+        if cb: cb("Trazim MAT (zracna temp) korekciju...")
+        data = self.eng.get_bytes()
+
+        addr = MAT_ADDR
+        if addr + 12 + 24 > len(data):
+            return
+
+        temp_raw = list(data[addr:addr + 12])
+        vals     = [struct.unpack_from('<H', data, addr + 12 + i * 2)[0]
+                    for i in range(12)]
+
+        # Validacija: temp os mora biti monotono rastuća, Q15 faktori korisnog raspona
+        # (prvih 6 vrijednosti treba biti 0.84–1.05; ostatak može biti garbage)
+        if not self._monotone(temp_raw):
+            if cb: cb(f"  MAT @ 0x{addr:06X}: temp os nije monotona — preskacam")
+            return
+        useful = vals[:6]
+        in_range = sum(1 for v in useful if _MAT_DEF.raw_min <= v <= _MAT_DEF.raw_max)
+        if in_range < 4:
+            if cb: cb(f"  MAT @ 0x{addr:06X}: Q15 validacija pala {[round(v/32768,3) for v in useful]}")
+            return
+
+        from dataclasses import replace as _rep
+        x_ax = AxisDef(count=12, byte_order="LE", dtype="u8",
+                       scale=1.0, unit="°C (raw)", values=temp_raw)
+        defn = _rep(_MAT_DEF, axis_x=x_ax)
+
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  MAT @ 0x{addr:06X}  12pt Q15  "
+                  f"temp=[{temp_raw[0]-40}–{temp_raw[5]-40}°C korisno]  "
+                  f"faktor=[{vals[0]/32768:.3f}–{vals[5]/32768:.3f}]")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

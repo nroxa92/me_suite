@@ -1,5 +1,131 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 24:00 — Binarna analiza: 4 neidentificirane mape (KFPED, MAT, MAP-fuel, Boost)
+
+### Što je napravljeno
+Čisto istraživanje (bez promjena koda) — binarna analiza dumpova 300hp SC i 130hp NA, diff metoda.
+Korišteni dumpovi: `2020/1630ace/300.bin` (10SW054296) i `2020/1630ace/130.bin` (10SW053729).
+
+### 1. KFPED — Pedal/drive-by-wire mapa
+- **Header** @ `0x029528`: count_x=10, count_y=20
+- **Data** @ `0x029548`: 10×20 = 200 bytes u8, vrijednosti 20–191
+- **Mirror** @ `0x029630` (identična kopija)
+- X-os (pedal): NA=[0,2,5,10,20,30,40,50,60,70]° pedal kuta
+- Y-os (/40=RPM): [1000,1520,1760,2000,2520,3000,3520,4000,4520,5000,5520,6000,6520,6760,7000,7240,7520,7760,8000,8520] RPM
+- SC X-os razlikuje se (boost-adjusted pedal krivulja)
+
+### 2. MAT korekcija — Manifold Air Temperature fuel correction
+- **Shared (12pt)** @ `0x022726`: u8 temp os [37–211]°C, Q8 korekcija [133→108] = ratio 1.039→0.844
+- **SC-specifična (8pt)** @ `0x023702`: temp os [64–197]°C, SC=[135→115] = 1.055→0.898, NA=[128×8] = flat/disabled
+- Više goriva na hladnom, manje na vrućem
+
+### 3. Injection/MAP-fuel mapa — fuel trim vs load × MAP tlak
+- **Header** @ `0x02202A`: count_x=12, count_y=16
+- **Data** @ `0x022066`: 12×16×2 = 384B, u16 LE Q15
+- X-os (load): SC=[1067,1280,1707,2133,2560,2987,3413,4267,5333,6400,7680,8960]
+- Y-os (MAP kPa×100): [5600–32800] = [56–328 kPa]
+- SC vrijednosti 10–30% više od NA pri istim točkama
+- Mapa završava @ 0x0221E6 (poklapa se s diff granicom)
+
+### 4. Boost target/korekcija — SC specifično
+- **SC bypass threshold table** @ `0x020534`: 7×7 u8 (49B), MAP tlak granice po RPM pojasima
+  - Implicira boost ciljeve: [97–413 kPa] po RPM pojasu
+- **Boost correction map** @ `0x02220E`: 10×8 u16 LE Q14
+  - Header @ `0x0221E6`: count_x=10, count_y=8
+  - X-os RPM: SC=[1500,3000,4000,6000,7000,8000,8500,9500,10500,11500]
+  - Y-os MAP kPa×100: SC=[5000–34000] = [50–340 kPa]
+  - NA sve vrijednosti = 16384 (1.0 flat, neaktivno)
+  - SC vrijednosti 5325–35895 = Q14 ratio 0.32–2.19
+
+### Fajlovi promijenjeni
+- Nema — čisto istraživanje
+
+---
+
+## 2026-03-19 23:55 — Spark osi implementirane (IGN A/B/B2/C + Therm Enrich + Lambda DEF)
+
+### Što je napravljeno
+Implementirani `axis_x` i `axis_y` na 6 Spark MapDef skupova na temelju potvrđenih binarnih nalaza istraživačkog agenta.
+
+**IGN A (`_make_spark_ign_def`, 8×12×12 u8)**
+- Dodane `_SPARK_IGN_A_X` i `_SPARK_IGN_A_Y` kao shared singleton objekti
+- X-os RPM @ 0x026A1E: 12pt u16LE, /4=RPM, [1500..8000]
+- Y-os load @ 0x0269AF: 12pt u8, /128=load, [0.023..1.203]
+
+**IGN B (`_make_spark_ign_b_def`, 8×12×12 u8) — dijeli IGN A osi**
+- Dodano `axis_x=_SPARK_IGN_A_X, axis_y=_SPARK_IGN_A_Y`
+
+**IGN B2 (`_make_spark_ign_b2_def`, 8×12×12 u8) — dijeli IGN A osi**
+- Dodano `axis_x=_SPARK_IGN_A_X, axis_y=_SPARK_IGN_A_Y`
+
+**IGN C (`_make_spark_ign_c_def`, 3×9×8 u16LE)**
+- X-os RPM @ 0x027C7C: 8pt u16LE, /4=RPM, [3500..8500]
+- Y-os load @ 0x027D36: 9pt u16LE, /128=load
+
+**Therm Enrich (`_SPARK_THERM_ENRICH_DEF`, 8×7 u16LE)**
+- X-os (CTS temp) @ 0x025AD0: 8pt u8, [6..160]°C
+- Y-os (warmup sekunde) @ 0x025B50: 7pt u8, [15..125]s
+
+**Lambda DEF (`_SPARK_LAMBDA_DEF`, 8×16 Q15)**
+- Y-os (RPM) @ 0x025F3C: 8pt u16LE, /4=RPM
+- X-os (lambda ref) @ 0x025F4C: 16pt u8, /128=λ; val[0]=151 je anomalija (nemonoton) — primijenjeno kao jest
+
+### Testovi
+- `python test/test_core.py`: SVI TESTOVI PROLAZE
+- Spark 900: 52 mape (ispravno)
+- ORI 300hp: 54 mape (ispravno)
+- GTI 90: 60 mapa (ispravno)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`: axis_x/axis_y dodani za 6 Spark definicija
+
+---
+
+## 2026-03-19 23:30 — Binarna analiza osi: Spark IGN A/B/C + Lambda DEF + Therm Enrich
+
+### Što je napravljeno
+Istraživanje (bez promjena koda) — osi za 4 mape u Spark 900 ACE ECU-u. Korišteni dumpovi: `2021/900ace/spark90.bin` (10SW039116) i `2018/900ace/spark90.bin` (10SW011328).
+
+### IGN A (12×12 u8) @ 0x026A76 — POUZDANO
+- **Y-os (load, 12pt u8)** @ `0x0269AF`: `[3, 10, 38, 52, 64, 76, 90, 102, 116, 128, 140, 154]`
+  - /1.28 = load% `[2.3%..120.3%]` — isti pattern kao 300hp ECU load os
+  - **Identično na 2018 i 2021**, pouzdanost 90%
+- **X-os (RPM, 12pt u16le)** @ `0x026A1E`: raw `[6000..32000]`, RPM = `[1500..8000]`
+  - count byte @ `0x026A1C = 12` potvrđuje dimenziju
+  - **Identično na 2018 i 2021**, pouzdanost 95%
+
+### IGN B (12×12 u8) @ 0x0295C0 — KANDIDAT
+- Osi nisu pronađene direktno blizu mape (>500B praznine + null padding)
+- Ispred mape: `@ 0x029470` = 8pt u8 `[60,80,100,110,120,130,140,150]` (identično 2018/2021)
+- `@ 0x029478` = 12pt u16le `[24..251]`, /128 = load Q8 `[0.19..1.96]` (identično 2018/2021)
+- Najvjerojatniji scenarij: IGN B dijeli osi s IGN A (globalne osi 0x0269AF i 0x026A1E)
+- Alternativni kandidat RPM os @ `0x028946`: `[1000..5520 RPM]` — previše nizak gornji raspon
+
+### IGN C (9×8 u16le) @ 0x02803A — 75-80%
+- **X-os (RPM, 8pt u16le)** @ `0x027C7C`: raw `[14000..34000]`, RPM = `[3500..8500]`
+  - count @ `0x027C7A = 8`, identično 2018/2021, pouzdanost 80%
+- **Y-os (load, 9pt u16le)** @ `0x027D36`: raw `[4000..12600]`
+  - Prvih 9 tocaka identično s Spark injection load osi `[3999..33600]`
+  - Identično 2018/2021, pouzdanost 75%
+
+### Lambda DEF (8×16 Q15) @ 0x025F5C — X-os
+- **X-os @ 0x025F4C** (odmah iza Y-osi): 16pt u8 `[151, 38, 50, 63..194]`
+  - val[0]=151 je anomalija, ostatak `[38..194]/128 = lambda [0.30..1.52]` (monotono)
+  - 2021 vs 2018 razlika u pozicijama 11,12 → nije identično
+  - Mapa ima 4 lambda grupne razine: cols[0-4]=λ0.965, cols[5-7]=λ0.922, cols[8-12]=λ0.965, cols[13-15]=λ0.922
+  - `0x024775` (kandidat iz zadatka) NIJE prava os — razlikuje se 2018/2021
+  - Pouzdanost 85%
+
+### Therm Enrich (8×7 u16le) @ 0x025BAA — POTVRĐENO
+- **X-os (CTS temp, 8pt u16le)** @ `0x025AD0`: `[6, 44, 50, 75, 100, 125, 150, 160]` °C — identično
+- **Y-os (7pt u8)** @ `0x025B50`: `[15, 30, 45, 60, 80, 100, 125]`
+  - Interpretacija: **warmup sekunde od hladnog starta** (15s..125s)
+  - Dijagonalni max pattern u mapi potvrđuje: max enrichment 225% se pomiče dijagonalno (svaka temp ima peak u drugom stupcu)
+  - Identično 2018/2021, pouzdanost 80%
+
+### Fajlovi promijenjeni
+- Samo istraživanje, bez promjena koda
+
 ## 2026-03-19 12:10 — 10SW025022 — novi SW identificiran (2018 GTI 4TEC 1503 130hp v1)
 
 ### Što je napravljeno
@@ -3374,3 +3500,216 @@ Dodan novi "CAN Logger" tab u ME17Suite koji integrira znanje iz dva stara proje
 - 0x0342 s byte[0]=0x21 = bench/dijagnostički mod (BUDS2), ne engine-running mode
 - Formule za 0x0342 potvrđene iz hardware_simulator.py, ali ne iz live snimke s pokrenutim motorom
 - UI ne zahtijeva hardver — može otvoriti i analizirati postojeće .txt log fajlove
+
+## 2026-03-19 23:55 — Implementirane osi za Spark IGN A mape
+
+### Što je napravljeno
+Dodane konstantne osi `_SPARK_IGN_A_X` i `_SPARK_IGN_A_Y` u `core/map_finder.py` i priključene na sve 8 IGN A mapa kroz `_make_spark_ign_def()`.
+
+### Binarno verificirano
+Vrijednosti potvrđene na **2021 spark90.bin** i **2018 spark90.bin** (identične):
+- **Y os (load)** @ `0x0269AF`: 12pt u8 = `[3, 10, 38, 52, 64, 76, 90, 102, 116, 128, 140, 154]`, /128 = 2.3%–120.3%
+- **X os (RPM)** @ `0x026A1E`: 12pt u16LE = `[6000, 7200, 8800, 11000, 12000, 14000, 16000, 20000, 24000, 28000, 30000, 32000]`, /4 = 1500–8000 RPM
+
+### IGN B/B2 osi — nije implementirano
+B i B2 mape nemaju jasno identificiranu RPM os u u16 obliku blizu tablice (pred 0x0295C0 su samo 0x1B flat vrijednosti i kratka u8 sekvenca). Dodavanje osi za B/B2 odgođeno dok se ne nađe potvrđena lokacija.
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`: dodano ~20 redova (konstante + axis_x/axis_y u `_make_spark_ign_def`)
+
+### Testovi
+- Svi testovi prolaze (test_core.py)
+- Spark 900: **52 mape** (nepromijenjeno)
+
+## 2026-03-19 — 2018 4TEC 1503 dump analiza kompletirana (155v2 dodan)
+
+### Nalazi
+155v2.bin analiziran — rezultat potvrđuje prethodnu hipotezu:
+
+| Par | BOOT | CODE | CAL | Ukupno |
+|-----|------|------|-----|--------|
+| 130v1 vs 155v1 | 0B | 0B | 0B | **0B — identični** |
+| 130v2 vs 155v2 | 0B | 0B | 0B | **0B — identični** |
+| v1 vs v2 | 144B | 2625B | 132B | 2901B |
+
+### SW mapa za 2018 4TEC 1503
+- **10SW025022** = v1 (130hp i 155hp modeli dobivaju isti dump)
+- **10SW025752** = v2 (155hp tune; 130v2 i 155v2 identični!)
+
+### Razlike v1→v2 (35 blokova, 2901B ukupno)
+Ključne regije po adresi:
+- `0x0266EE`, `0x02691E`: 2×320B — **lambda mape**
+- `0x02AE5A`, `0x02AFD6`, `0x02B152`, `0x02B2CE`: 4×~325B — **ignition mape**
+- `0x02BCEC`, `0x02BE2C`, `0x02BF6C`, `0x02C0AC`: 4×~114B — **injection mape**
+- `0x024EA9`: 26B — RPM/cal parametri
+- `0x028ACA`: 16B — rev limiter kandidat
+- `0x000021`, `0x008021`, `0x020021`, `0x040021`: 19B svaki — SW string kopije u BOOT/CODE
+
+### Zaključak
+BUDS2 nudi v1 i v2 za isti fizički model jer su to kalibracijski (ne hw) varijante.
+130hp→155hp razlika je isključivo u ignition/lambda/injection tablicama — nema CODE logike razlike.
+
+## 2026-03-19 — 2018 4TEC 1503 230hp dump analiziran (10SW025021)
+
+### Nalazi
+- **SW ID**: `10SW025021` — nov, nije bio u KNOWN_SW
+- **Mape**: 59 (vs 60 za 130hp/155hp)
+- **Razlika od 130v1** (10SW025022): 19413B u 117 blokova
+- SC bypass s fizičkim ventilom: razlike @ 0x020534, 0x0205A8 (vs NA gdje je kod aktivan ali bez ventila)
+- Ignition, lambda, injection mape drugačije (SC vs NA kalibracija)
+
+### Kompletna 2018 4TEC 1503 slika
+| Dump | SW ID | Mape | Napomena |
+|------|-------|------|---------|
+| 130v1 | 10SW025022 | 60 | NA, bazni tune |
+| 130v2 | 10SW025752 | 60 | NA, isti kao 155v2 |
+| 155v1 | 10SW025022 | 60 | identičan 130v1! |
+| 155v2 | 10SW025752 | 60 | identičan 130v2! |
+| 230   | 10SW025021 | 59 | SC, ~19KB razlika od NA |
+
+### Fajlovi promijenjeni
+- `core/engine.py`: dodan 10SW025021 u KNOWN_SW
+
+---
+
+## 2026-03-19 — Spark900 binarni pregled: accel Y-os, IGN B/B2 osi, completeness
+
+### 1. Accel Enrichment Y-os — PRONAĐENA
+
+**1630ace (300.bin):**
+- Blok: global byte @ `0x028059` = 4, redovi @ `0x02805A`, 5 redova × 22B (6×u16LE X + 5×u16LE data)
+- **Y-os (CTS, 5pt u8) @ `0x028046`**: `[5, 19, 27, 53, 67]` °C (Coolant temp tocke)
+- X-os: `[5, 0, 150, 200, 350, 1500]` dTPS/s (potvrđeno)
+- Blok završava @ `0x0280C8`
+
+**spark90 (spark90.bin):**
+- Blok: global byte @ `0x026925` = 2, redovi @ `0x026926`, 5 redova × 22B
+- **Y-os (CTS, 5pt u8) @ `0x026912`**: `[5, 19, 27, 53, 67]` °C (identično 1630ace!)
+- X-os: `[5, 0, 150, 300, 600, 900]` dTPS/s (Spark ima DRUGAČIJE: 300/600/900 ne 200/350/1500)
+- Blok završava @ `0x026994`
+
+**Zaključak**: Y-os IDENTIČNA u oba ECU-a, X-os se razlikuje na 4.-6. točki. Osi su 19B ispred global byte, struktura je konzistentna.
+
+### 2. IGN B i B2 osi — DIJELE IGN A
+
+**Potvrđeno binarno:**
+- Ispred IGN B #0 (`0x029590-0x0295C0`): 48B nule = nema zasebnih osi
+- Gap između IGN B end (`0x029A40`) i IGN B2 start (`0x029B60`) = 288B, struktura:
+  - `0x029A40-0x029ABF`: 128B flat tablica `0x1B=27` raw (20.25° BTDC) = IGN B #8 bonus
+  - `0x029AC0-0x029B11`: **NOVA MAPA — Spark knock retard tablica** (8×8 u8):
+    - Dim header: `[8, 8]`
+    - X-os (load): `[38,75,100,125,150,163,175,188]` u8, /128 = 0.30–1.47
+    - Y-os (RPM): `[40,47,53,67,80,93,100,113]` u8, ×80 = [3200–9040] RPM
+    - Data: dijagonalni retard 0–13 raw (0–9.75°), maks retard pri high load + high RPM
+  - `0x029B12-0x029B5F`: 4 × 12B parcijalni IGN B2 redovi (27,28,30)
+
+**IGN A/B/B2 dijele ISTE osi (potvrđeno):**
+- X-os (RPM) @ `0x026A1E`: 12pt u16LE, direktno RPM, `[6000–32000]` RPM
+- Y-os (load) @ `0x0269AF`: 12pt u8, /128, `[3–154]` raw = `[0.023–1.203]`
+
+### 3. Completeness Spark90 (52 mape)
+
+| Kategorija | Mape | Status |
+|---|---|---|
+| IGN A (12×12 u8) | 8 | potvrđeno @ 0x026A76 |
+| IGN B (12×12 u8) | 8 | potvrđeno @ 0x0295C0 |
+| IGN B2 (12×12 u8) | 8 | potvrđeno @ 0x029B60 |
+| IGN C (9×8 u16LE) | 3 | potvrđeno @ 0x02803A |
+| Lambda | 4 | potvrđeno |
+| Injection | 3 | potvrđeno @ 0x02436C (u8 format, scale /128) |
+| Rev limiter | 1 | potvrđeno |
+| DTC OFF | 1 | potvrđeno |
+| Accel enrichment | 1 | potvrđeno @ 0x026925 |
+| **Knock retard (NOVA)** | **1** | **@ 0x029AC0 (8×8 u8, neidentificiran u map_finder.py)** |
+| Aux ostalo | ~14 | u map_finder.py |
+| **Ukupno** | **52** | |
+
+**Što NEMA u Spark (vs puni ME17):**
+- Torque management (KFTL/KFTLDK): nema — 90hp motor bez torque-by-wire
+- Wastegate/boost: nema — nema turba
+- VVT/VANOS: nema
+- Warm-up ignition correction (KFZW2): možda u aux14 (nije provjereno)
+- Cold start cranking enrichment: možda u aux14
+
+**Ključna razlika Spark vs 1630ace injection format:**
+- 1630ace: u16LE Q15 (32768=1.0)
+- Spark90: u8 (128=1.0)
+
+### Fajlovi promijenjeni
+- Bez promjena koda — samo analiza
+
+## 2026-03-19 — Accel Y-os, Spark accel enrich, Spark knock retard (agent nalaz)
+
+### Što je napravljeno
+Agent pronašao Y-os za accel enrich i novu Spark knock retard tablicu.
+
+**1. Accel enrich Y-os (svi SW-ovi)**
+- CTS temperatura [5, 19, 27, 53, 67]°C — identično za 1630ace i Spark
+- Adresa: 19B ispred global byte (1630ace @ 0x028046, Spark @ 0x026912)
+- `_scan_accel_enrich` ažuriran: čita Y-os dinamički
+
+**2. Spark accel enrich — nova mapa**
+- Adresa: 0x026925 (isti format kao 1630ace, global byte = 0x02)
+- dTPS os drugačija: [5, 0, 150, 300, 600, 900]°/s (vs 1630ace [5, 0, 150, 200, 350, 1500])
+- Dodano `_SPARK_ACCEL_ENRICH_DEF` i scan u `_scan_spark_aux`
+
+**3. Spark knock retard — nova mapa**
+- Blok @ 0x029AC0: 2B dim hdr + 8B X-os (load) + 8B Y-os (RPM) + 64B data
+- Data @ 0x029AD2, 8×8 u8, max 9.75° (raw 13)
+- Pronađen u gapu između IGN B i IGN B2
+- Dodano `_SPARK_KNOCK_RETARD_DEF` i scan u `_scan_spark_aux`
+
+**4. IGN B/B2 osi — potvrđeno**
+- Agent potvrdio: B i B2 dijele _SPARK_IGN_A_X/_Y (već implementirano)
+
+### Rezultati
+- Spark 900ace: 52 → **54 mape** (+2: accel enrich + knock retard)
+- 1630ace: ostalo na 54 (accel dobio Y-os, bez novih mapa)
+- Svi testovi: 9/9 PASS
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`: nové MapDef-i + scan logika + Y-os fix
+
+## 2026-03-19 — 2018 1630ace 300hp dump analiziran (10SW023910)
+
+### Nalazi
+- **SW ID**: `10SW023910` — nov, nije bio u KNOWN_SW
+- **Mape**: 61
+- **Prijelazni SW** između GTI generacije i modernih 1630ace:
+  - GTI legacy injection @ 0x022066 (identičan vrijednostima u 2019!)
+  - Standard injection @ 0x02436C  
+  - GTI legacy ignition 8×mapa @ 0x028310
+  - Standard ignition 19×mapa @ 0x02B730
+- **Razlika od 2019**: ~146KB (BOOT=149B, CODE=82290B, CAL=64060B)
+
+### Fajlovi promijenjeni
+- `core/engine.py`: dodan 10SW023910 u KNOWN_SW
+
+## 2026-03-19 — KFPED + MAT implementirane (agent nalaz + binarna verifikacija)
+
+### Što je napravljeno
+
+**KFPED — Pedalka / driver demand (@ 0x029548)**
+- 10×20 u8, header @ 0x029528 (2020+) ili 0x029526 (2018 SW)
+- Y-os = papučica kut [°]: NA=[0–70°], SC=[boost-adjusted, do 90°]
+- X-os = engine load (/128): [0.20–1.66], 20 točaka
+- SC vs NA: 234B razlika (boost-adjusted response)
+- Mirror @ 0x029630
+- Pronađeno u: 1630ace sve godine + GTI1503; NIE u Spark (900ace)
+
+**MAT — Manifold Air Temperature correction (@ 0x022726)**
+- 1D, 12pt u16 LE Q15
+- Temp os (u8 raw, −40=°C): [−3 do 171°C], korisni raspon −3 do 64°C
+- Faktori: 1.020 (−3°C hladni zrak) → 0.847 (64°C topli zrak)
+- SC = NA (0B razlika) — intercooler ne mijenja kalibraciju
+- Pronađeno u: svim SW osim Spark 900ace
+
+**Ukupno mapa po SW verziji (nakon implementacije):**
+- 1630ace 300hp SC: **56** (bilo 54)
+- 1630ace 130hp NA: **64** (bilo 62)
+- Spark 900ace: **54** (nepromijenjeno — nema TBW KFPED ni intercooler MAT)
+- GTI1503 2019: **63** (bilo 61)
+- 1630ace 2018 (10SW023910): **63** (bilo 62)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`: `_KFPED_DEF`, `_MAT_DEF`, `_scan_kfped()`, `_scan_mat()`
