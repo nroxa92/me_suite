@@ -691,7 +691,11 @@ class DtcSidebarPanel(QWidget):
             "}"
             "QTreeWidget::branch:has-children:!has-siblings:closed,"
             "QTreeWidget::branch:closed:has-children:has-siblings {"
-            "  border-image:none; image:none;"
+            "  color:#6868A0;"
+            "}"
+            "QTreeWidget::branch:open:has-children:!has-siblings,"
+            "QTreeWidget::branch:open:has-children:has-siblings {"
+            "  color:#6868A0;"
             "}"
         )
         self.tree.itemClicked.connect(self._click)
@@ -725,7 +729,7 @@ class DtcSidebarPanel(QWidget):
             cat_item.setFont(0, QFont("Segoe UI", 9, QFont.Weight.Bold))
             cat_item.setForeground(0, QBrush(QColor(cat_color)))
             cat_item.setSizeHint(0, QSize(0, 22))
-            cat_item.setExpanded(True)
+            cat_item.setExpanded(False)
 
             for sub_digit in range(4):
                 entries = buckets.get((cat_idx, sub_digit), [])
@@ -740,7 +744,7 @@ class DtcSidebarPanel(QWidget):
                 sub_item.setFont(0, QFont("Segoe UI", 8))
                 sub_item.setForeground(0, QBrush(QColor("#6868A0")))
                 sub_item.setSizeHint(0, QSize(0, 19))
-                sub_item.setExpanded(True)
+                sub_item.setExpanded(False)
 
                 for code, defn in entries:
                     # Skraćeni naziv: max 22 znaka
@@ -774,13 +778,14 @@ class DtcSidebarPanel(QWidget):
                 break
 
     def _filter(self, txt: str):
+        searching = bool(txt)
         for code, ch in self._all_items:
             defn = DTC_REGISTRY.get(code)
             visible = (not txt or
                        txt.lower() in (defn.p_code if defn else "").lower() or
                        txt.lower() in (defn.name if defn else "").lower())
             ch.setHidden(not visible)
-        # Sakrij prazne podgrupe i kategorije
+        # Sakrij prazne podgrupe i kategorije; expandaj ako se pretražuje
         for i in range(self.tree.topLevelItemCount()):
             cat = self.tree.topLevelItem(i)
             cat_empty = True
@@ -790,7 +795,12 @@ class DtcSidebarPanel(QWidget):
                 sub.setHidden(sub_empty)
                 if not sub_empty:
                     cat_empty = False
+                    if searching:
+                        sub.setExpanded(True)
+                    # Ne kolapsiramo manuelno — korisnik kontrolira
             cat.setHidden(cat_empty)
+            if not cat_empty and searching:
+                cat.setExpanded(True)
 
     def _click(self, item: QTreeWidgetItem):
         code = item.data(0, Qt.ItemDataRole.UserRole)

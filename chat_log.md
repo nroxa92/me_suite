@@ -785,3 +785,13 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 🤖 Pronasao i implementirao osi za Lambda Trim 1 (Y-load 30pt @ 0x024E60, X-speed 20pt @ 0x024E9C), Lambda Trim 2 (Y-load 30pt @ 0x025378, X-speed @ 0x0253B4) i Deadtime (X-napon [8.0-15.0V] @ 0x028794, Y-trajanje [0.4-12ms] @ 0x028784 u8-pari). Potvrdjeni lazi pozitivi: Lambda Prot (0x0222C0) i Idle RPM (0x0224A0) su unutar injection tablice. 9/9 testovi prolaze.
 
 ---
+**[2026-03-19 11:32]**
+👤 u eeprom tabu radne sate moramo moci editirati... jer evo ecu je novi sa 0h i trebamo upisati stvarnu trenutnu vrijednost... isto vrijedi i kada imamo rabljeni ecu sa vise radnih sati i trebamo ga staviti na neki jet koji ima manje sati... dtc su i dalje peikazane sve u side panelu, a rekli smo male + kao sto imamo windows explorer stabla...
+🤖 Implementirano: (1) `set_odo_raw()` u EepromEditor + editabilni SpinBox h/min u eeprom_widget.py; (2) DtcSidebarPanel sada kre s kolapsiranim kategorijama (False), CSS fix za prikaz +/- branch indikatora, filter auto-expanduje pri pretraživanju. Testovi 9/9 prolaze.
+
+---
+**[2026-03-19 14:15]**
+👤 Ispravi 3 false positive definicije u core/map_finder.py — Spark torque na pogrešnoj adresi (0x027E3A umjesto 0x027D9A, 16×16 umjesto 30×20), _SPARK_IDLE_RPM_DEF i _SPARK_LAMBDA_PROT_DEF su unutar injection tablice.
+🤖 Sve tri ispravke napravljene: torque ispravljen na 0x027D9A 30×20 s osima (mirror 0x0282B2 potvrđen binarno), idle RPM i lambda prot zakomentiran kao false positivi. Spark mape: 52 (s 54 - 2 false positiva). Svi testovi prolaze.
+
+---

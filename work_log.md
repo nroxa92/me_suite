@@ -1,5 +1,73 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 12:10 — 10SW025022 — novi SW identificiran (2018 GTI 4TEC 1503 130hp v1)
+
+### Što je napravljeno
+- Dump `_materijali/dumps/2018/4tec1503/130v1.bin` analiziran
+- SW: `10SW025022` — **novi, dosad neregistriran**; dodan u `core/engine.py` KNOWN_SW
+- 60 mapa (za 1 manje od 2019 — nedostaje `therm enrich @ 0x02AA42`)
+- Lambda 0x0266F0: 0.961–1.038λ; torque flat 32768; SC bypass activan u kodu [30,30,30,30,31,35,38,255] (1503 NA nema fizički ventil)
+- 82.8KB CODE razlika + 64KB CAL razlika vs 10SW040008 (2019)
+- Isti adresar kao GTI90 2021 (10SW053774)
+- BUDS2 nudi i drugu verziju za 2018 GTI 130hp — vjerovatno 10SW025752 (155hp GTI SE)
+
+### Fajlovi promijenjeni
+- `core/engine.py`: 10SW025022 dodan
+
+---
+
+## 2026-03-19 14:15 — Spark torque ispravak + 2 false positive uklonjeni (map_finder.py)
+
+### Što je napravljeno
+
+**1. `_SPARK_TORQUE_DEF` — ispravljena adresa i dimenzije**
+- Prethodna definicija: `rows=16, cols=16, addr=0x027E3A` (false — unutar prave tablice na offsetu +0xA0)
+- Ispravna: `rows=30, cols=20, addr=0x027D9A`, mirror `0x0282B2` (+0x518)
+- Dodani `axis_x` (20pt RPM @ 0x027D72) i `axis_y` (30pt load @ 0x027D36)
+- `byte_order="BE"`, `raw_min=27000`, `raw_max=33000` (stvarni BE raspon: 27648–32768)
+- Count bytes [30, 20] @ 0x027D32 potvrđeni binarnom analizom (2021 spark90.bin)
+- Mirror verificiran: identičan 1200B blok @ 0x0282B2
+
+**2. `_SPARK_IDLE_RPM_DEF` @ 0x0224A0 — false positive uklonjen**
+- 0x0224A0 = 0x0222BE + 482B = unutar Spark injection tablice (30×20)
+- MapDef objekt zakomentiran s napomenom; scan blok uklonjen
+
+**3. `_SPARK_LAMBDA_PROT_DEF` @ 0x0222C0 — false positive uklonjen**
+- 0x0222C0 = 0x0222BE + 2 (drugi element injection tablice)
+- MapDef objekt zakomentiran s napomenom; scan blok uklonjen
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`
+
+### Rezultati
+- Testovi: svi prolaze
+- Spark 900 ACE mape: 52 (54 - 2 false positiva; torque se pravilno pronalazi @ 0x027D9A)
+
+---
+
+## 2026-03-19 11:32 — EEPROM radni sati editabilni + DTC stablo kolapsibilno
+
+### Što je napravljeno
+
+**1. EEPROM radni sati — editabilno (core/eeprom.py + ui/eeprom_widget.py)**
+- `EepromEditor.set_odo_raw(minutes)`: upisuje novu vrijednost u SVE relevantne ODO adrese circular buffera za detektirani HW tip (062/063/064). Raspon 0-65000 min.
+- `eeprom_widget.py`: "Radni sati" grupa sada je editabilna (✏), s dva QSpinBox: sati (0-1092h) i minute (0-59min). Originalna vrijednost ostaje prikazana kao read-only. `_populate_edit` puni spinboxove iz `info.odo_raw`. `_apply_edits` poziva `set_odo_raw`.
+- Test: pisanje 730 min (12h 10min) na lažni 064 EEPROM → parser čita 730 min. ✓
+
+**2. DTC stablo — kolapsibilno (ui/main_window.py, DtcSidebarPanel)**
+- Promijenjeno: `cat_item.setExpanded(True)` → `False` (top-level kategorije P/C/B/U kolapsiraju po defaultu)
+- Promijenjeno: `sub_item.setExpanded(True)` → `False` (podgrupe isto kolapsiraju)
+- CSS fix: uklonjena `image:none` pravila koja su skrivala +/- indikatore na zatvorenim čvorovima; dodana CSS pravila za `branch:open` i `branch:closed` (bez `image:none`)
+- `_filter()`: pri pretraživanju auto-expanduje kategorije i podgrupe gdje ima rezultata; ne kolapsira manualno (korisnik kontrolira)
+
+### Fajlovi promijenjeni
+- `core/eeprom.py`: dodana `set_odo_raw()` metoda u EepromEditor
+- `ui/eeprom_widget.py`: ODO grupa postala editabilna; SpinBox za h+min; `_populate_edit` i `_apply_edits` prošireni
+- `ui/main_window.py`: DtcSidebarPanel CSS i expanded state
+
+### Rezultati
+- Svi testovi prolaze (54 mapa ORI/STG2, 54 Spark, 60 GTI, EEPROM ODO 3/3)
+
 ## 2026-03-19 16:30 — Osi za Spark lambda trim 1/2 i deadtime (binarna verifikacija)
 
 ### Sto je napravljeno

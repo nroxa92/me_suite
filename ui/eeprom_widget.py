@@ -2,8 +2,8 @@
 ME17Suite — EEPROM Viewer + Editor widget
 Prikazuje i omogućava editiranje parsirani EEPROM podaci: identifikacija, datumi, odometar, dealer.
 
-Editabilna polja: Hull ID, dealer naziv, datumi programiranja, broj programiranja.
-Read-only polja: ECU serial, MPEM SW, servisni SW, HW tip, radni sati (circular buffer).
+Editabilna polja: Hull ID, dealer naziv, datumi programiranja, broj programiranja, radni sati.
+Read-only polja: ECU serial, MPEM SW, servisni SW, HW tip.
 
 EEPROM nema checksum — izmjene se direktno upisuju.
 """
@@ -188,10 +188,55 @@ class EepromWidget(QWidget):
         self._f_svc     = self._add_read(grp_sw, "Servisni SW ID")
         self._f_hw_type = self._add_read(grp_sw, "HW tip ECU-a")
 
-        # ── Radni sati (read-only) ────────────────────────────────────────────
-        grp_odo = self._make_group("Radni sati / Odometar  (read-only — circular buffer)")
-        self._f_odo_hhmm = self._add_read(grp_odo, "Radni sati")
-        self._f_odo_raw  = self._add_read(grp_odo, "Sirova vrijednost (min)")
+        # ── Radni sati (editabilno) ───────────────────────────────────────────
+        grp_odo = self._make_group("Radni sati / Odometar  ✏")
+        grp_odo.setStyleSheet(grp_odo.styleSheet().replace("#99BBCC", "#4FC3F7"))
+
+        odo_note = QLabel("  Unesi stvarne radne sate vozila. Vrijednost se upisuje u sve ODO adrese circular buffera.")
+        odo_note.setStyleSheet("color: #778899; font-size: 11px;")
+        odo_note.setWordWrap(True)
+        grp_odo.layout().addWidget(odo_note)
+
+        odo_row = QWidget()
+        odo_layout = QHBoxLayout(odo_row)
+        odo_layout.setContentsMargins(0, 2, 0, 2)
+
+        lbl_odo = QLabel("Radni sati:")
+        lbl_odo.setFixedWidth(180)
+        lbl_odo.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_odo.setStyleSheet("color: #8899AA; font-size: 12px;")
+
+        spinbox_style = """
+            QSpinBox {
+                background: #1A2530; color: #C8E0F0; font-size: 12px;
+                border: 1px solid #3A5570; border-radius: 3px; padding: 2px 4px;
+            }
+            QSpinBox:focus { border: 1px solid #4FC3F7; }
+        """
+
+        self._e_odo_h = QSpinBox()
+        self._e_odo_h.setRange(0, 1092)   # max ~65520 min / 60 = 1092h
+        self._e_odo_h.setSuffix(" h")
+        self._e_odo_h.setFixedWidth(90)
+        self._e_odo_h.setStyleSheet(spinbox_style)
+        self._e_odo_h.valueChanged.connect(self._on_edit_changed)
+
+        self._e_odo_m = QSpinBox()
+        self._e_odo_m.setRange(0, 59)
+        self._e_odo_m.setSuffix(" min")
+        self._e_odo_m.setFixedWidth(90)
+        self._e_odo_m.setStyleSheet(spinbox_style)
+        self._e_odo_m.valueChanged.connect(self._on_edit_changed)
+
+        odo_layout.addWidget(lbl_odo)
+        odo_layout.addSpacing(8)
+        odo_layout.addWidget(self._e_odo_h)
+        odo_layout.addSpacing(4)
+        odo_layout.addWidget(self._e_odo_m)
+        odo_layout.addStretch()
+        grp_odo.layout().addWidget(odo_row)
+
+        self._f_odo_raw = self._add_read(grp_odo, "Originalna vrijednost (min)")
         self._f_odo_raw.set_color("#667788")
 
         # ── Editabilna polja ──────────────────────────────────────────────────
@@ -353,8 +398,6 @@ class EepromWidget(QWidget):
         }
         self._f_hw_type.set_value(hw_labels.get(info.hw_type, _v(info.hw_type, "Nepoznat")))
 
-        self._f_odo_hhmm.set_value(info.odo_hhmm())
-        self._f_odo_hhmm.set_color(ok if info.odo_raw > 0 else na)
         self._f_odo_raw.set_value(str(info.odo_raw) if info.odo_raw else "—")
 
         self._errors_text.setPlainText("\n".join(info.errors) if info.errors else "")
@@ -368,6 +411,13 @@ class EepromWidget(QWidget):
         self._e_pcount.blockSignals(True)
         self._e_pcount.setValue(info.prog_count)
         self._e_pcount.blockSignals(False)
+        self._e_odo_h.blockSignals(True)
+        self._e_odo_m.blockSignals(True)
+        self._e_odo_h.setValue(info.odo_raw // 60)
+        self._e_odo_m.setValue(info.odo_raw % 60)
+        self._e_odo_h.blockSignals(False)
+        self._e_odo_m.blockSignals(False)
+        self._f_odo_raw.set_value(str(info.odo_raw) if info.odo_raw else "—")
 
     # ── editiranje i snimanje ─────────────────────────────────────────────────
 
@@ -390,6 +440,8 @@ class EepromWidget(QWidget):
             self._editor.set_date_first_prog(self._e_date1.value())
             self._editor.set_date_last_update(self._e_date2.value())
             self._editor.set_prog_count(self._e_pcount.value())
+            odo_minutes = self._e_odo_h.value() * 60 + self._e_odo_m.value()
+            self._editor.set_odo_raw(odo_minutes)
             return True
         except ValueError as e:
             QMessageBox.warning(self, "Greška validacije", str(e))

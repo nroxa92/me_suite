@@ -331,6 +331,42 @@ class EepromEditor:
         """Sprema modificirani EEPROM na disk."""
         Path(path).write_bytes(self._data)
 
+    def set_odo_raw(self, minutes: int) -> None:
+        """
+        Upisuje radne sate (u minutama) u sve relevantne ODO adrese circular buffera.
+        Parser uvijek uzima prvu/max vrijednost — pisanjem na sve adrese garantira
+        da će nova vrijednost biti pročitana bez obzira na HW tip i stanje buffera.
+        Raspon: 0–65000 (u16 LE, 0 = novi ECU / brisanje).
+        """
+        if not 0 <= minutes <= 65000:
+            raise ValueError(f"Radni sati (min) mora biti 0–65000 (dobiveno: {minutes})")
+
+        def _w(off: int, val: int) -> None:
+            if off + 2 <= len(self._data):
+                self._data[off:off + 2] = val.to_bytes(2, 'little')
+
+        # Detektuj HW tip iz MPEM SW @ 0x0032
+        mpem_raw = self._data[0x0032:0x003C]
+        mpem = mpem_raw.split(b'\x00')[0].decode('ascii', errors='replace')
+
+        if mpem.startswith("10375091") or mpem.startswith("10375092"):
+            # HW 062 — rotacijski buffer (sve tri adrese)
+            _w(EepromParser._ODO_062_HIGH_B, minutes)   # 0x5062
+            _w(EepromParser._ODO_062_HIGH_A, minutes)   # 0x4562
+            _w(EepromParser._ODO_062_LOW,    minutes)   # 0x1062
+        elif mpem.startswith("10375258"):
+            # HW 063 Spark — parser uzima max(0x0562, 0x4562)
+            _w(EepromParser._ODO_STANDARD,     minutes)   # 0x0562
+            _w(EepromParser._ODO_STARI_LAYOUT, minutes)   # 0x4562
+        else:
+            # HW 064 (ili nepoznat) — parser čita prvu validnu vrijednost
+            # Pisanjem na sve adrese ista vrijednost → detekcija uvijek uspijeva
+            _w(EepromParser._ODO_STANDARD,     minutes)   # 0x0562
+            _w(EepromParser._ODO_STARI_LAYOUT, minutes)   # 0x4562
+            _w(EepromParser._ODO_WRAP_PRIM,    minutes)   # 0x0D62
+            _w(EepromParser._ODO_WRAP_MIRROR,  minutes)   # 0x1562
+            _w(EepromParser._ODO_OLD_064,      minutes)   # 0x0490
+
     def get_info(self) -> "EepromInfo":
         """Parsira trenutno stanje i vraća EepromInfo."""
         parser = EepromParser()

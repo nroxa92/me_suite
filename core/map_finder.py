@@ -1967,19 +1967,21 @@ _SPARK_WARMUP_DEF = MapDef(
                   "Analogno GTI90 @ 0x025E50.",
 )
 
-_SPARK_IDLE_RPM_DEF = MapDef(
-    name        = "Spark — Ralanti ciljni RPM (5×12)",
-    description = "Spark 900 ACE idle RPM target tablica. "
-                  "5 temperaturnih zona × 12 RPM točaka = 60 u16 LE vrijednosti. "
-                  "Raspon ~1513–2648 RPM. Adresa: 0x0224A0.",
-    category    = "misc",
-    rows=5, cols=12,
-    byte_order  = "LE", dtype = "u16",
-    scale       = 1.0, offset_val = 0.0,
-    unit        = "RPM",
-    raw_min     = 1400, raw_max = 3000,
-    notes       = "Spark 900 ACE. @ 0x0224A0. Format 5×12 = 60 rpm vrijednosti.",
-)
+# FALSE POSITIVE — unutar injection tablice @ 0x0222BE
+# 0x0224A0 = 0x0222BE + 482B = redak 8, stupac 1 od 30×20 injection tablice
+# _SPARK_IDLE_RPM_DEF = MapDef(
+#     name        = "Spark — Ralanti ciljni RPM (5×12)",
+#     description = "Spark 900 ACE idle RPM target tablica. "
+#                   "5 temperaturnih zona × 12 RPM točaka = 60 u16 LE vrijednosti. "
+#                   "Raspon ~1513–2648 RPM. Adresa: 0x0224A0.",
+#     category    = "misc",
+#     rows=5, cols=12,
+#     byte_order  = "LE", dtype = "u16",
+#     scale       = 1.0, offset_val = 0.0,
+#     unit        = "RPM",
+#     raw_min     = 1400, raw_max = 3000,
+#     notes       = "Spark 900 ACE. @ 0x0224A0. Format 5×12 = 60 rpm vrijednosti.",
+# )
 
 _SPARK_REV_LIMITER_DEF = MapDef(
     name        = "Spark — Rev limiter hard cut (scalar)",
@@ -2028,23 +2030,37 @@ _SPARK_LAMBDA_DEF = MapDef(
 _SPARK_TORQUE_DEF = MapDef(
     name        = "Spark — Momenti ograničenje (torque limit)",
     description = (
-        "Spark 900 ACE torque limit mapa. 16×16 u16 BE, Q8 format (/256). "
-        "Vrijednosti 111–127 = ~87–99% nominalna snaga. "
-        "Identičan format kao GTI90 torque (@ 0x02A0D8). "
-        "Adresa: 0x027E3A. Mirror: 0x028352 (+0x518 = 1304B)."
+        "Spark 900 ACE torque limit mapa. 30×20 u16 BE, Q8 format (/256). "
+        "Vrijednosti 108–128 raw BE (27648–32768) = ~108–128% relativna snaga. "
+        "Adresa: 0x027D9A. Mirror: 0x0282B2 (+0x518). "
+        "Count bytes [30,20] @ 0x027D32 potvrđen na 2018 i 2021 binarnom."
     ),
     category    = "torque",
-    rows=16, cols=16,
+    rows=30, cols=20,
     byte_order  = "BE", dtype = "u16",
     scale       = 1.0 / 256.0,
     offset_val  = 0.0,
     unit        = "Nm (rel.)",
-    raw_min     = 28000, raw_max = 33000,
+    raw_min     = 27000, raw_max = 33000,
     mirror_offset = 0x518,
+    axis_x      = AxisDef(count=20, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="brzina motora [raw]",
+                          values=[188, 234, 266, 297, 359, 406, 469, 547,
+                                  625, 703, 781, 859, 938, 1016, 1094, 1172,
+                                  1250, 1329, 1407, 1563]),
+                          # @ 0x027D72 (20pt u16 LE, RPM raw)
+    axis_y      = AxisDef(count=30, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="opterecenje [raw]",
+                          values=[4000, 4800, 5600, 7400, 9200, 10800, 11600, 12200,
+                                  12600, 13200, 13720, 14560, 15200, 16120, 16800, 17600,
+                                  18800, 19600, 20400, 21600, 23040, 24000, 24960, 25800,
+                                  26680, 27680, 29000, 30720, 32000, 33600]),
+                          # @ 0x027D36 (30pt u16 LE, load raw)
     notes       = (
-        "Spark 900 ACE. @ 0x027E3A, mirror @ 0x028352 (+0x518). "
-        "Q8: raw/256. 2021 vs 2018: neke razlike u vrijednostima. "
-        "Format identičan GTI90 @ 0x02A0D8. ISPRED blok 0x8000 (dummy os)."
+        "Spark 900 ACE. @ 0x027D9A, mirror @ 0x0282B2 (+0x518=1200B). "
+        "30×20=600 u16 BE. Q8: raw/256. Count bytes [30,20] @ 0x027D32. "
+        "Y-os (load 30pt) @ 0x027D36, X-os (RPM 20pt) @ 0x027D72. "
+        "Binarno verificirano na 2021 (10SW039116). Mirror potvrđen: identičan blok."
     ),
 )
 
@@ -2111,29 +2127,31 @@ _SPARK_OVERTEMP_LAMBDA_DEF = MapDef(
     ),
 )
 
-_SPARK_LAMBDA_PROT_DEF = MapDef(
-    name        = "Spark — Lambda zaštitni prag (protection)",
-    description = (
-        "Spark 900 ACE lambda zaštita — donji pragovi lambda korekcije. "
-        "12×18 u16 LE. Mali Q15 raw vrijednosti (508–2154 = 0.015–0.066). "
-        "Identično na Spark 2021 i 2018. Mirror kopija @ 0x0227D8 (+0x518). "
-        "Adresa: 0x0222C0."
-    ),
-    category    = "lambda",
-    rows=12, cols=18,
-    byte_order  = "LE", dtype = "u16",
-    scale       = 1.0 / 32768.0,
-    offset_val  = 0.0,
-    unit        = "λ prag",
-    raw_min     = 400, raw_max = 2500,
-    mirror_offset = 0x518,
-    notes       = (
-        "Spark 900 ACE. @ 0x0222C0, mirror @ 0x0227D8 (+0x518=1304B). "
-        "12×18=216 u16 LE. Mali Q15 raw (508-2154 = 0.015-0.066). "
-        "Isti na 2021 i 2018 Sparku. "
-        "Donji threshold lambda korekcije."
-    ),
-)
+# FALSE POSITIVE — 2B unutar injection tablice @ 0x0222BE
+# 0x0222C0 = 0x0222BE + 2, tj. drugi element injection tablice (30×20 u16 LE)
+# _SPARK_LAMBDA_PROT_DEF = MapDef(
+#     name        = "Spark — Lambda zaštitni prag (protection)",
+#     description = (
+#         "Spark 900 ACE lambda zaštita — donji pragovi lambda korekcije. "
+#         "12×18 u16 LE. Mali Q15 raw vrijednosti (508–2154 = 0.015–0.066). "
+#         "Identično na Spark 2021 i 2018. Mirror kopija @ 0x0227D8 (+0x518). "
+#         "Adresa: 0x0222C0."
+#     ),
+#     category    = "lambda",
+#     rows=12, cols=18,
+#     byte_order  = "LE", dtype = "u16",
+#     scale       = 1.0 / 32768.0,
+#     offset_val  = 0.0,
+#     unit        = "λ prag",
+#     raw_min     = 400, raw_max = 2500,
+#     mirror_offset = 0x518,
+#     notes       = (
+#         "Spark 900 ACE. @ 0x0222C0, mirror @ 0x0227D8 (+0x518=1304B). "
+#         "12×18=216 u16 LE. Mali Q15 raw (508-2154 = 0.015-0.066). "
+#         "Isti na 2021 i 2018 Sparku. "
+#         "Donji threshold lambda korekcije."
+#     ),
+# )
 
 _SPARK_THERM_ENRICH_DEF = MapDef(
     name        = "Spark — Toplinska korekcija goriva (therm enrich)",
@@ -4088,15 +4106,8 @@ class MapFinder:
         else:
             if cb: cb(f"  Spark warm-up @ 0x{addr:06X}: validacija pala")
 
-        # ─ Idle RPM @ 0x0224A0 (5×12 = 60 u16 LE) ─
-        addr = 0x0224A0
-        n    = _SPARK_IDLE_RPM_DEF.rows * _SPARK_IDLE_RPM_DEF.cols  # 60
-        vals = _read_u16le_n(addr, n)
-        if all(_SPARK_IDLE_RPM_DEF.raw_min <= v <= _SPARK_IDLE_RPM_DEF.raw_max for v in vals):
-            _add(_SPARK_IDLE_RPM_DEF, addr, vals)
-            if cb: cb(f"  Spark idle RPM @ 0x{addr:06X}  5×12  [{min(vals)}..{max(vals)}] RPM")
-        else:
-            if cb: cb(f"  Spark idle RPM @ 0x{addr:06X}: validacija pala")
+        # ─ Idle RPM @ 0x0224A0 — PRESKOČENO (false positive, unutar injection tablice) ─
+        # Adresa 0x0224A0 = 0x0222BE + 482B (redak 8, stupac 1 od 30×20 injection tablice)
 
         # ─ Rev limiter hard cut @ 0x028E34 (scalar u16 LE, period ticks) ─
         addr = 0x028E34
@@ -4108,14 +4119,14 @@ class MapFinder:
         else:
             if cb: cb(f"  Spark rev limiter @ 0x{addr:06X}: neočekivana vrijednost {v}")
 
-        # ─ Torque limit @ 0x027E3A (16×16 u16 BE Q8, mirror +0x518) ─
-        addr   = 0x027E3A
-        n_torq = _SPARK_TORQUE_DEF.rows * _SPARK_TORQUE_DEF.cols  # 256
+        # ─ Torque limit @ 0x027D9A (30×20 u16 BE Q8, mirror +0x518=0x0282B2) ─
+        addr   = 0x027D9A
+        n_torq = _SPARK_TORQUE_DEF.rows * _SPARK_TORQUE_DEF.cols  # 600
         if addr + n_torq * 2 <= len(data):
             vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'big') for i in range(n_torq)]
             if all(_SPARK_TORQUE_DEF.raw_min <= v <= _SPARK_TORQUE_DEF.raw_max for v in vals):
                 _add(_SPARK_TORQUE_DEF, addr, vals)
-                if cb: cb(f"  Spark torque @ 0x{addr:06X}  16×16 BE Q8  [{min(vals)}–{max(vals)}]")
+                if cb: cb(f"  Spark torque @ 0x{addr:06X}  30×20 BE Q8  [{min(vals)}–{max(vals)}]")
             else:
                 if cb: cb(f"  Spark torque @ 0x{addr:06X}: validacija pala [{min(vals)}–{max(vals)}]")
 
@@ -4144,18 +4155,8 @@ class MapFinder:
             else:
                 if cb: cb(f"  Spark overtemp λ @ 0x{addr:06X}: validacija pala")
 
-        # ─ Lambda protection @ 0x0222C0 (12×18 u16 LE, mirror +0x518) ─
-        addr  = 0x0222C0
-        n_lp  = _SPARK_LAMBDA_PROT_DEF.rows * _SPARK_LAMBDA_PROT_DEF.cols  # 216
-        if addr + n_lp * 2 <= len(data):
-            vals = _read_u16le_n(addr, n_lp)
-            if all(_SPARK_LAMBDA_PROT_DEF.raw_min <= v <= _SPARK_LAMBDA_PROT_DEF.raw_max for v in vals):
-                _add(_SPARK_LAMBDA_PROT_DEF, addr, vals)
-                if cb: cb(f"  Spark lambda prot @ 0x{addr:06X}  12×18 LE  "
-                           f"[{min(vals)}–{max(vals)}]")
-            else:
-                if cb: cb(f"  Spark lambda prot @ 0x{addr:06X}: validacija pala "
-                           f"[{min(vals)}–{max(vals)}]")
+        # ─ Lambda protection @ 0x0222C0 — PRESKOČENO (false positive, unutar injection tablice) ─
+        # Adresa 0x0222C0 = 0x0222BE + 2 (drugi element 30×20 injection tablice)
 
         # ─ Therm enrich @ 0x025BAA (8×7 u16 LE, /64=%) ─
         addr   = 0x025BAA
