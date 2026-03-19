@@ -52,21 +52,21 @@ from ui.can_network_widget import CanNetworkWidget
 
 STYLESHEET = """
 * {
-    font-family: "Segoe UI", "Arial", sans-serif;
+    font-family: "IBM Plex Sans", "Segoe UI", "Arial", sans-serif;
     font-size: 13px;
-    color: #cccccc;
+    color: #C8C8D0;
 }
 
 QMainWindow, QWidget {
-    background-color: #1e1e1e;
-    color: #cccccc;
+    background-color: #111113;
+    color: #C8C8D0;
 }
 
 /* ── MENUBAR ── */
 QMenuBar {
-    background: #323233;
-    color: #cccccc;
-    border-bottom: 1px solid #111;
+    background: #1c2b4a;
+    color: rgba(255,255,255,0.75);
+    border-bottom: 1px solid #2A2A32;
     padding: 2px 4px;
     font-size: 13px;
 }
@@ -75,235 +75,238 @@ QMenuBar::item {
     border-radius: 3px;
     background: transparent;
 }
-QMenuBar::item:selected { background: #444444; color: #ffffff; }
+QMenuBar::item:selected { background: rgba(255,255,255,0.12); color: #ffffff; }
 QMenu {
-    background: #252526;
-    color: #cccccc;
-    border: 1px solid #454545;
+    background: #1C1C1F;
+    color: #C8C8D0;
+    border: 1px solid #3A3A48;
     padding: 3px 0;
 }
 QMenu::item { padding: 5px 20px 5px 12px; }
-QMenu::item:selected { background: #04395e; color: #ffffff; }
-QMenu::separator { height: 1px; background: #333333; margin: 3px 0; }
+QMenu::item:selected { background: #1A2F4A; color: #4FC3F7; }
+QMenu::separator { height: 1px; background: #2A2A32; margin: 3px 0; }
 
 /* ── TOOLBAR ── */
 QToolBar {
-    background: #2d2d2d;
-    border-bottom: 1px solid #111;
+    background: #1C1C1F;
+    border-bottom: 2px solid #2A2A32;
     padding: 4px 8px;
     spacing: 3px;
 }
-QToolBar::separator { width: 1px; background: #555555; margin: 3px 5px; }
+QToolBar::separator { width: 1px; background: #2A2A32; margin: 3px 6px; }
 QToolButton {
-    background: #3c3c3c;
-    border: 1px solid #555555;
-    border-radius: 4px;
-    padding: 5px 12px;
-    color: #cccccc;
-    font-size: 13px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 4px 10px;
+    color: #808090;
+    font-size: 12px;
 }
-QToolButton:hover { background: #4a4a4a; border-color: #666666; }
-QToolButton:pressed { background: #2a2a2a; }
-QToolButton:checked { background: #0e639c; border-color: #1177bb; color: #ffffff; }
+QToolButton:hover { background: #111113; border-color: #2A2A32; color: #C8C8D0; }
+QToolButton:pressed { background: #141418; }
+QToolButton:checked { background: #1A2F4A; border-color: #4FC3F7; color: #4FC3F7; }
 
 /* ── GUMBI ── */
 QPushButton {
-    background: #3c3c3c;
-    border: 1px solid #555555;
-    border-radius: 4px;
-    padding: 5px 12px;
-    color: #cccccc;
-    font-size: 13px;
-    min-height: 26px;
+    background: #1C1C1F;
+    border: 1px solid #2A2A32;
+    border-radius: 3px;
+    padding: 4px 10px;
+    color: #808090;
+    font-size: 12px;
+    min-height: 24px;
 }
-QPushButton:hover { background: #4a4a4a; border-color: #666666; }
-QPushButton:pressed { background: #2a2a2a; }
-QPushButton:disabled { background: #2a2a2a; color: #555555; border-color: #3a3a3a; }
+QPushButton:hover { background: #111113; border-color: #3A3A48; color: #C8C8D0; }
+QPushButton:pressed { background: #141418; }
+QPushButton:disabled { background: #141418; color: #505060; border-color: #2A2A32; }
 QPushButton#btn_primary {
-    background: #0e639c;
-    border-color: #1177bb;
-    color: #ffffff;
+    background: #4FC3F7;
+    border-color: #4FC3F7;
+    color: #111113;
     font-weight: bold;
 }
-QPushButton#btn_primary:hover { background: #1177bb; }
+QPushButton#btn_primary:hover { background: #29B6F6; border-color: #29B6F6; }
 QPushButton#primary {
-    background: #0e639c;
-    border-color: #1177bb;
-    color: #ffffff;
+    background: #4FC3F7;
+    border-color: #4FC3F7;
+    color: #111113;
     font-weight: bold;
 }
-QPushButton#primary:hover { background: #1177bb; }
-QPushButton#btn_success { background: #007a4d; border-color: #009960; color: #ffffff; }
-QPushButton#btn_danger { background: #3c3c3c; border-color: #555555; color: #f48771; }
-QPushButton#btn_danger:hover { background: #4a2020; border-color: #f48771; }
+QPushButton#primary:hover { background: #29B6F6; border-color: #29B6F6; }
+QPushButton#btn_success { background: #1a3a2a; border-color: #4CAF50; color: #4CAF50; }
+QPushButton#btn_danger { background: #1C1C1F; border-color: #2A2A32; color: #EF5350; }
+QPushButton#btn_danger:hover { background: #2a1010; border-color: #EF5350; }
 
 /* ── TREE WIDGET ── */
 QTreeWidget {
-    background: #252526;
+    background: #1C1C1F;
     border: none;
-    color: #cccccc;
-    font-size: 13px;
+    color: #C8C8D0;
+    font-size: 12px;
     outline: none;
     show-decoration-selected: 1;
 }
-QTreeWidget::item { padding: 4px 4px; border-left: 2px solid transparent; }
-QTreeWidget::item:hover { background: #2a2d2e; }
+QTreeWidget::item { padding: 4px 4px; border-left: 3px solid transparent; }
+QTreeWidget::item:hover { background: #111113; }
 QTreeWidget::item:selected {
-    background: #04395e;
-    color: #ffffff;
-    border-left: 2px solid #0e639c;
+    background: #1A2F4A;
+    color: #4FC3F7;
+    border-left: 3px solid #4FC3F7;
 }
-QTreeWidget::branch { background: #252526; }
+QTreeWidget::branch { background: #1C1C1F; }
 
 /* ── TABLICA ── */
 QTableWidget {
-    background: #1e1e1e;
+    background: #111113;
     border: none;
-    gridline-color: #2a2a2a;
-    color: #cccccc;
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 13px;
-    selection-background-color: #04395e;
+    gridline-color: #1C1C1F;
+    color: #C8C8D0;
+    font-family: "IBM Plex Mono", "Consolas", "Courier New", monospace;
+    font-size: 11px;
+    selection-background-color: #1A2F4A;
 }
 QTableWidget::item { padding: 2px 4px; border: none; }
-QTableWidget::item:selected { background: #04395e; color: #ffffff; }
+QTableWidget::item:selected { background: #1A2F4A; color: #4FC3F7; }
 QHeaderView::section {
-    background: #2d2d2d;
-    color: #666666;
-    padding: 4px 6px;
+    background: #141418;
+    color: #505060;
+    padding: 3px 5px;
     border: none;
-    border-right: 1px solid #333333;
-    border-bottom: 1px solid #333333;
-    font-family: "Consolas", monospace;
-    font-size: 11px;
+    border-right: 1px solid #2A2A32;
+    border-bottom: 1px solid #2A2A32;
+    font-family: "IBM Plex Mono", "Consolas", monospace;
+    font-size: 10px;
     font-weight: normal;
 }
 
 /* ── SCROLL BAROVI ── */
-QScrollBar:vertical { background: #252526; width: 10px; border: none; }
+QScrollBar:vertical { background: #141418; width: 8px; border: none; }
 QScrollBar::handle:vertical {
-    background: #555555; border-radius: 5px; min-height: 20px; margin: 2px;
+    background: #2A2A32; border-radius: 4px; min-height: 20px; margin: 2px;
 }
-QScrollBar::handle:vertical:hover { background: #777777; }
+QScrollBar::handle:vertical:hover { background: #3A3A48; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar:horizontal { background: #252526; height: 10px; border: none; }
+QScrollBar:horizontal { background: #141418; height: 8px; border: none; }
 QScrollBar::handle:horizontal {
-    background: #555555; border-radius: 5px; min-width: 20px; margin: 2px;
+    background: #2A2A32; border-radius: 4px; min-width: 20px; margin: 2px;
 }
-QScrollBar::handle:horizontal:hover { background: #777777; }
+QScrollBar::handle:horizontal:hover { background: #3A3A48; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 /* ── TAB WIDGET ── */
-QTabWidget::pane { border: none; border-top: 1px solid #333333; background: #252526; }
+QTabWidget::pane { border: none; border-top: 1px solid #2A2A32; background: #1C1C1F; }
 QTabBar::tab {
-    background: #252526;
-    color: #969696;
-    padding: 7px 20px;
-    border-top: 2px solid transparent;
-    font-size: 13px;
+    background: #141418;
+    color: #808090;
+    padding: 5px 16px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    margin-right: 2px;
+    font-size: 12px;
 }
-QTabBar::tab:hover { color: #cccccc; background: #2d2d2d; }
-QTabBar::tab:selected { background: #1e1e1e; color: #ffffff; border-top-color: #0e639c; }
+QTabBar::tab:hover { color: #C8C8D0; background: rgba(255,255,255,0.04); }
+QTabBar::tab:selected { background: #1C1C1F; color: #4FC3F7; border-color: #2A2A32; font-weight: 500; }
 
 /* ── LINE EDIT ── */
 QLineEdit {
-    background: #3c3c3c;
-    border: 1px solid #555555;
-    border-radius: 4px;
-    padding: 5px 10px;
-    color: #cccccc;
-    font-size: 13px;
-    selection-background-color: #0e639c;
+    background: #111113;
+    border: 1px solid #2A2A32;
+    border-radius: 3px;
+    padding: 4px 8px;
+    color: #C8C8D0;
+    font-size: 12px;
+    selection-background-color: #1A2F4A;
 }
-QLineEdit:focus { border-color: #0e639c; background: #2a2a2a; }
-QLineEdit::placeholder { color: #555555; }
+QLineEdit:focus { border-color: #4FC3F7; background: #141418; }
+QLineEdit::placeholder { color: #505060; }
 
 /* ── SPLITTER ── */
-QSplitter::handle { background: #333333; }
+QSplitter::handle { background: #2A2A32; }
 QSplitter::handle:horizontal { width: 1px; }
 QSplitter::handle:vertical { height: 1px; }
 
 /* ── STATUS BAR ── */
 QStatusBar {
-    background: #007acc;
-    color: rgba(255,255,255,0.9);
-    font-family: "Consolas", monospace;
-    font-size: 12px;
+    background: #1c2b4a;
+    color: rgba(255,255,255,0.85);
+    font-family: "IBM Plex Mono", "Consolas", monospace;
+    font-size: 11px;
     border-top: none;
 }
-QStatusBar::item { border-right: 1px solid rgba(255,255,255,0.2); padding: 0 12px; }
-QStatusBar QLabel { color: rgba(255,255,255,0.9); font-family: "Consolas", monospace; font-size: 12px; }
+QStatusBar::item { border-right: 1px solid rgba(255,255,255,0.1); padding: 0 12px; }
+QStatusBar QLabel { color: rgba(255,255,255,0.85); font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 11px; }
 
 /* ── LABELE ── */
 QLabel#lbl_map_title {
-    font-family: "Consolas", monospace; font-size: 14px; font-weight: bold; color: #9cdcfe;
+    font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 13px; font-weight: bold; color: #4FC3F7;
 }
 QLabel#lbl_section {
-    font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #999999;
+    font-size: 10px; font-weight: bold; letter-spacing: 1.5px; color: #808090; text-transform: uppercase;
 }
 QLabel#lbl_value_big {
-    font-family: "Consolas", monospace; font-size: 32px; color: #9cdcfe; font-weight: bold;
+    font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 32px; color: #4FC3F7; font-weight: bold;
 }
-QLabel#lbl_addr { font-family: "Consolas", monospace; font-size: 11px; color: #555555; }
-QLabel#lbl_ok   { color: #4ec9b0; font-weight: bold; }
-QLabel#lbl_warn { color: #e5c07b; font-weight: bold; }
-QLabel#lbl_error { color: #f48771; font-weight: bold; }
+QLabel#lbl_addr { font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 11px; color: #505060; }
+QLabel#lbl_ok   { color: #4CAF50; font-weight: bold; }
+QLabel#lbl_warn { color: #FFB74D; font-weight: bold; }
+QLabel#lbl_error { color: #EF5350; font-weight: bold; }
 
 /* ── GROUP BOX ── */
 QGroupBox {
-    border: 1px solid #333333;
-    border-radius: 5px;
+    border: 1px solid #2A2A32;
+    border-radius: 4px;
     margin-top: 8px;
     padding: 8px;
-    color: #999999;
-    font-size: 11px;
+    color: #808090;
+    font-size: 10px;
     font-weight: bold;
     letter-spacing: 1px;
-    background: #252526;
+    background: #1C1C1F;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 8px;
     padding: 0 4px;
-    background: #252526;
+    background: #1C1C1F;
 }
 
 /* ── COMBO BOX ── */
 QComboBox {
-    background: #3c3c3c; border: 1px solid #555555; border-radius: 4px;
-    padding: 5px 10px; color: #cccccc; font-size: 13px; min-height: 26px;
+    background: #111113; border: 1px solid #2A2A32; border-radius: 3px;
+    padding: 4px 8px; color: #C8C8D0; font-size: 12px; min-height: 24px;
 }
-QComboBox:hover { border-color: #666666; }
+QComboBox:hover { border-color: #3A3A48; }
 QComboBox::drop-down { border: none; width: 20px; }
 QComboBox QAbstractItemView {
-    background: #252526; border: 1px solid #555555;
-    selection-background-color: #04395e; color: #cccccc;
+    background: #1C1C1F; border: 1px solid #3A3A48;
+    selection-background-color: #1A2F4A; color: #C8C8D0;
 }
 
 /* ── LIST WIDGET ── */
 QListWidget {
-    background: #252526; border: none; color: #cccccc;
-    font-family: "Consolas", monospace; font-size: 12px; outline: none;
+    background: #1C1C1F; border: none; color: #C8C8D0;
+    font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 12px; outline: none;
 }
-QListWidget::item { padding: 3px 8px; border-bottom: 1px solid #2a2a2a; }
-QListWidget::item:hover { background: #2a2d2e; }
-QListWidget::item:selected { background: #04395e; color: #ffffff; }
+QListWidget::item { padding: 4px 8px; border-bottom: 1px solid #2A2A32; }
+QListWidget::item:hover { background: #111113; }
+QListWidget::item:selected { background: #1A2F4A; color: #4FC3F7; }
 
 /* ── TOOLTIP ── */
 QToolTip {
-    background: #2d2d2d; color: #cccccc; border: 1px solid #555555;
-    padding: 4px 8px; font-size: 12px; border-radius: 3px;
+    background: #1C1C1F; color: #C8C8D0; border: 1px solid #3A3A48;
+    padding: 4px 8px; font-size: 11px; border-radius: 3px;
 }
 
 /* ── MESSAGE BOX ── */
-QMessageBox { background: #252526; color: #cccccc; }
+QMessageBox { background: #1C1C1F; color: #C8C8D0; }
 
 /* ── PROGRESS BAR ── */
 QProgressBar {
-    background: #3c3c3c; border: 1px solid #555555; border-radius: 4px;
-    height: 6px; text-align: center; color: transparent;
+    background: #141418; border: 1px solid #2A2A32; border-radius: 3px;
+    height: 4px; text-align: center; color: transparent;
 }
-QProgressBar::chunk { background: #0e639c; border-radius: 4px; }
+QProgressBar::chunk { background: #4FC3F7; border-radius: 3px; }
 """
 
 
@@ -498,8 +501,8 @@ class MapLibraryPanel(QWidget):
 
         self._hdr = QLabel("  MAP LIBRARY")
         self._hdr.setStyleSheet(
-            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
-            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
         )
         lo.addWidget(self._hdr)
 
@@ -507,8 +510,8 @@ class MapLibraryPanel(QWidget):
         self._sw_combo = QComboBox()
         self._sw_combo.setFixedHeight(28)
         self._sw_combo.setStyleSheet(
-            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
-            "border-radius:0; padding:2px 10px; color:#9cdcfe; font-size:12px;"
+            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
+            "border-radius:0; padding:2px 10px; color:#4FC3F7; font-size:12px;"
         )
         for label, _ in self.SW_FILTERS:
             self._sw_combo.addItem(label)
@@ -516,12 +519,12 @@ class MapLibraryPanel(QWidget):
         lo.addWidget(self._sw_combo)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("🔍  Pretraži mape...")
-        self.search.setFixedHeight(32)
+        self.search.setPlaceholderText("  Pretraži mape...")
+        self.search.setFixedHeight(30)
         self.search.setObjectName("search_maps")
         self.search.setStyleSheet(
-            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
-            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
+            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
+            "border-radius:0; padding:4px 10px; color:#C8C8D0; font-size:12px;"
         )
         self.search.textChanged.connect(self._filter)
         lo.addWidget(self.search)
@@ -575,9 +578,9 @@ class MapLibraryPanel(QWidget):
         cats = {}
         for key, (label, color) in self.CATEGORIES.items():
             it = QTreeWidgetItem(self.tree, [label])
-            it.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
-            it.setForeground(0, QBrush(QColor("#9cdcfe")))
-            it.setSizeHint(0, QSize(0, 28))
+            it.setFont(0, QFont("Segoe UI", 10, QFont.Weight.Bold))
+            it.setForeground(0, QBrush(QColor("#808090")))
+            it.setSizeHint(0, QSize(0, 26))
             it.setExpanded(True)
             cats[key] = it
         # Indeks mapa iz fajla 2 po imenu za brzu usporedbu
@@ -593,17 +596,17 @@ class MapLibraryPanel(QWidget):
 
             name_txt = f"  {'● ' if is_diff else ''}{fm.defn.name}"
             ch.setText(0, name_txt)
-            ch.setFont(0, QFont("Segoe UI", 13))
+            ch.setFont(0, QFont("Segoe UI", 12))
             # Category color badge icon (12×12 filled circle)
             ch.setIcon(0, _category_icon(fm.defn.category))
             if is_diff:
-                ch.setForeground(0, QBrush(QColor("#e5c07b")))   # žuta = razlika
+                ch.setForeground(0, QBrush(QColor("#FFB74D")))   # žuta = razlika
                 ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n"
                                   f"[RAZLIKA vs Fajl 2]\n{fm.defn.description}")
             else:
-                ch.setForeground(0, QBrush(QColor("#cccccc")))
+                ch.setForeground(0, QBrush(QColor("#C8C8D0")))
                 ch.setToolTip(0, f"0x{fm.address:06X}  {dims}  {fm.defn.unit}\n{fm.defn.description}")
-            ch.setSizeHint(0, QSize(0, 26))
+            ch.setSizeHint(0, QSize(0, 24))
             ch.setData(0, Qt.ItemDataRole.UserRole, fm)
         for it in cats.values():
             it.setHidden(it.childCount() == 0)
@@ -632,9 +635,9 @@ class DtcSidebarPanel(QWidget):
         2: "— Standardni prošireni",
         3: "— Dostupno",
     }
-    _COLOR_ACTIVE = "#4ec9b0"   # zelena  — DTC aktivan (monitoring ON)
-    _COLOR_OFF    = "#ef4444"   # crvena  — DTC isključen (OFF)
-    _COLOR_NONE   = "#555555"   # siva    — nije učitan fajl
+    _COLOR_ACTIVE = "#4CAF50"   # zelena  — DTC aktivan (monitoring ON)
+    _COLOR_OFF    = "#EF5350"   # crvena  — DTC isključen (OFF)
+    _COLOR_NONE   = "#505060"   # siva    — nije učitan fajl
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -645,17 +648,17 @@ class DtcSidebarPanel(QWidget):
 
         hdr = QLabel("  DTC LISTA")
         hdr.setStyleSheet(
-            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
-            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
         )
         lo.addWidget(hdr)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("🔍  Filtriraj DTC...")
-        self._search.setFixedHeight(32)
+        self._search.setPlaceholderText("  Filtriraj DTC...")
+        self._search.setFixedHeight(30)
         self._search.setStyleSheet(
-            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
-            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
+            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
+            "border-radius:0; padding:4px 10px; color:#C8C8D0; font-size:12px;"
         )
         self._search.textChanged.connect(self._filter)
         lo.addWidget(self._search)
@@ -687,9 +690,9 @@ class DtcSidebarPanel(QWidget):
                 continue
 
             cat_item = QTreeWidgetItem(self.tree, [cat_label])
-            cat_item.setFont(0, QFont("Segoe UI", 11, QFont.Weight.Bold))
+            cat_item.setFont(0, QFont("Segoe UI", 10, QFont.Weight.Bold))
             cat_item.setForeground(0, QBrush(QColor(cat_color)))
-            cat_item.setSizeHint(0, QSize(0, 28))
+            cat_item.setSizeHint(0, QSize(0, 26))
             cat_item.setExpanded(True)
 
             for sub_digit in range(4):
@@ -701,15 +704,15 @@ class DtcSidebarPanel(QWidget):
                 cat_char = "PCBU"[cat_idx]
                 sub_label = f"  {cat_char}{sub_digit}xxx {self._SUB_LABELS.get(sub_digit, '')}"
                 sub_item = QTreeWidgetItem(cat_item, [sub_label])
-                sub_item.setFont(0, QFont("Segoe UI", 10))
-                sub_item.setForeground(0, QBrush(QColor("#888888")))
-                sub_item.setSizeHint(0, QSize(0, 24))
+                sub_item.setFont(0, QFont("Segoe UI", 9))
+                sub_item.setForeground(0, QBrush(QColor("#505060")))
+                sub_item.setSizeHint(0, QSize(0, 22))
                 sub_item.setExpanded(True)
 
                 for code, defn in entries:
                     ch = QTreeWidgetItem(sub_item, [f"    {defn.p_code}"])
-                    ch.setFont(0, QFont("Consolas", 12))
-                    ch.setSizeHint(0, QSize(0, 22))
+                    ch.setFont(0, QFont("Consolas", 11))
+                    ch.setSizeHint(0, QSize(0, 20))
                     ch.setForeground(0, QBrush(QColor(self._COLOR_NONE)))
                     ch.setData(0, Qt.ItemDataRole.UserRole, code)
                     self._all_items.append((code, ch))
@@ -780,14 +783,14 @@ class EepromSidebarPanel(QWidget):
 
         hdr = QLabel("  EEPROM")
         hdr.setStyleSheet(
-            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
-            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
         )
         lo.addWidget(hdr)
 
         self._list = QListWidget()
         self._list.setFont(QFont("Consolas", 12))
-        self._list.setStyleSheet("background:#1e1e1e; border:none;")
+        self._list.setStyleSheet("background:#1C1C1F; border:none;")
         self._list.itemClicked.connect(self._click)
         lo.addWidget(self._list, 1)
 
@@ -795,7 +798,7 @@ class EepromSidebarPanel(QWidget):
             item = QListWidgetItem(f"  {label}")
             item.setData(Qt.ItemDataRole.UserRole, key)
             item.setToolTip(desc)
-            item.setForeground(QBrush(QColor("#9cdcfe")))
+            item.setForeground(QBrush(QColor("#4FC3F7")))
             self._list.addItem(item)
 
     def _click(self, item: QListWidgetItem):
@@ -817,24 +820,24 @@ class CanSidebarPanel(QWidget):
 
         hdr = QLabel("  CAN ID-ovi")
         hdr.setStyleSheet(
-            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
-            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
         )
         lo.addWidget(hdr)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("🔍  Filtriraj...")
-        self._search.setFixedHeight(32)
+        self._search.setPlaceholderText("  Filtriraj...")
+        self._search.setFixedHeight(30)
         self._search.setStyleSheet(
-            "background:#2a2a2a; border:none; border-bottom:1px solid #333333; "
-            "border-radius:0; padding:4px 10px; color:#cccccc; font-size:13px;"
+            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
+            "border-radius:0; padding:4px 10px; color:#C8C8D0; font-size:12px;"
         )
         self._search.textChanged.connect(self._filter)
         lo.addWidget(self._search)
 
         self._list = QListWidget()
         self._list.setFont(QFont("Consolas", 12))
-        self._list.setStyleSheet("background:#1e1e1e; border:none;")
+        self._list.setStyleSheet("background:#1C1C1F; border:none;")
         self._list.itemClicked.connect(self._click)
         lo.addWidget(self._list, 1)
 
@@ -848,7 +851,7 @@ class CanSidebarPanel(QWidget):
         for can_id, desc in ids:
             item = QListWidgetItem(f"  0x{can_id:03X}  {desc}")
             item.setData(Qt.ItemDataRole.UserRole, can_id)
-            item.setForeground(QBrush(QColor("#4ec9b0")))
+            item.setForeground(QBrush(QColor("#4CAF50")))
             self._list.addItem(item)
 
     def _filter(self, txt: str):
@@ -915,7 +918,7 @@ class MapTableView(QWidget):
 
         # Badge bar (naziv mape + dim/dtype/unit/addr)
         self._map_bar = QWidget()
-        self._map_bar.setStyleSheet("background:#252526; border-bottom:1px solid #333333;")
+        self._map_bar.setStyleSheet("background:#141418; border-bottom:1px solid #2A2A32;")
         mbl = QHBoxLayout(self._map_bar); mbl.setContentsMargins(8,4,8,4); mbl.setSpacing(6)
 
         self._lbl_name = QLabel("Odaberi mapu iz stabla")
@@ -933,7 +936,7 @@ class MapTableView(QWidget):
         # Zoom slider ─────────────────────────────────────────────────
         self._zoom_lbl = QLabel("100%")
         self._zoom_lbl.setStyleSheet(
-            "color:#9cdcfe;font-size:11px;font-family:Consolas;min-width:36px;"
+            "color:#4FC3F7;font-size:11px;font-family:Consolas;min-width:36px;"
         )
         self._zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self._zoom_slider.setRange(50, 400)
@@ -973,7 +976,7 @@ class MapTableView(QWidget):
         # Axis info bar — naziv i jedinica svake osi
         self._axis_bar = QWidget()
         self._axis_bar.setStyleSheet(
-            "background:#1e1e1e; border-bottom:1px solid #2a2a2a;"
+            "background:#111113; border-bottom:1px solid #2A2A32;"
         )
         ab_lo = QHBoxLayout(self._axis_bar)
         ab_lo.setContentsMargins(50, 3, 8, 3); ab_lo.setSpacing(24)
@@ -981,11 +984,11 @@ class MapTableView(QWidget):
 
         self._lbl_yaxis = QLabel()
         self._lbl_yaxis.setStyleSheet(
-            "color:#4ec9b0; font-size:11px; font-family:Consolas; font-weight:bold;"
+            "color:#4CAF50; font-size:10px; font-family:Consolas; font-weight:bold;"
         )
         self._lbl_xaxis = QLabel()
         self._lbl_xaxis.setStyleSheet(
-            "color:#9cdcfe; font-size:11px; font-family:Consolas; font-weight:bold;"
+            "color:#4FC3F7; font-size:10px; font-family:Consolas; font-weight:bold;"
         )
         ab_lo.addWidget(self._lbl_yaxis)
         ab_lo.addWidget(self._lbl_xaxis)
@@ -1001,8 +1004,8 @@ class MapTableView(QWidget):
         t1_lo = QVBoxLayout(t1_pane); t1_lo.setContentsMargins(0,0,0,0); t1_lo.setSpacing(0)
         self._lbl_f1 = QLabel()
         self._lbl_f1.setStyleSheet(
-            "background:#252526;color:#9cdcfe;font-size:11px;font-weight:bold;"
-            "padding:3px 8px;border-bottom:1px solid #333333;"
+            "background:#141418;color:#4FC3F7;font-size:11px;font-weight:bold;"
+            "padding:3px 8px;border-bottom:1px solid #2A2A32;"
         )
         self._lbl_f1.hide()
         t1_lo.addWidget(self._lbl_f1)
@@ -1026,8 +1029,8 @@ class MapTableView(QWidget):
         t2_lo = QVBoxLayout(self._t2_pane); t2_lo.setContentsMargins(0,0,0,0); t2_lo.setSpacing(0)
         self._lbl_f2 = QLabel()
         self._lbl_f2.setStyleSheet(
-            "background:#252526;color:#e5c07b;font-size:11px;font-weight:bold;"
-            "padding:3px 8px;border-bottom:1px solid #333333;"
+            "background:#141418;color:#FFB74D;font-size:11px;font-weight:bold;"
+            "padding:3px 8px;border-bottom:1px solid #2A2A32;"
         )
         t2_lo.addWidget(self._lbl_f2)
 
@@ -1058,19 +1061,19 @@ class MapTableView(QWidget):
         # ── Bulk Edit Toolbar (vidljiv samo pri višestrukoj selekciji) ──────────
         self._bulk_bar = QWidget()
         self._bulk_bar.setStyleSheet(
-            "background:#1a2a1a; border-top:1px solid #333333; border-bottom:1px solid #333333;"
+            "background:#141418; border-top:1px solid #2A2A32; border-bottom:1px solid #2A2A32;"
         )
         bulk_lo = QHBoxLayout(self._bulk_bar)
         bulk_lo.setContentsMargins(8, 3, 8, 3)
         bulk_lo.setSpacing(6)
 
         lbl_bulk = QLabel("Selektirano:")
-        lbl_bulk.setStyleSheet("color:#4ec9b0; font-size:11px; font-family:Consolas;")
+        lbl_bulk.setStyleSheet("color:#4FC3F7; font-size:11px; font-family:Consolas;")
         bulk_lo.addWidget(lbl_bulk)
 
         self._lbl_sel_count = QLabel("0")
         self._lbl_sel_count.setStyleSheet(
-            "color:#4ec9b0; font-size:11px; font-family:Consolas; font-weight:bold;"
+            "color:#4FC3F7; font-size:11px; font-family:Consolas; font-weight:bold;"
         )
         bulk_lo.addWidget(self._lbl_sel_count)
 
@@ -1116,9 +1119,9 @@ class MapTableView(QWidget):
     def _make_badge(text: str, style: str = "blue") -> QLabel:
         lbl = QLabel(text)
         colors = {
-            "blue":  "background:#0e3a5c;color:#9cdcfe;border:1px solid #0e639c;",
-            "green": "background:#0d3321;color:#4ec9b0;border:1px solid #4ec9b0;",
-            "gray":  "background:#2a2a2a;color:#888888;border:1px solid #444444;",
+            "blue":  "background:#1A2F4A;color:#4FC3F7;border:1px solid #4FC3F7;",
+            "green": "background:#1a3a2a;color:#4CAF50;border:1px solid #4CAF50;",
+            "gray":  "background:#141418;color:#808090;border:1px solid #2A2A32;",
         }
         lbl.setStyleSheet(f"""
             QLabel {{
@@ -1283,14 +1286,14 @@ class MapTableView(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"3D — {fm.defn.name}")
         dlg.resize(820, 620)
-        dlg.setStyleSheet("background:#1e1e1e;")
+        dlg.setStyleSheet("background:#111113;")
         dlg_lo = QVBoxLayout(dlg)
         dlg_lo.setContentsMargins(4, 4, 4, 4)
 
-        fig = Figure(figsize=(8, 5.5), facecolor="#1e1e1e")
+        fig = Figure(figsize=(8, 5.5), facecolor="#111113")
         ax  = fig.add_subplot(111, projection="3d")
-        ax.set_facecolor("#1e1e1e")
-        fig.patch.set_facecolor("#1e1e1e")
+        ax.set_facecolor("#111113")
+        fig.patch.set_facecolor("#111113")
 
         surf = ax.plot_surface(X, Y, Z, cmap="viridis", linewidth=0, antialiased=True)
         fig.colorbar(surf, ax=ax, shrink=0.5, pad=0.08,
@@ -1298,10 +1301,10 @@ class MapTableView(QWidget):
 
         x_unit = (fm.defn.axis_x.unit if fm.defn.axis_x else "col")
         y_unit = (fm.defn.axis_y.unit if fm.defn.axis_y else "row")
-        ax.set_xlabel(x_unit, color="#9cdcfe", labelpad=8)
-        ax.set_ylabel(y_unit, color="#4ec9b0", labelpad=8)
-        ax.set_zlabel(fm.defn.unit or "val", color="#ce9178", labelpad=8)
-        ax.set_title(fm.defn.name, color="#cccccc", pad=10)
+        ax.set_xlabel(x_unit, color="#4FC3F7", labelpad=8)
+        ax.set_ylabel(y_unit, color="#4CAF50", labelpad=8)
+        ax.set_zlabel(fm.defn.unit or "val", color="#FFB74D", labelpad=8)
+        ax.set_title(fm.defn.name, color="#C8C8D0", pad=10)
 
         for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
             pane.fill = False
@@ -1380,7 +1383,7 @@ class MapTableView(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("Scale ×%")
         dlg.setFixedSize(300, 130)
-        dlg.setStyleSheet("background:#252526; color:#cccccc;")
+        dlg.setStyleSheet("background:#1C1C1F; color:#C8C8D0;")
         lo = QVBoxLayout(dlg); lo.setContentsMargins(16, 12, 16, 12); lo.setSpacing(8)
         lo.addWidget(QLabel(f"Scale {len(cells)} ćelija (postotak):"))
         spin = QDoubleSpinBox()
@@ -1405,7 +1408,7 @@ class MapTableView(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("Offset +")
         dlg.setFixedSize(300, 130)
-        dlg.setStyleSheet("background:#252526; color:#cccccc;")
+        dlg.setStyleSheet("background:#1C1C1F; color:#C8C8D0;")
         lo = QVBoxLayout(dlg); lo.setContentsMargins(16, 12, 16, 12); lo.setSpacing(8)
         lo.addWidget(QLabel(f"Dodaj offset {len(cells)} ćelijama:"))
         spin = QDoubleSpinBox()
@@ -1538,8 +1541,8 @@ class PropertiesPanel(QWidget):
 
         hdr = QLabel("  PROPERTIES")
         hdr.setStyleSheet(
-            "background:#252526; color:#666666; font-size:11px; font-weight:bold; "
-            "padding:6px 8px; border-bottom:1px solid #333333; letter-spacing:1.5px;"
+            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
+            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
         )
         lo.addWidget(hdr)
 
@@ -1552,17 +1555,17 @@ class PropertiesPanel(QWidget):
         cell_lo = QVBoxLayout(cell_w); cell_lo.setContentsMargins(8,8,8,8); cell_lo.setSpacing(6)
 
         self._pos_lbl = QLabel("Odaberi ćeliju")
-        self._pos_lbl.setStyleSheet("color:#888888; font-size:12px;")
+        self._pos_lbl.setStyleSheet("color:#808090; font-size:12px;")
         cell_lo.addWidget(self._pos_lbl)
 
         # Big value frame s border-left akcentom
         val_frame = QFrame()
         val_frame.setStyleSheet("""
             QFrame {
-                background: #2a2a2a;
-                border: 1px solid #333333;
-                border-left: 3px solid #0e639c;
-                border-radius: 5px;
+                background: #1A2F4A;
+                border: 1px solid #2A4A6A;
+                border-left: 3px solid #4FC3F7;
+                border-radius: 4px;
             }
         """)
         val_fl = QVBoxLayout(val_frame); val_fl.setContentsMargins(8,8,8,8); val_fl.setSpacing(2)
@@ -1615,10 +1618,10 @@ class PropertiesPanel(QWidget):
         sg = QGridLayout(stats_g); sg.setSpacing(3)
         self._st: dict[str, QLabel] = {}
         for i, k in enumerate(["Min","Max","Prosjek","Raspon","Celije","Mirror"]):
-            kl = QLabel(k+":"); kl.setStyleSheet("color:#888888; font-size:13px;")
+            kl = QLabel(k+":"); kl.setStyleSheet("color:#808090; font-size:12px;")
             vl = QLabel("—")
             vl.setFont(QFont("Consolas", 11))
-            vl.setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
+            vl.setStyleSheet("color:#4FC3F7; font-size:11px; font-weight:bold;")
             vl.setAlignment(Qt.AlignmentFlag.AlignRight)
             sg.addWidget(kl, i, 0); sg.addWidget(vl, i, 1)
             self._st[k] = vl
@@ -1628,7 +1631,7 @@ class PropertiesPanel(QWidget):
         nl = QVBoxLayout(notes_g); nl.setContentsMargins(6,6,6,6)
         self._notes = QLabel("—")
         self._notes.setWordWrap(True)
-        self._notes.setStyleSheet("color:#666666; font-size:12px;")
+        self._notes.setStyleSheet("color:#505060; font-size:12px;")
         nl.addWidget(self._notes)
         map_lo.addWidget(notes_g)
         map_lo.addStretch()
@@ -1642,10 +1645,10 @@ class PropertiesPanel(QWidget):
         eg = QGridLayout(ecu_g); eg.setSpacing(3)
         self._ecu: dict[str, QLabel] = {}
         for i, k in enumerate(["Model","SW ID","MCU","Velicina","Checksum","Platform"]):
-            kl = QLabel(k+":"); kl.setStyleSheet("color:#888888; font-size:13px;")
+            kl = QLabel(k+":"); kl.setStyleSheet("color:#808090; font-size:12px;")
             vl = QLabel("—")
             vl.setFont(QFont("Consolas", 11))
-            vl.setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
+            vl.setStyleSheet("color:#4FC3F7; font-size:11px; font-weight:bold;")
             vl.setAlignment(Qt.AlignmentFlag.AlignRight)
             eg.addWidget(kl, i, 0); eg.addWidget(vl, i, 1)
             self._ecu[k] = vl
@@ -1660,7 +1663,7 @@ class PropertiesPanel(QWidget):
             "FILL  0x160000–0x178000  96 KB"
         )
         mem_txt.setFont(QFont("Consolas", 10))
-        mem_txt.setStyleSheet("color:#666666; font-size:12px;")
+        mem_txt.setStyleSheet("color:#505060; font-size:12px;")
         ml.addWidget(mem_txt)
         ecu_lo.addWidget(mem_g)
         ecu_lo.addStretch()
@@ -1672,37 +1675,37 @@ class PropertiesPanel(QWidget):
 
         self._dtc_code_lbl = QLabel("—")
         self._dtc_code_lbl.setFont(QFont("Consolas", 16, QFont.Weight.Bold))
-        self._dtc_code_lbl.setStyleSheet("color:#f48771; font-size:18px; font-weight:bold;")
+        self._dtc_code_lbl.setStyleSheet("color:#EF5350; font-size:18px; font-weight:bold;")
         dtc_lo.addWidget(self._dtc_code_lbl)
 
         self._dtc_name_lbl = QLabel("")
-        self._dtc_name_lbl.setStyleSheet("color:#969696; font-size:12px;")
+        self._dtc_name_lbl.setStyleSheet("color:#808090; font-size:12px;")
         self._dtc_name_lbl.setWordWrap(True)
         dtc_lo.addWidget(self._dtc_name_lbl)
 
         sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet("background:#333333; max-height:1px;")
+        sep2.setStyleSheet("background:#2A2A32; max-height:1px;")
         dtc_lo.addWidget(sep2)
 
         cs_g = QGroupBox("Code storage (LE u16)")
         csg = QGridLayout(cs_g); csg.setSpacing(3)
-        kl_m = QLabel("Main:"); kl_m.setStyleSheet("color:#888888;")
+        kl_m = QLabel("Main:"); kl_m.setStyleSheet("color:#808090;")
         csg.addWidget(kl_m, 0, 0)
         self._dtc_main_lbl = QLabel("—")
         self._dtc_main_lbl.setFont(QFont("Consolas", 11))
-        self._dtc_main_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
+        self._dtc_main_lbl.setStyleSheet("color:#4FC3F7; font-weight:bold;")
         csg.addWidget(self._dtc_main_lbl, 0, 1)
-        kl_mir = QLabel("Mirror:"); kl_mir.setStyleSheet("color:#888888;")
+        kl_mir = QLabel("Mirror:"); kl_mir.setStyleSheet("color:#808090;")
         csg.addWidget(kl_mir, 1, 0)
         self._dtc_mirror_lbl = QLabel("—")
         self._dtc_mirror_lbl.setFont(QFont("Consolas", 11))
-        self._dtc_mirror_lbl.setStyleSheet("color:#9cdcfe; font-weight:bold;")
+        self._dtc_mirror_lbl.setStyleSheet("color:#4FC3F7; font-weight:bold;")
         csg.addWidget(self._dtc_mirror_lbl, 1, 1)
         csg.setColumnStretch(2, 1)
         dtc_lo.addWidget(cs_g)
 
         self._dtc_notes_lbl = QLabel("")
-        self._dtc_notes_lbl.setStyleSheet("color:#666666; font-size:12px;")
+        self._dtc_notes_lbl.setStyleSheet("color:#505060; font-size:12px;")
         self._dtc_notes_lbl.setWordWrap(True)
         dtc_lo.addWidget(self._dtc_notes_lbl)
 
@@ -1715,14 +1718,14 @@ class PropertiesPanel(QWidget):
 
         hist_hdr = QLabel("UNDO HISTORY")
         hist_hdr.setStyleSheet(
-            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1px; padding:2px 4px;"
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1px; padding:2px 4px;"
         )
         hist_lo.addWidget(hist_hdr)
 
         self._hist_list = QListWidget()
         self._hist_list.setFont(QFont("Consolas", 11))
         self._hist_list.setStyleSheet(
-            "background:#1e1e1e; border:none; font-size:11px;"
+            "background:#111113; border:none; font-size:11px;"
         )
         self._hist_list.setToolTip("Klik na stavku = undo do te točke")
         self._hist_list.itemClicked.connect(self._hist_item_clicked)
@@ -1744,14 +1747,14 @@ class PropertiesPanel(QWidget):
         cs   = ChecksumEngine(eng).verify()
         self._ecu["Model"].setText("ME17.8.5")
         self._ecu["SW ID"].setText(info.sw_id)
-        self._ecu["SW ID"].setStyleSheet("color:#9cdcfe; font-size:12px; font-weight:bold;")
+        self._ecu["SW ID"].setStyleSheet("color:#4FC3F7; font-size:11px; font-weight:bold;")
         self._ecu["MCU"].setText("TC1762 LE" if info.mcu_confirmed else "NEPOTVRDJEN")
         self._ecu["Velicina"].setText(f"{info.file_size // 1024} KB")
         self._ecu["Platform"].setText("VM_CB.04.80.00" if info.platform_confirmed else "—")
         ok = cs.get("sw_id", {}).get("status") == "OK"
         self._ecu["Checksum"].setText("SW OK" if ok else "PENDING")
         self._ecu["Checksum"].setStyleSheet(
-            f"color:{'#4ec9b0' if ok else '#e5c07b'}; font-size:12px; font-weight:bold;"
+            f"color:{'#4CAF50' if ok else '#FFB74D'}; font-size:11px; font-weight:bold;"
         )
 
     def show_map_stats(self, fm: FoundMap):
@@ -1814,7 +1817,7 @@ class PropertiesPanel(QWidget):
         txt = (f"{ts}  [{cmd.row},{cmd.col}]  "
                f"{old_disp:.3g} → {new_disp:.3g}  {defn.unit}  |  {defn.name}")
         item = QListWidgetItem(txt)
-        item.setForeground(QBrush(QColor("#9cdcfe")))
+        item.setForeground(QBrush(QColor("#4FC3F7")))
         item.setData(Qt.ItemDataRole.UserRole, id(cmd))
         # Dodaj na vrh (najnovije na vrhu)
         self._hist_list.insertItem(0, item)
@@ -1854,8 +1857,8 @@ class PropertiesPanel(QWidget):
                     f"Δ {sign}{delta_disp:.3g} {defn.unit}"
                 )
                 self._addr_lbl.setStyleSheet(
-                    "color:#4ec9b0; font-family:Consolas; font-size:11px;" if delta_raw > 0
-                    else "color:#f48771; font-family:Consolas; font-size:11px;"
+                    "color:#4CAF50; font-family:Consolas; font-size:11px;" if delta_raw > 0
+                    else "color:#EF5350; font-family:Consolas; font-size:11px;"
                 )
             else:
                 self._addr_lbl.setStyleSheet("")
@@ -1881,7 +1884,7 @@ class PropertiesPanel(QWidget):
             self._inp.setStyleSheet("")
         except ValueError:
             self._inp.setStyleSheet(
-                "background:#2a1010; border:1px solid #f48771; border-radius:4px; padding:5px 10px;"
+                "background:#2a1010; border:1px solid #EF5350; border-radius:3px; padding:4px 8px;"
             )
             QTimer.singleShot(800, lambda: self._inp.setStyleSheet(""))
 
@@ -1894,15 +1897,15 @@ class HexStrip(QWidget):
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
         hdr = QLabel("  HEX VIEW")
         hdr.setStyleSheet(
-            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
-            "padding:3px 8px; background:#252526; border-bottom:1px solid #333333;"
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1.5px; "
+            "padding:3px 10px; background:#141418; border-bottom:1px solid #2A2A32;"
         )
         lo.addWidget(hdr)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 12))
+        self.text.setFont(QFont("Consolas", 11))
         self.text.setStyleSheet(
-            "QTextEdit { background:#252526; color:#666666; border:none; padding:6px 10px; }"
+            "QTextEdit { background:#141418; color:#808090; border:none; padding:6px 10px; }"
         )
         lo.addWidget(self.text, 1)
 
@@ -1915,9 +1918,9 @@ class HexStrip(QWidget):
             hx  = " ".join(f"0x{b:02X}" for b in ch)
             asc = "".join(chr(b) if 32 <= b < 127 else "·" for b in ch)
             lines.append(
-                f'<span style="color:#569cd6">0x{addr+i:06X}:</span>  '
-                f'<span style="color:#888888">{hx}</span>  '
-                f'<span style="color:#444444">{asc}</span>'
+                f'<span style="color:#4FC3F7">0x{addr+i:06X}:</span>  '
+                f'<span style="color:#808090">{hx}</span>  '
+                f'<span style="color:#505060">{asc}</span>'
             )
         self.text.setHtml("<br>".join(lines))
 
@@ -1930,24 +1933,24 @@ class LogStrip(QWidget):
         lo = QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
         hdr = QLabel("  LOG")
         hdr.setStyleSheet(
-            "color:#666666; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
-            "padding:3px 8px; background:#252526; border-bottom:1px solid #333333;"
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1.5px; "
+            "padding:3px 10px; background:#141418; border-bottom:1px solid #2A2A32;"
         )
         lo.addWidget(hdr)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 12))
+        self.text.setFont(QFont("Consolas", 11))
         self.text.setStyleSheet(
-            "QTextEdit { background:#252526; color:#969696; border:none; padding:6px 8px; }"
+            "QTextEdit { background:#1C1C1F; color:#808090; border:none; padding:6px 8px; }"
         )
         lo.addWidget(self.text, 1)
 
     def log(self, msg: str, level: str = "info"):
-        colors = {"ok": "#4ec9b0", "info": "#9cdcfe", "warn": "#e5c07b", "err": "#f48771"}
+        colors = {"ok": "#4CAF50", "info": "#4FC3F7", "warn": "#FFB74D", "err": "#EF5350"}
         ts = datetime.now().strftime("%H:%M:%S")
-        color = colors.get(level, "#969696")
+        color = colors.get(level, "#808090")
         self.text.append(
-            f'<span style="color:#555555">{ts}</span> '
+            f'<span style="color:#505060">{ts}</span> '
             f'<span style="color:{color}">{msg}</span>'
         )
         self.text.verticalScrollBar().setValue(self.text.verticalScrollBar().maximum())
@@ -1960,7 +1963,7 @@ class DiffWidget(QWidget):
         super().__init__(parent)
         lo = QVBoxLayout(self); lo.setContentsMargins(12,12,12,12); lo.setSpacing(8)
         self.lbl = QLabel("Ucitaj oba fajla za diff")
-        self.lbl.setStyleSheet("color:#666666; padding:8px; font-size:13px;")
+        self.lbl.setStyleSheet("color:#505060; padding:8px; font-size:12px;")
         lo.addWidget(self.lbl)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Region","Start","End","Velicina"])
@@ -1975,14 +1978,14 @@ class DiffWidget(QWidget):
             f"CAL: {s['CAL']:,} B    Ukupno: {sum(s.values()):,} B razlicito"
         )
         self.lbl.setStyleSheet(
-            "color:#9cdcfe; padding:8px; background:#252526; border-bottom:1px solid #333333; font-size:13px;"
+            "color:#4FC3F7; padding:8px; background:#141418; border-bottom:1px solid #2A2A32; font-size:12px;"
         )
         blocks = MapFinder(eng1).find_changed_regions(eng2, min_block=16)
         self.table.setRowCount(len(blocks))
         colors = {
-            "CAL":  ("#0d3321","#4ec9b0"),
-            "CODE": ("#0e3a5c","#9cdcfe"),
-            "BOOT": ("#3a2a00","#e5c07b"),
+            "CAL":  ("#1a3a2a","#4CAF50"),
+            "CODE": ("#1A2F4A","#4FC3F7"),
+            "BOOT": ("#3a2a00","#FFB74D"),
         }
         for i, b in enumerate(blocks):
             reg = "CAL" if b["in_cal"] else ("CODE" if b["in_code"] else "BOOT")
@@ -2022,8 +2025,8 @@ class DtcPanel(QWidget):
         # Zaglavlje
         self._hdr = QLabel("  DTC MANAGER")
         self._hdr.setStyleSheet(
-            "color:#f48771; font-size:11px; font-weight:bold; letter-spacing:1.5px; "
-            "background:#252526; padding:6px 8px; border-bottom:1px solid #333333;"
+            "color:#EF5350; font-size:10px; font-weight:bold; letter-spacing:1.5px; "
+            "background:#141418; padding:6px 10px; border-bottom:1px solid #2A2A32;"
         )
         right_lo.addWidget(self._hdr)
 
@@ -2032,34 +2035,34 @@ class DtcPanel(QWidget):
 
         self._code_lbl = QLabel("—")
         self._code_lbl.setFont(QFont("Consolas", 16, QFont.Weight.Bold))
-        self._code_lbl.setStyleSheet("color:#f48771; font-size:18px; font-weight:bold;")
+        self._code_lbl.setStyleSheet("color:#EF5350; font-size:18px; font-weight:bold;")
         status_row.addWidget(self._code_lbl)
 
         self._name_lbl = QLabel("")
-        self._name_lbl.setStyleSheet("color:#969696; font-size:12px;")
+        self._name_lbl.setStyleSheet("color:#808090; font-size:12px;")
         status_row.addWidget(self._name_lbl)
 
         status_row.addStretch()
 
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet("color:#4ec9b0; font-size:12px; font-weight:bold;")
+        self._status_lbl.setStyleSheet("color:#4CAF50; font-size:12px; font-weight:bold;")
         status_row.addWidget(self._status_lbl)
 
         right_lo.addLayout(status_row)
 
         # Separator
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background:#333333; max-height:1px;")
+        sep.setStyleSheet("background:#2A2A32; max-height:1px;")
         right_lo.addWidget(sep)
 
         # Notes + upozorenje
         self._notes_lbl = QLabel("")
-        self._notes_lbl.setStyleSheet("color:#666666; font-size:12px;")
+        self._notes_lbl.setStyleSheet("color:#505060; font-size:12px;")
         self._notes_lbl.setWordWrap(True)
         right_lo.addWidget(self._notes_lbl)
 
         warn_lbl = QLabel("⚠  Isključivanje DTC-a deaktivira zaštitu motora!")
-        warn_lbl.setStyleSheet("color:#e5c07b; font-size:12px; font-weight:bold;")
+        warn_lbl.setStyleSheet("color:#FFB74D; font-size:12px; font-weight:bold;")
         right_lo.addWidget(warn_lbl)
 
         right_lo.addStretch()
@@ -2132,10 +2135,10 @@ class DtcPanel(QWidget):
 
         if status.is_off:
             self._status_lbl.setText("● OFF")
-            self._status_lbl.setStyleSheet("color:#4ec9b0; font-size:12px; font-weight:bold;")
+            self._status_lbl.setStyleSheet("color:#4CAF50; font-size:12px; font-weight:bold;")
         else:
             self._status_lbl.setText("● AKTIVAN")
-            self._status_lbl.setStyleSheet("color:#f48771; font-size:12px; font-weight:bold;")
+            self._status_lbl.setStyleSheet("color:#EF5350; font-size:12px; font-weight:bold;")
 
         # Obavijesti sidebar o promjeni statusa
         self.dtc_status_changed.emit(self._cur_code, status.is_off)
@@ -2293,7 +2296,7 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
 
         self._file_lbl = QLabel("  nema fajla")
-        self._file_lbl.setStyleSheet("color:#666666; padding:0 10px; font-size:13px;")
+        self._file_lbl.setStyleSheet("color:#808090; padding:0 10px; font-size:12px;")
         tb.addWidget(self._file_lbl)
 
         # Progress
@@ -2307,7 +2310,7 @@ class MainWindow(QMainWindow):
         # ── Accent bar (2px color line under toolbar, changes per SW variant) ─
         self._accent_bar = QFrame()
         self._accent_bar.setFixedHeight(2)
-        self._accent_bar.setStyleSheet("background:#333333; border:none;")
+        self._accent_bar.setStyleSheet("background:#2A2A32; border:none;")
         root.addWidget(self._accent_bar)
 
         root.addWidget(self.progress)
@@ -2403,16 +2406,16 @@ class MainWindow(QMainWindow):
         # Permanent gauge labels (right side of status bar)
         self._sb_sw_lbl = QLabel("")
         self._sb_sw_lbl.setStyleSheet(
-            "font-family:Consolas; font-size:12px; font-weight:bold; "
-            "padding:0 10px; color:#9cdcfe;"
+            "font-family:Consolas; font-size:11px; font-weight:bold; "
+            "padding:0 10px; color:#4FC3F7;"
         )
         self._sb_sw_lbl.hide()
         self.status.addPermanentWidget(self._sb_sw_lbl)
 
         self._sb_maps_lbl = QLabel("")
         self._sb_maps_lbl.setStyleSheet(
-            "font-family:Consolas; font-size:11px; "
-            "background:#004466; color:#9cdcfe; border-radius:8px; "
+            "font-family:Consolas; font-size:10px; "
+            "background:#1A2F4A; color:#4FC3F7; border-radius:8px; "
             "padding:1px 8px; margin:0 4px;"
         )
         self._sb_maps_lbl.hide()
@@ -2420,8 +2423,8 @@ class MainWindow(QMainWindow):
 
         self._sb_region_lbl = QLabel("")
         self._sb_region_lbl.setStyleSheet(
-            "font-family:Consolas; font-size:11px; "
-            "background:#2a2a00; color:#e5c07b; border-radius:8px; "
+            "font-family:Consolas; font-size:10px; "
+            "background:#3a2a00; color:#FFB74D; border-radius:8px; "
             "padding:1px 8px; margin:0 4px;"
         )
         self._sb_region_lbl.hide()
@@ -2445,7 +2448,7 @@ class MainWindow(QMainWindow):
         if sw_id:
             color = _sw_badge_color(sw_id)
             self._sb_sw_lbl.setStyleSheet(
-                f"font-family:Consolas; font-size:12px; font-weight:bold; "
+                f"font-family:Consolas; font-size:11px; font-weight:bold; "
                 f"padding:0 10px; color:{color};"
             )
             self._sb_sw_lbl.setText(sw_id)
@@ -2460,13 +2463,13 @@ class MainWindow(QMainWindow):
             self._sb_region_lbl.hide()
             return
         if addr < 0x010000:
-            region, bg, fg = "BOOT", "#3a2a00", "#e5c07b"
+            region, bg, fg = "BOOT", "#3a2a00", "#FFB74D"
         elif addr < 0x060000:
-            region, bg, fg = "CODE", "#0e3a5c", "#9cdcfe"
+            region, bg, fg = "CODE", "#1A2F4A", "#4FC3F7"
         else:
-            region, bg, fg = "CAL", "#0d3321", "#4ec9b0"
+            region, bg, fg = "CAL", "#1a3a2a", "#4CAF50"
         self._sb_region_lbl.setStyleSheet(
-            f"font-family:Consolas; font-size:11px; "
+            f"font-family:Consolas; font-size:10px; "
             f"background:{bg}; color:{fg}; border-radius:8px; "
             f"padding:1px 8px; margin:0 4px;"
         )

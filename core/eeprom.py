@@ -106,16 +106,24 @@ class EepromParser:
     DEALER_OFFSET  = 0x0102  # Dealer naziv (max 16B ASCII)
     # ODO_OFFSET  = 0x0125  # NE koristiti! SW konstanta, ne odometar
 
-    # Circular buffer ODO adrese po HW tipu (istraivanje 2026-03-18)
-    _ODO_064_PRIMARY  = 0x0562   # 064 primarni
-    _ODO_064_ALT1     = 0x0D62   # 064 backup (stariji layout)
-    _ODO_064_ALT2     = 0x1562   # 064 backup mirror
-    _ODO_063_REGION   = (0x4400, 0x5000)  # 063 Spark: buffer raste od ~0x4500 naviše
-    _ODO_063_FALLBACK = 0x0562   # 063 fallback (visoki sati, buffer prešao 0x5000)
-    _ODO_063_HIGH     = 0x0DE2   # 063 visoke minute (>~30000)
-    _ODO_062_HIGH_B   = 0x5062   # 062 rotacija: najnoviji
-    _ODO_062_HIGH_A   = 0x4562   # 062 rotacija: drugi
-    _ODO_062_LOW      = 0x1062   # 062 rotacija: najstariji
+    # Circular buffer ODO adrese po HW tipu (istraživanje 2026-03-18/19)
+    # Potvrđeno na 35 EEPROM dumpova — sve adrese verificirane
+
+    # 063/064 standardni layout (MPEM kopija @ 0x05B0):
+    _ODO_STANDARD     = 0x0562   # anchor slot @ 0x0550 + 18 — svi 063/064 novi firmware
+    # 063/064 stari layout (MPEM samo u headeru @ 0x0032, anchor pomaknut +0x4000):
+    _ODO_STARI_LAYOUT = 0x4562   # potvrđeno: 063 0-55, 063 77-16, 063 121-55, 063 167, 064 13
+    # 064 wrapping layout (višestruki buffer wrap, mirror potvrda):
+    _ODO_WRAP_PRIM    = 0x0D62   # potvrđeno: 064 211-07 (12667 min)
+    _ODO_WRAP_MIRROR  = 0x1562   # mirror za 0x0D62 — SAMO za potvrdu, ne samostalno
+    # 064 još stariji layout (anchor @ 0x047E + 18):
+    _ODO_OLD_064      = 0x0490   # potvrđeno: 064 58 (3503 min), 064 211.bin (12667 min)
+    # 063 visoke minute:
+    _ODO_063_HIGH     = 0x0DE2   # potvrđeno: 063 585-42 (35142 min)
+    # 062 rotacijski buffer (od najnovijeg prema najstarijem):
+    _ODO_062_HIGH_B   = 0x5062   # najnoviji
+    _ODO_062_HIGH_A   = 0x4562   # drugi
+    _ODO_062_LOW      = 0x1062   # najstariji
 
     def parse(self, path: str) -> EepromInfo:
         info = EepromInfo(source_path=str(path))
@@ -165,31 +173,48 @@ class EepromParser:
             return int.from_bytes(data[off:off+2], 'little')
 
         if info.hw_type == "062":
+            # Rotacijski buffer — od najnovijeg prema najstarijem
             for addr in (self._ODO_062_HIGH_B, self._ODO_062_HIGH_A, self._ODO_062_LOW):
                 v = _u16le(addr)
                 if 1 <= v <= 65000:
                     info.odo_raw = v; break
         elif info.hw_type == "063":
-            # Spark ECU ima dva aktivna buffer mjesta; uzimamo veće (novije)
-            v_a = _u16le(0x4562)  # primary (niske/srednje sate)
-            v_b = _u16le(self._ODO_063_FALLBACK)  # 0x0562 (kada buffer wrapa)
-            best = max(v if 1 <= v <= 65000 else 0 for v in (v_a, v_b))
+            # Spark ECU: uzimamo max od standardnog i stari-layout mjesta
+            v_std  = _u16le(self._ODO_STANDARD)      # 0x0562 (kada buffer wrapa)
+            v_star = _u16le(self._ODO_STARI_LAYOUT)  # 0x4562 (stariji firmware)
+            best = max(v if 1 <= v <= 65000 else 0 for v in (v_std, v_star))
             if best:
                 info.odo_raw = best
             else:
+                # 063 visoke minute (>~30000 min, npr. 063 585-42)
                 v = _u16le(self._ODO_063_HIGH)
                 if 1 <= v <= 65000:
                     info.odo_raw = v
         else:
-            # 064 / nepoznat HW
-            v = _u16le(self._ODO_064_PRIMARY)
+            # 064 / nepoznat HW — višeslojna detekcija
+            # 1. Standardni anchor (novi firmware)
+            v = _u16le(self._ODO_STANDARD)
             if 1 <= v <= 65000:
                 info.odo_raw = v
             else:
-                for addr in (self._ODO_064_ALT1, self._ODO_064_ALT2):
-                    v = _u16le(addr)
-                    if 1 <= v <= 65000:
-                        info.odo_raw = v; break
+                # 2. Stari layout (anchor pomaknut +0x4000)
+                v = _u16le(self._ODO_STARI_LAYOUT)
+                if 1 <= v <= 65000:
+                    info.odo_raw = v
+                else:
+                    # 3. Wrapping layout (potvrdi mirror-om)
+                    v_wrap = _u16le(self._ODO_WRAP_PRIM)
+                    if 1 <= v_wrap <= 65000:
+                        v_mir = _u16le(self._ODO_WRAP_MIRROR)
+                        if 1 <= v_mir <= 65000 and abs(v_mir - v_wrap) <= 100:
+                            info.odo_raw = max(v_wrap, v_mir)
+                        else:
+                            info.odo_raw = v_wrap
+                    else:
+                        # 4. Još stariji 064 anchor (064 58, 064 211.bin)
+                        v = _u16le(self._ODO_OLD_064)
+                        if 1 <= v <= 65000:
+                            info.odo_raw = v
 
         # Provjera valjanosti
         if info.hull_id.startswith("YDV") and len(info.mpem_sw) >= 6:

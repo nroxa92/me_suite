@@ -856,21 +856,24 @@ _LAMBDA_TRIM_DEF = MapDef(
 # 12×18 Q15 tablica @ 0x0268A0 — odmah iza lambda main (0x0266F0+432=0x0268A0).
 # Offset od lambda main: točno +0x1B0 = +432B = veličina lambda main tablice.
 #
-# POTVRĐENO diff analizom (2026-03-18):
+# POTVRĐENO diff analizom (2026-03-18/19):
 #   NPRo STG2 mijenja 105/216 vrijednosti
 #   Sve 3 HP varijante (300hp/230hp/130hp) imaju bitno različite vrijednosti
 #   → aktivno kalibrirana per-HP mapa (nije padding niti const)
 #
 # Vrijednosti (Q15, raw/32768=lambda):
-#   300hp ORI:  31547–34282  → λ 0.9629–1.0467  (raspon ±4.7%)
-#   300hp STG2: 31547–34282  → drugačiji subset promijenjen
-#   230hp:      28459–35420  → λ 0.8688–1.0812  (širi raspon)
-#   130hp:      29030–34282  → λ 0.8862–1.0467  (konzervativniji)
+#   300hp ORI 2021: 31656–34035 → λ 0.966–1.039 (112 unique vrijednosti, uska kalibracija)
+#   300hp STG2:     105/216 vrijednosti promijenjeno (vs ORI)
+#   300hp 2020 vs 2021: 105/216 razlika! SW različit (10SW054296 vs 10SW066726)
+#   230hp:          33064–34710 → λ 1.009–1.059 (9 unique — lean bias)
+#   130hp:          32742–33581 → λ 0.999–1.025 (8 unique — gotovo neutralan)
+#   GTI90:          32258–33213 → λ 0.984–1.014 (5 unique — flat)
+#   ZAKLJUČAK: 300hp ima najkompleksniju kalibraciju (112 unique), GTI90 najravniju (5 unique)
 #
 # Fizikalni smisao: baza za short-term adaptaciju lambda (KFLAMBAS ili ekvivalent).
 # ECU koristi ovu mapu kao početnu točku za adaptivne korekcije goriva.
 # Dimenzije identične lambda main: 12 RPM × 18 load točaka.
-# Confidence: 85%.
+# Confidence: 90% (podignuto — svi 4 varijante potvrđene s koherentnim kalibracijama).
 
 LAMBDA_ADAPT_ADDR = 0x0268A0
 
@@ -898,9 +901,10 @@ _LAMBDA_ADAPT_DEF = MapDef(
     notes         = (
         f"@ 0x{LAMBDA_ADAPT_ADDR:06X} (12×18 u16 LE Q15 = 432B). "
         "Offset +0x1B0 od lambda main (0x0266F0). "
-        "300hp: λ 0.963–1.047, 230hp: λ 0.869–1.081, 130hp: λ 0.886–1.047. "
-        "NPRo STG2: 105/216 vrijednosti promijenjeno. "
-        "Confidence 85% — bez A2L potvrde točnog naziva."
+        "300hp 2021: λ 0.966–1.039 (112 unique), 230hp: λ 1.009–1.059 (9u), "
+        "130hp: λ 0.999–1.025 (8u), GTI90: λ 0.984–1.014 (5u). "
+        "NPRo STG2: 105/216 razlika. 2020 vs 2021 300hp: 105/216 razlika (razl. SW). "
+        "Confidence 90%."
     ),
 )
 
@@ -1058,15 +1062,19 @@ _EFF_CORR_DEF = MapDef(
     axis_x        = AxisDef(count=7, byte_order="LE", dtype="u16",
                              scale=1.0 / 32768.0, unit="lambda",
                              values=[13093, 16442, 19783, 24919, 30059, 35203, 43920]),
-    axis_y        = None,   # TODO: col[0] svakoga reda = embedded Y-os
-    raw_min       = 19000,  # ~0.58 λ
-    raw_max       = 50000,  # ~1.53 λ
+    axis_y        = None,   # col[0] svakoga reda = embedded Y-os (lambda Q15)
+                            # col[0] vrijednosti: [13093,35983,32899,37783,34441,39065,35983,32899,35467,33669]
+                            # = [0.40, 1.098, 1.004, 1.153, 1.051, 1.192, 1.098, 1.004, 1.082, 1.027] λ
+                            # NE raste linearno → nije klasična os; radi se o lookuptable stupcima
+    raw_min       = 13000,  # ~0.40 λ (min col[0] embedded Y-os)
+    raw_max       = 45000,  # ~1.37 λ
     mirror_offset = 0,
     notes         = (
         f"@ 0x{EFF_CORR_ADDR:06X} (10×7 u16 Q15, 140B). X-os @ 0x{EFF_CORR_AXIS_ADDR:06X}. "
-        "col[0] = ugradjeni Y-os (lambda Q15 ref. tocke). Odmah iza deadtime 0x025900. "
-        "Identično u ORI/STG2/082806 (STG2 ne mijenja). 130hp: drugacija kalibracija. "
-        "KFWIRKBA sub-table za kratki lambda raspon (0.40-1.34). Confidence ~65%."
+        "col[0] = ugradjeni Y-os (lambda Q15, NE linearno: 0.40,1.10,1.00,1.15,...). "
+        "Odmah iza deadtime 0x025900 (kraj deadtime = 0x0259C4 = ova X-os). "
+        "STG2=ORI (0/70 razlika). 130hp: 41/70 razlika. GTI90: 39/70 razlika. "
+        "Varijanta-specificno — NIJE univerzalna. Confidence 65%."
     ),
 )
 
@@ -1159,13 +1167,18 @@ _NEUTRAL_CORR_DEF = MapDef(
 # ─── SC boost fuel factor (flat Q14=1.224 = +22.4% for 300hp) ────────────────
 #
 # 40 u16 @ 0x025DF8: SVE = 20046 (Q14 = 1.224 = +22.4%) za 300hp SC.
-# 130hp NA: varijabilna [+23.9%..−1.2%], NIJE sve nule! Prethodni komentar bio pogrešan.
-# GTI 90 NA (900cc): flat −18.4% (13364). GTI 155: slično 130hp.
+# 130hp NA (1630): varijabilna [+23.9%..−1.2%], NIJE sve nule!
+# GTI 90 NA (900cc): flat −18.4% (13364).
+# 4tec1503 (GTI 130/155/230hp 2019/2020): flat 23130 (Q14 = 1.412 = +41.2%!) — potvrđeno 2026-03-19
+#   Svi 1503 dumpovi (130/155/230hp 2019, 130hp 2020) = IDENTIČNO flat 23130.
+#   Osi lambda OS (@ 0x025DE8) = identično 1630 130hp → [15413–39315] = [0.470–1.200].
+#   NAPOMENA: +41.2% je viši nego 300hp SC (+22.4%) — razlog nepoznat bez A2L!
+#   Mogući uzrok: drugačija logika fuel managementa na 1503 motoru, ili drugačija interpretacija tablice.
 # STG2: identično (tuneri ne diraju ovu kalibraciju).
 #
 # Lambda os (8 točaka) ispred @ 0x025DE8 — razlikuje se po SW:
 #   300hp: [22352–48045] = [0.682–1.466]
-#   130/170hp + GTI 155: [15413–39315] = [0.470–1.200]
+#   130/170hp (1630) + GTI 155 (1503): [15413–39315] = [0.470–1.200]
 #   GTI 90: [12072–37772] = [0.368–1.153]
 #
 # Fizikalni smisao: nepoznat — nije pouzdani indikator SC motora.
@@ -1179,11 +1192,13 @@ _SC_BOOST_FACTOR_DEF = MapDef(
     name          = "SC — bazni faktor obogaćivanja [Q14]",
     description   = (
         "Bazna SC korekcija goriva — 40 u16 flat = 20046 (Q14 = 1.224 = +22.4%). "
-        "130hp NA: sve nule (tablica nije aktivna). "
+        "300hp SC: flat 20046 (+22.4%). "
+        "1630 130hp NA: varijabilna [16191–20303] (ne nule!). "
+        "4tec1503 (svi 2019/2020 varianti): flat 23130 (Q14=1.412 = +41.2%) — potvrdjeno 2026-03-19. "
+        "GTI90: flat 13364 (−18.4%). "
         "STG2 = ORI (tuneri ne mijenjaju). "
-        "Lambda os (8 tocaka) @ 0x025DE8: [0.682, 0.784, 0.886, 0.996, 1.098, 1.200, 1.310, 1.466]. "
-        "SC motor koristi ovu korekciju neovisno o lambda uvjetu (+22.4% flat). "
-        "NA motor ne aktivira ovu tablicu (sve 0 — nema SC enrichment)."
+        "Lambda os (8 tocaka) @ 0x025DE8 razlikuje se po varijanti. "
+        "Fizikalni smisao nepoznat bez A2L — nije pouzdani SC indikator."
     ),
     category      = "injection",
     rows=1, cols=40,
@@ -1199,11 +1214,13 @@ _SC_BOOST_FACTOR_DEF = MapDef(
     raw_max       = 24576,   # SC ~150%
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{SC_BOOST_FACTOR_ADDR:06X} (40× u16 = 80B). "
-        f"Lambda os (8pt) @ 0x{SC_BOOST_FACTOR_AXIS_ADDR:06X}: [0.682..1.466] Q15. "
+        f"@ 0x{SC_BOOST_FACTOR_ADDR:06X} (40x u16 = 80B). "
+        f"Lambda os (8pt) @ 0x{SC_BOOST_FACTOR_AXIS_ADDR:06X}: razl. po varijanti. "
         "300hp SC: flat 20046 = Q14 +22.4%. "
-        "130hp NA: sve 0 (os i data). STG2: identican kao ORI. "
-        "Bazna SC enrichment korekcija. A2L naziv: moguće KFMSWSC ili SC lambda correction."
+        "1630 130hp NA: var. [16191-20303]. "
+        "4tec1503 (sve varijante 2019/2020): flat 23130 = Q14 +41.2% (potvrdjeno 2026-03-19). "
+        "GTI90: flat 13364 = -18.4%. STG2: identican kao ORI. "
+        "A2L naziv: moguce KFMSWSC ili SC lambda correction."
     ),
 )
 
@@ -1329,16 +1346,22 @@ _START_INJ_DEF = MapDef(
 #
 # 8×8 u8 tablica korekcije paljenja @ 0x022364.
 # Ispred tablice su ugrađene 2 osi (svaka 8× u8):
-#   Y os @ 0x022364: [75, 100, 150, 163, 175, 181, 188, 200]
-#   X os @ 0x02236C: [53, 80, 107, 120, 147, 187, 227, 255]
+#   Y os @ 0x022364: 300hp=[75,100,150,163,175,181,188,200], 130hp=[63,100,125,150,175,181,188,200]
+#   X os @ 0x02236C: 300hp=[53,80,107,120,147,187,227,255], 130hp=[33,47,60,73,80,100,120,127]
 #   Podaci @ 0x022374: 8×8 u8 = 64 bajta (kraj @ 0x0223B3)
 #
-# Vrijednosti: 145–200 (u8). STG2 capuje sve >180 na 180.
-# Interpretacija: moguće knock retard limit ili ignition efficiency factor.
-# Pozicija u binariju: odmah iza rev-limiter zone (0x022096–0x0220C0).
-# 130hp: potpuno drugačiji sadržaj — aktivno kalibriran po HP varijanti.
+# IDENTIFIKACIJA OSI (2026-03-19):
+#   Y os: raw × 40 = RPM → 300hp: [3000,4000,6000,6520,7000,7240,7520,8000] RPM
+#                          130hp: [2520,4000,5000,6000,7000,7240,7520,8000] RPM
+#   X os: raw / 2.55 = load% → 300hp: [20.8,31.4,42.0,47.1,57.6,73.3,89.0,100.0]%
+#                               130hp max=127 → norm /1.27: [26.0,37.0,47.2,57.5,63.0,78.7,94.5,100.0]%
+#   VARIJANTA-SPECIFIČNO! 300hp koristi skalu /255=100%, 130hp koristi /127=100%.
+#   Fizikalni smisao: motor efficiency / torque correction factor po RPM × load.
 #
-# Skaliranje: nepoznato bez A2L. Vrijednosti ≈ efekt kuta (°BTDC × faktor?).
+# Vrijednosti: 145–200 (u8). 128 = 100% (neutralno), ~160 = 125%, 200 = 156%.
+# STG2 capuje sve >180 na 180 — ograničava max korekciju (knock protection).
+# 300hp vs 130hp: RAZLIKUJE SE u obje osi i podacima.
+# Skaliranje: raw/128 = faktor ili raw * 100/128 = % (bez A2L potvrde).
 
 IGN_CORR_ADDR = 0x022374   # Start podatkovnog dijela (poslije 2×8B osi)
 IGN_CORR_AXIS_ADDR = 0x022364  # Y-os (prva os, 8× u8)
@@ -1361,19 +1384,21 @@ _IGN_CORR_DEF = MapDef(
     offset_val    = 0.0,
     unit          = "raw (u8)",
     axis_x        = AxisDef(count=8, byte_order="LE", dtype="u8",
-                             scale=1.0, unit="?",
+                             scale=100.0/255.0, unit="load [%]",  # /2.55 = %; 300hp norma
                              values=[53, 80, 107, 120, 147, 187, 227, 255]),
     axis_y        = AxisDef(count=8, byte_order="LE", dtype="u8",
-                             scale=1.0, unit="?",
+                             scale=40.0, unit="rpm",   # raw × 40 = RPM
                              values=[75, 100, 150, 163, 175, 181, 188, 200]),
     raw_min       = 100,
     raw_max       = 255,
     mirror_offset = 0,
     notes         = (
         f"@ 0x{IGN_CORR_ADDR:06X} (8×8 u8 = 64B). Osi @ 0x{IGN_CORR_AXIS_ADDR:06X} (2×8 u8). "
-        "STG2 cap: sve vrijednosti >180 → 180 (knock protection). "
-        "Os iza 0x022360: [7,0,8,8] su tail prethodnog bloka. "
-        "A2L naziv nepoznat — moguće KFZW2 (Zündwinkelkorrektur) ili KFWIRKBA."
+        "Y-os (RPM): raw × 40 = RPM, 300hp=[3000–8000], 130hp=[2520–8000]. "
+        "X-os (load%): raw/2.55 = %, 300hp max=255=100%, 130hp max=127=100% (normirani). "
+        "VARIJANTA-SPECIFIČAN SADRŽAJ: osi se razlikuju za 300hp vs 130hp. "
+        "STG2 cap: sve > 180 → 180 (ograničava torque/timing korekciju). "
+        "A2L naziv nepoznat — moguće KFZW2 ili KFMDREG. Confidence 70%."
     ),
 )
 
@@ -1424,12 +1449,18 @@ _TORQUE_OPT_DEF = MapDef(
 # ─── Injector deadtime ────────────────────────────────────────────────────────
 #
 # Hardware konstanta — ne tunable! Kompenzira kašnjenje otvaranja injektora.
-# 7 kolona × ~20 redova u16 LE @ 0x025900 (struktura procjenjena, bez A2L).
+# 7 kolona × 14 redova u16 LE @ 0x025900 (POTVRĐENO: kraj @ 0x0259C4 = EFF_CORR_AXIS).
 # Identično u svim SW varijantama (hardware-fixed karakteristika injektora).
 #
 # Kontekst ME17 standard (ASAP2: TVKL — "Totzeitkennlinie"):
-#   X os = napon baterije (battery voltage), Y os = temperatura/uvjet
-#   Vrijednosti = kašnjenje u µs (tipično 0.5–2.5 ms za high-impedancije injektore)
+#   X os = napon baterije (battery voltage) — NIJE pronađena kao eksplicitni vektor ispred
+#          tablice; X-os je interno u ECU CODE logici (ne binarno embeddana ispred tablice).
+#          Standardni ME17 TVKL X: [7.2, 8.0, 8.8, 10.0, 11.0, 12.0, 14.0] V (procjena)
+#   Y os = temperatura/uvjet (neustanavljen bez A2L)
+#   Vrijednosti = kašnjenje × 0.5 µs (R0[0]=2594 × 0.5 = 1297 µs pri najnižem naponu)
+#   Raw 1024 = min (512 µs @ 0.5µs/raw), max ~3000 = 1500 µs
+# BINARNI DOKAZ: kraj mape = 0x025900 + 14×7×2 = 0x0259C4 = točno EFF_CORR X-os start.
+# Razlika 300hp vs 130hp: R0[0] = 2594 vs 2560 (neznatno) — isti injektori, isti HW.
 
 DEADTIME_ADDR = 0x025900
 
@@ -1445,18 +1476,20 @@ _DEADTIME_DEF = MapDef(
     category      = "misc",
     rows=14, cols=7,
     byte_order    = "LE", dtype = "u16",
-    scale         = 0.001,     # procjena: µs ili ms, A2L needed
+    scale         = 0.5,       # × 0.5 µs/raw (R0[0]=2594 → 1297µs, realan deadtime)
     offset_val    = 0.0,
-    unit          = "µs (est.)",
-    axis_x        = None,
-    axis_y        = None,
-    raw_min       = 0,
-    raw_max       = 65535,
+    unit          = "µs",
+    axis_x        = None,   # napon baterije — nije kao eksplicitni binarni vektor (ECU internal)
+    axis_y        = None,   # temp/uvjet — bez A2L neidentificirano
+    raw_min       = 1000,   # ~500 µs (min deadtime)
+    raw_max       = 6000,   # ~3000 µs (max deadtime pri niskom naponu)
     mirror_offset = 0,
     notes         = (
         f"@ 0x{DEADTIME_ADDR:06X}. Hardware konstanta — NE EDITIRATI. "
-        "98 u16 = 14×7 (potvrdjeno binarnim skanom: prvi >3000 @ idx 98). "
-        "Identično u svim analiziranim SW varijantama. "
+        "14×7=98 u16 (POTVRĐENO: kraj 0x0259C4 = EFF_CORR X-os). "
+        "Skala: raw × 0.5µs (R0[0]=2594→1297µs, realno za low-Z injektore). "
+        "X-os (napon baterije) nije embeddana ispred — interio u ECU CODE logici. "
+        "300hp vs 130hp: praktički identični (isti injektori, isti HW). "
         "ME17 ASAP2 naziv: TVKL (Totzeitkennlinie)."
     ),
 )
@@ -1512,18 +1545,22 @@ _DFCO_DEF = MapDef(
 # Period encoding: RPM = 40,000,000 × 60 / (ticks × 58)
 #   Manji ticks = viši RPM (period encoding)
 #
-# POTVRĐENO diff analizom (2026-03-18):
-#   300hp ORI:  col[0] = 8636–7041 ticks (4791–5877 RPM, rpm granica silaznog DFCO)
-#               col[1] = 9653–8554 ticks (4287–4837 RPM, niži prag)
-#               col[2] = 3879 (KONSTANTAN svih 16 unosa = 5348 RPM hard cut)
-#   300hp STG2: sve 3 kolone povećane → viši RPM limiti
-#               STG2 hard cut: 11199 ticks = 3695 RPM (niži limit, ranije ubrizgavanje ponovo)
-#   230hp ORI:  col[0]~7300 / col[1]~8700 / col[2]~7800 ticks (drugačiji raspon)
-#   130hp ORI:  col[0]~9900 / col[1]~13000 / col[2]~11700 ticks (konzervativniji)
+# POTVRĐENO diff analizom (2026-03-18/19):
+#   300hp ORI 2021: col[0]=8636–7041t (4791–5877 RPM), col[1]=9653–8554t (4287–4837 RPM)
+#                   col[2]=10670 KONSTANTAN (3878 RPM) — hard decel threshold
+#                   load os=[0,1054,1842,2911,4129,5336,6474,7556] (rastuci, 8 tocaka)
+#   300hp STG2: t+431 viši ticks → RPM[0]=4563–5117 (SPO za 200-300 RPM), col[2]=3694 RPM
+#   130hp ORI:  col[0]=3856–3718t (10731–11129 RPM!), col[2]=4784t (8649 RPM)
+#               DRASTIČNO DRUGAČIJE — 130hp ima viši RPM raspon (do 11000 RPM u ticks)
+#               load os=[0,648,966,1237,1438,1866,2564,3230] (niži load raspon)
+#   GTI90:      col[0]=4471t (9255 RPM), col[1]=4879t, col[2]=5158t — vlastiti raspon
+#   Spark 900:  E0 = 64256t (643 RPM!) i 65280 → nema validnih DFCO ramp vrijednosti
+#               Spark ne koristi ovu strukturu na ovaj način
 #
-# Svaki unos = 1 load zona (8 vrijednosti = X-os load segmenti).
+# Svaki unos = 1 kondicionalna load zona (8 load vrijednosti = X-os load segmenti).
 # Fizikalni smisao: DFCO/decel RPM ramp — per-load RPM pragovi za fuel cut re-engage.
-# Confidence: 75%. Kompleksna struktura zahtijeva A2L za precizne ose.
+# ZAKLJUČAK: 1630 ACE je jedini koji ima smislene vrijednosti; Spark binarno null/garbage.
+# Confidence: 80% (podignuto — višestruko potvrđeno, Spark negativno potvrđen).
 
 DECEL_RPM_CUT_ADDR = 0x028C30
 _DECEL_RPM_CUT_ENTRY_SIZE = 22   # 3×u16 RPM ticks + 8×u16 load os = 11×u16 = 22B
@@ -1533,13 +1570,13 @@ _DECEL_RPM_CUT_DEF = MapDef(
     name          = "Decel RPM ramp — DFCO per-load pragovi",
     description   = (
         "Deceleration/DFCO RPM ramp tablica — 16 unosa × 22B = 352B. "
-        "Svaki unos: 3 RPM period-ticks vrijednosti + 8 load-os vrijednosti. "
+        "Svaki unos: 3 RPM period-ticks + 8 load-os vrijednosti. "
         "Period enc: RPM = 40MHz×60/(ticks×58). Manji ticks = viši RPM. "
-        "300hp ORI col[2]=3879t(5348 RPM) konstantan — hard cut prag. "
-        "col[0]=8636–7041t (4791–5877 RPM), col[1]=9653–8554t (4287–4837 RPM). "
-        "STG2 povećava sve → viši RPM limiti za fuel cut. "
-        "Per-HP: 130hp=konzervativniji (viši ticks=niži RPM), 300hp=agresivniji. "
-        "Confidence: 75% (bez A2L)."
+        "300hp: col[2]=10670t=3878 RPM (const), col[0]=4791–5877 RPM po load. "
+        "130hp: col[0]=10731–11129 RPM (puno viši nego 300hp!), col[2]=8649 RPM. "
+        "GTI90: col[0]=9255 RPM (vlastiti raspon). Spark: nema validnih vrijednosti. "
+        "STG2 smanjuje RPM limite → fuel cut se vraća pri nižem RPM (NVH). "
+        "Confidence: 80% (1630 ACE-specifično, Spark negativno potvrđen)."
     ),
     category      = "misc",
     rows=16, cols=11,      # 16 unosa × 11 u16 (3 RPM + 8 load)
@@ -1709,7 +1746,79 @@ def _make_spark_ign_def(idx: int) -> MapDef:
         notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Mirror na 0x{addr+0x140:06X}.",
     )
 
-_SPARK_IGN_DEFS = [_make_spark_ign_def(i) for i in range(6)]
+_SPARK_IGN_DEFS = [_make_spark_ign_def(i) for i in range(8)]  # maps 0-7 (6+7 were previously missed)
+
+# Spark ignition series B — narrow range (20-27°), second ignition group
+# 8 maps @ 0x0295C0, stride 144B; maps 0-4 modified by STG2, 5-7 flat fallback
+def _make_spark_ign_b_def(idx: int) -> MapDef:
+    addr = 0x0295C0 + idx * 0x90
+    flat = idx >= 5
+    return MapDef(
+        name          = f"Spark paljenje B #{idx:02d} [{'flat-fallback' if flat else 'low-range'}]",
+        description   = (
+            f"Spark 900 ACE ignition serija B, mapa #{idx}. 12×12 u8, 0.75°/bit. "
+            f"Uski raspon 20.25–27.0° (niži od serije A). "
+            f"{'Flat @ 27raw=20.25° (sigurna rezervna mapa, STG2 ne mijenja).' if flat else 'STG2 povećava za +2-7°.'} "
+            f"Vjerojatno: uvjeti s aktivnim knock retardom / adaptacijom."
+        ),
+        category      = "ignition",
+        rows=12, cols=12,
+        byte_order    = "LE", dtype = "u8",
+        scale         = 0.75,
+        offset_val    = 0.0,
+        unit          = "° BTDC",
+        raw_min       = 5, raw_max = 65,
+        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B #{idx}. {'flat=20.25°' if flat else 'STG2 modificira'}.",
+    )
+
+_SPARK_IGN_B_DEFS = [_make_spark_ign_b_def(i) for i in range(8)]
+
+# Spark ignition series B2 — identičan format, svi modificirani od STG2
+# 8 maps @ 0x029B60, stride 144B
+def _make_spark_ign_b2_def(idx: int) -> MapDef:
+    addr = 0x029B60 + idx * 0x90
+    return MapDef(
+        name          = f"Spark paljenje B2 #{idx:02d}",
+        description   = (
+            f"Spark 900 ACE ignition serija B2, mapa #{idx}. 12×12 u8, 0.75°/bit. "
+            f"Raspon 20.25–27.0°. Svi modificirani od STG2 (+2-7°). "
+            f"Vjerojatno: warm-up ili adaptation uvjeti."
+        ),
+        category      = "ignition",
+        rows=12, cols=12,
+        byte_order    = "LE", dtype = "u8",
+        scale         = 0.75,
+        offset_val    = 0.0,
+        unit          = "° BTDC",
+        raw_min       = 5, raw_max = 65,
+        notes         = f"Spark 900. @ 0x{addr:06X}, stride=0x90. Serija B2 #{idx}. STG2 modificira sve.",
+    )
+
+_SPARK_IGN_B2_DEFS = [_make_spark_ign_b2_def(i) for i in range(8)]
+
+# Spark ignition series C — u16LE format, visoke vrijednosti (×0.25°/bit)
+# 3 maps @ 0x02803A, stride 144B; 72 u16LE values per map, MSB always 0
+def _make_spark_ign_c_def(idx: int) -> MapDef:
+    addr = 0x02803A + idx * 0x90
+    return MapDef(
+        name          = f"Spark paljenje C #{idx:02d} [u16 format]",
+        description   = (
+            f"Spark 900 ACE ignition serija C, mapa #{idx}. "
+            f"72 u16LE vrijednosti (MSB uvijek 0), ×0.25°/bit. "
+            f"Raspon 110–125 raw = 27.5–31.25° BTDC. "
+            f"STG2 mijenja za +0.5–1.0°. Format: u16 ali efektivno u8×2 po ćeliji."
+        ),
+        category      = "ignition",
+        rows=9, cols=8,
+        byte_order    = "LE", dtype = "u16",
+        scale         = 0.25,
+        offset_val    = 0.0,
+        unit          = "° BTDC",
+        raw_min       = 100, raw_max = 135,
+        notes         = f"Spark 900. @ 0x{addr:06X}. u16LE × 0.25 deg/bit. MSB=0. 72 vals=144B. STG2 mod.",
+    )
+
+_SPARK_IGN_C_DEFS = [_make_spark_ign_c_def(i) for i in range(3)]
 
 # ── Spark aux tablice (POTVRĐENE binarnim skanom 2026-03-19) ─────────────────
 # Sve adrese verificirane usporedbom s GTI90 (10SW053774) koji ima identičan motor.
@@ -1982,6 +2091,92 @@ _SPARK_THERM_ENRICH_DEF = MapDef(
     ),
 )
 
+_SPARK_LAMBDA_TRIM2_DEF = MapDef(
+    name        = "Spark — Lambda korekcija 2 (trim mirror)",
+    description = (
+        "Spark 900 ACE druga lambda trim tablica — parnjak lambda trimu @ 0x024EC4. "
+        "30×20 u16 LE Q15. ORI: uglavnom flat 32258 (λ=0.984). "
+        "STG2: mijenja 650/600 vrijednosti — aktivan tuning unos. "
+        "Osi: load axis copy @ 0x025378, col axis @ 0x0253B4. "
+        "Adresa: 0x0253DC."
+    ),
+    category    = "lambda",
+    rows=30, cols=20,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "λ korekcija",
+    raw_min     = 29000, raw_max = 34000,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x0253DC. Odmah iza load+col osi @ 0x025378. "
+        "ORI flat 32258=0.984. STG2 varijira 0.89-1.03 (aktivna kalibracija). "
+        "Završava @ 0x02588C. Parnjak lambda trim 1 @ 0x024EC4."
+    ),
+)
+
+_SPARK_LOAD_AXIS2_DEF = MapDef(
+    name        = "Spark — Load os 2 (kopija za lambda trim 2)",
+    description = (
+        "Spark 900 ACE load (relativno punjenje) os — kopija za lambda trim 2. "
+        "30 u16 LE vrijednosti. Identičan sadržaj kao @ 0x022282. "
+        "STG2 mijenja 19/30 vrijednosti (proširuje gornji raspon). "
+        "Adresa: 0x025378."
+    ),
+    category    = "axis",
+    rows=30, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0, offset_val = 0.0,
+    unit        = "raw load",
+    raw_min     = 3000, raw_max = 35000,
+    notes       = "Spark 900. @ 0x025378. 30pt load os za lambda trim 2. STG2 proširuje.",
+)
+
+_SPARK_LAMBDA_XAXIS_DEF = MapDef(
+    name        = "Spark — Lambda X-os (16pt u8, /128=λ)",
+    description = (
+        "Spark 900 ACE X-os za lambda kopije (8×16 tablice). "
+        "16 u8 vrijednosti, /128 = lambda (0.258–1.094λ ORI). "
+        "STG2 proširuje raspon: 0.313–1.875λ (širi lean-side). "
+        "Adresa: 0x024775 (neparno poravnanje — u8 format!). "
+        "Korelira s lambda kopijama @ 0x025F5C (8 redova × 16 osi)."
+    ),
+    category    = "axis",
+    rows=16, cols=1,
+    byte_order  = "LE", dtype = "u8",
+    scale       = 1.0 / 128.0,
+    offset_val  = 0.0,
+    unit        = "λ",
+    raw_min     = 30, raw_max = 245,
+    notes       = (
+        "Spark 900. @ 0x024775 (u8, neporavnato!). 16B. "
+        "ORI: [33-140] /128 = 0.258-1.094λ. STG2: [40-240] /128 = 0.313-1.875λ. "
+        "X-os za lambda kopije 1-4 (svaka 8×16 = 8 redova × 16 X-točaka)."
+    ),
+)
+
+_SPARK_THERM_ENRICH2_DEF = MapDef(
+    name        = "Spark — Toplinska korekcija 2 (Q14, 42 vrijednosti)",
+    description = (
+        "Spark 900 ACE druga toplinska korekcija goriva. "
+        "42 u16 LE Q14 vrijednosti. Raspon 0.706–0.816 (bogato, ispod stoich). "
+        "STG2 mijenja svih 42 vrijednosti (značajna kalibracija). "
+        "Adresa: 0x0248C2. Smještena neposredno iza warm-up tablice."
+    ),
+    category    = "fuel",
+    rows=42, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 16384.0,
+    offset_val  = 0.0,
+    unit        = "lambda faktor",
+    raw_min     = 11000, raw_max = 14000,
+    notes       = (
+        "Spark 900. @ 0x0248C2. 42 u16 LE Q14. Iza warm-up @ 0x024786. "
+        "ORI: 11565-13364 = Q14 0.706-0.816 (bogaćenje). "
+        "STG2: mijenja sve vrijednosti. Vjerojatno low-temp fuel trim."
+    ),
+)
+
 _SPARK_NEUTRAL_CORR_DEF = MapDef(
     name        = "Spark — Korekcija u neutralu (neutral corr)",
     description = (
@@ -2138,6 +2333,114 @@ def _make_gti_ign_def(idx: int) -> MapDef:
 _GTI_IGN_DEFS = [_make_gti_ign_def(i) for i in range(GTI_IGN_COUNT)]
 
 
+# ─── Lambda efficiency lookup (4 kopije × 256B u8) ────────────────────────────
+#
+# 4 identična bloka po 256B (16×16 u8) @ 0x0275FD, 0x02771F, 0x027841, 0x027963
+# stride između kopija = 290B (256B podaci + 34B X-os između kopija)
+#
+# IDENTIFICIRANO NPRo diff analizom (2026-03-19):
+#   NPRo STG2 mijenja C0 i C1 (prvih 2 stupca) svih 16 redova: +5 do +8 raw
+#   SC 300hp ORI: 102–115 raw → /128 = 0.797–0.898 (niži faktori)
+#   NA 130hp:     107–120 raw → /128 = 0.836–0.938 (viši faktori, razlika!)
+#   SC vs NA: KOMPLETNO RAZLIČITI (222/240 razlika u prvom bloku)
+#   300hp vs 230hp SC: 56/240 razlika (C2-C3 malo niži za 300hp)
+#
+# Između kopija: 34B sadrži X-os vrijednosti u8 (lambda /128 = 0.125–1.773)
+# Fizikalni smisao: lambda efficiency korekcija po load × lambda uvjetu
+# Analogno KFWIRKBA ali u u8 formatu s 4 kopije (možda po cilindru ili uvjetu)
+# Skaliranje: /128 = faktor; 300hp SC raspon 0.797–0.898 (niža efikasnost = boost)
+# Confidence: 70% (nema A2L potvrde naziva)
+
+LAMBDA_EFF_U8_ADDR_1 = 0x0275FD  # kopija 1
+LAMBDA_EFF_U8_ADDR_2 = 0x02771F  # kopija 2
+LAMBDA_EFF_U8_ADDR_3 = 0x027841  # kopija 3
+LAMBDA_EFF_U8_ADDR_4 = 0x027963  # kopija 4
+LAMBDA_EFF_U8_STRIDE = 290        # 256B podaci + 34B X-os
+
+_LAMBDA_EFF_U8_DEF = MapDef(
+    name          = "Lambda efikasnost u8 lookup (4x kopija)",
+    description   = (
+        "Lambda efficiency lookup u8 format — 16×16 × 4 kopije @ 0x0275FD. "
+        "Svaka kopija: 256B u8 podaci + 34B X-os (lambda u8, /128). "
+        "Stride izmedju kopija: 290B. SC300: 0.797-0.898, NA130: 0.836-0.938. "
+        "NPRo STG2: prvih 2 stupca svih redova +5 do +8 (lean-side povecanje). "
+        "SC vs NA: RAZLICITI (222/240 razlika) — SC ima nizi faktor (boost efikasnost). "
+        "Fizikalni smisao: lambda Wirkungsgrad u8 sub-lookup (analogno KFWIRKBA). "
+        "Confidence: 70% (nema A2L potvrde, namjena pretpostavljena)."
+    ),
+    category      = "lambda",
+    rows=16, cols=16,
+    byte_order    = "BE", dtype = "u8",
+    scale         = 1.0 / 128.0,
+    offset_val    = 0.0,
+    unit          = "faktor /128",
+    axis_x        = None,   # X-os u8 u paddingu izmedju kopija (/128 = lambda 0.125-1.773)
+    axis_y        = None,   # Y-os neidentificirana
+    raw_min       = 85,     # min valjanost
+    raw_max       = 130,    # max valjanost
+    mirror_offset = 0,      # kopije su stride 290B, ne direktni mirror_offset
+    notes         = (
+        f"4 kopije: 0x{LAMBDA_EFF_U8_ADDR_1:06X}, 0x{LAMBDA_EFF_U8_ADDR_2:06X}, "
+        f"0x{LAMBDA_EFF_U8_ADDR_3:06X}, 0x{LAMBDA_EFF_U8_ADDR_4:06X}. "
+        "Stride = 290B (256B data + 34B X-os u8). Skaliranje: raw/128 = faktor. "
+        "NPRo STG2: C0,C1 svih redova +5 do +8 (lean-side korekcija). "
+        "SC300 vs NA130: 222/240 razlika. 300hp vs 230hp: 56/240. "
+        "Confidence 70% — moguce A2L naziv KFWIRKBA u8 sub (specijalni uvjeti)."
+    ),
+)
+
+
+# ─── Lambda threshold parametri (KFWIRKBA adjacent) ───────────────────────────
+#
+# 158B (79 u16 LE) blok Q15 lambda vrijednosti @ 0x02B378.
+# Odmah ISPRED ignition bloka (0x02B730 - 0x02B378 = 952B prostor).
+# Sadrži 2 grupe lambda vrijednosti (rastuće i padajuće sekvence):
+#   ORI 300hp SC: λ 0.43–1.80 (prva sekvenca rastuća, zatim padajuća)
+#   ORI 130hp NA: λ 0.61–1.32 (drugačiji raspon — KOMPLETNO RAZLIČITI od SC)
+#   NPRo STG2: SVE na 0xFFFF/0xFFFE (bypass svih lambda zaštitnih pragova)
+#
+# Prvih 14B (0x02B378 addr) promijenjeno STG2,
+# još 122B (0x02B39C) promijenjeno STG2 — ukupno 136B mijenja STG2.
+#
+# Fizikalni smisao: KFWIRKBA lambda threshold parametri koji definiraju
+# lambda opseg za KFWIRKBA korekciju. STG2 bypass = ECU ignorira sve lambda-
+# zaštitne pragove (max performanse, bez toplinske zaštite).
+# SC300 vs NA130: 79/79 razlika — potpuno drugačija kalibracija po varijanti.
+# Confidence: 75% (Q15 lambda format potvrđen, namjena pretpostavljena)
+
+LAMBDA_THRESH_ADDR = 0x02B378
+
+_LAMBDA_THRESH_DEF = MapDef(
+    name          = "Lambda thresholds — KFWIRKBA pragovi [Q15]",
+    description   = (
+        "Lambda zastitni pragovi za KFWIRKBA korekciju — 79 u16 LE Q15 vrijednosti. "
+        "Odmah ispred ignition bloka (0x02B730). "
+        "ORI 300hp SC: lam 0.43-1.80 (siroki raspon). ORI 130hp NA: lam 0.61-1.32 (uzi). "
+        "NPRo STG2: SVE 0xFFFF/0xFFFE = bypass svih pragova (max performanse). "
+        "SC vs NA: KOMPLETNO RAZLICITI (79/79 razlika). "
+        "Confidence: 75% (Q15 format potvrdjen, A2L naziv nepoznat)."
+    ),
+    category      = "lambda",
+    rows=1, cols=79,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32768.0,
+    offset_val    = 0.0,
+    unit          = "lambda Q15",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 14000,   # lam 0.43
+    raw_max       = 65535,   # lam 2.0 (bypass)
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{LAMBDA_THRESH_ADDR:06X} (79x u16 LE Q15 = 158B). "
+        "Odmah ispred ignition bloka 0x02B730 (0x02B416 kraj STG2 promjena). "
+        "SC300 raspon: lam 0.43-1.80. NA130: lam 0.61-1.32. "
+        "STG2: sve 0xFFFF = bypass lambda zastita (WOT tune). "
+        "Confidence 75% — dvije sekvence (rastuca + padajuca lambda)."
+    ),
+)
+
+
 # ─── DTC definicije ──────────────────────────────────────────────────────────
 #
 # TODO (Faza 6): adrese ovise o SW verziji — ovo su referentne adrese za ori_300
@@ -2270,6 +2573,7 @@ class MapFinder:
             self._scan_neutral_corr(progress_cb)
             self._scan_sc_boost_factor(progress_cb)
             self._scan_lambda_eff(progress_cb)
+            self._scan_lambda_thresh(progress_cb)
 
             # ── GTI / NA motor specifično ──────────────────────────────────
             if is_gti_na:
@@ -3465,14 +3769,15 @@ class MapFinder:
         data = self.eng.get_bytes()
         found = 0
 
-        for idx in range(6):  # 6 karti (0-5), potvrđena mirror kopija
+        # ── Serija A: 8 mapa @ 0x026A76 + idx*0x90 (manji raspon 10-60 validacija) ──
+        for idx in range(8):  # 8 karti (0-7), potvrđeno 2026-03-19
             addr = 0x026A76 + idx * 0x90
             if addr + 144 > len(data):
                 continue
             raw = list(data[addr:addr + 144])
-            in_range = sum(1 for v in raw if 10 <= v <= 60)
+            in_range = sum(1 for v in raw if 5 <= v <= 65)
             var = max(raw) - min(raw)
-            if in_range / 144 >= 0.90 and var >= 10:
+            if in_range / 144 >= 0.90 and var >= 8:
                 self.results.append(FoundMap(
                     defn    = _SPARK_IGN_DEFS[idx],
                     address = addr,
@@ -3480,11 +3785,71 @@ class MapFinder:
                     data    = raw,
                 ))
                 found += 1
-                if cb: cb(f"  Spark ignition #{idx:02d} @ 0x{addr:06X}"
-                          f"  raw=[{min(raw)}–{max(raw)}]"
-                          f"  ({min(raw)*0.75:.1f}°–{max(raw)*0.75:.1f}°BTDC)")
+                if cb: cb(f"  Spark ign A#{idx:02d} @ 0x{addr:06X}"
+                          f"  raw=[{min(raw)}-{max(raw)}]"
+                          f"  ({min(raw)*0.75:.1f}-{max(raw)*0.75:.1f}deg)")
 
-        if cb: cb(f"  Spark ignition: {found}/6 karti pronađeno")
+        # ── Serija B: 8 mapa @ 0x0295C0 + idx*0x90 (uski raspon 20-27°) ──
+        for idx in range(8):
+            addr = 0x0295C0 + idx * 0x90
+            if addr + 144 > len(data):
+                continue
+            raw = list(data[addr:addr + 144])
+            in_range = sum(1 for v in raw if 5 <= v <= 65)
+            if in_range / 144 >= 0.88:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_IGN_B_DEFS[idx],
+                    address = addr,
+                    sw_id   = self._sw(),
+                    data    = raw,
+                ))
+                found += 1
+                if cb: cb(f"  Spark ign B#{idx:02d} @ 0x{addr:06X}"
+                          f"  raw=[{min(raw)}-{max(raw)}]"
+                          f"  ({min(raw)*0.75:.1f}-{max(raw)*0.75:.1f}deg)"
+                          f"  {'flat' if len(set(raw))==1 else ''}")
+
+        # ── Serija B2: 8 mapa @ 0x029B60 + idx*0x90 (svi modificirani STG2) ──
+        for idx in range(8):
+            addr = 0x029B60 + idx * 0x90
+            if addr + 144 > len(data):
+                continue
+            raw = list(data[addr:addr + 144])
+            in_range = sum(1 for v in raw if 5 <= v <= 65)
+            if in_range / 144 >= 0.88:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_IGN_B2_DEFS[idx],
+                    address = addr,
+                    sw_id   = self._sw(),
+                    data    = raw,
+                ))
+                found += 1
+                if cb: cb(f"  Spark ign B2#{idx:02d} @ 0x{addr:06X}"
+                          f"  raw=[{min(raw)}-{max(raw)}]"
+                          f"  ({min(raw)*0.75:.1f}-{max(raw)*0.75:.1f}deg)")
+
+        # ── Serija C: 3 mape @ 0x02803A + idx*0x90 (u16LE, ×0.25°/bit) ──
+        for idx in range(3):
+            addr = 0x02803A + idx * 0x90
+            if addr + 144 > len(data):
+                continue
+            # Ova serija je u16LE format: 72 vrijednosti s MSB=0
+            vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(72)]
+            odd_zeros = sum(1 for i in range(72) if data[addr+i*2+1] == 0)
+            in_range = sum(1 for v in vals if 100 <= v <= 135)
+            if odd_zeros >= 60 and in_range >= 50:
+                self.results.append(FoundMap(
+                    defn    = _SPARK_IGN_C_DEFS[idx],
+                    address = addr,
+                    sw_id   = self._sw(),
+                    data    = vals,
+                ))
+                found += 1
+                if cb: cb(f"  Spark ign C#{idx:02d} @ 0x{addr:06X}"
+                          f"  u16LE raw=[{min(vals)}-{max(vals)}]"
+                          f"  ({min(vals)*0.25:.2f}-{max(vals)*0.25:.2f}deg)")
+
+        if cb: cb(f"  Spark ignition: {found}/27 mapa pronađeno (A:8 + B:8 + B2:8 + C:3)")
 
     def _scan_spark_lambda(self, cb=None):
         if cb: cb("Trazim Spark lambda mape...")
@@ -3675,9 +4040,61 @@ class MapFinder:
                            f"flat={vals[0]/16384:.4f}")
             else:
                 if cb: cb(f"  Spark neutral corr @ 0x{addr:06X}: validacija pala "
-                           f"[{min(vals)}–{max(vals)}]")
+                           f"[{min(vals)}-{max(vals)}]")
 
-        if cb: cb("  Spark aux tablice: skeniranje završeno")
+        # ─ Lambda trim 2 @ 0x0253DC (30×20 u16 LE Q15, parnjak lambda trim 1) ─
+        addr   = 0x0253DC
+        n_lt2  = _SPARK_LAMBDA_TRIM2_DEF.rows * _SPARK_LAMBDA_TRIM2_DEF.cols  # 600
+        if addr + n_lt2 * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_lt2)
+            in_range = sum(1 for v in vals if _SPARK_LAMBDA_TRIM2_DEF.raw_min <= v <= _SPARK_LAMBDA_TRIM2_DEF.raw_max)
+            if in_range >= n_lt2 * 0.90:
+                _add(_SPARK_LAMBDA_TRIM2_DEF, addr, vals)
+                if cb: cb(f"  Spark lambda trim2 @ 0x{addr:06X}  30x20 Q15  "
+                           f"[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+            else:
+                if cb: cb(f"  Spark lambda trim2 @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}-{max(vals)}]")
+
+        # ─ Load axis copy 2 @ 0x025378 (30pt u16 LE, za lambda trim 2) ─
+        addr   = 0x025378
+        n_la2  = _SPARK_LOAD_AXIS2_DEF.rows * _SPARK_LOAD_AXIS2_DEF.cols  # 30
+        if addr + n_la2 * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_la2)
+            if self._monotone(vals) and 3000 <= vals[0] <= 6000 and vals[-1] <= 40000:
+                _add(_SPARK_LOAD_AXIS2_DEF, addr, vals)
+                if cb: cb(f"  Spark load axis2 @ 0x{addr:06X}  n=30  {vals[0]}-{vals[-1]}")
+            else:
+                if cb: cb(f"  Spark load axis2 @ 0x{addr:06X}: validacija pala {vals[:4]}")
+
+        # ─ Lambda X-axis @ 0x024775 (16pt u8, /128=lambda) ─
+        addr = 0x024775
+        if addr + 16 <= len(data):
+            raw_u8 = list(data[addr:addr + 16])
+            mono = all(raw_u8[i] < raw_u8[i+1] for i in range(len(raw_u8)-1))
+            in_range = sum(1 for v in raw_u8 if _SPARK_LAMBDA_XAXIS_DEF.raw_min <= v <= _SPARK_LAMBDA_XAXIS_DEF.raw_max)
+            if mono and in_range >= 14:
+                _add(_SPARK_LAMBDA_XAXIS_DEF, addr, raw_u8)
+                if cb: cb(f"  Spark lambda X-os @ 0x{addr:06X}  n=16 u8  "
+                           f"[{raw_u8[0]/128:.3f}-{raw_u8[-1]/128:.3f}]lambda")
+            else:
+                if cb: cb(f"  Spark lambda X-os @ 0x{addr:06X}: validacija pala {raw_u8[:4]}")
+
+        # ─ Thermal enrich 2 @ 0x0248C2 (42 u16 LE Q14, low-temp fuel trim) ─
+        addr   = 0x0248C2
+        n_te2  = _SPARK_THERM_ENRICH2_DEF.rows * _SPARK_THERM_ENRICH2_DEF.cols  # 42
+        if addr + n_te2 * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_te2)
+            in_range = sum(1 for v in vals if _SPARK_THERM_ENRICH2_DEF.raw_min <= v <= _SPARK_THERM_ENRICH2_DEF.raw_max)
+            if in_range >= n_te2 * 0.85:
+                _add(_SPARK_THERM_ENRICH2_DEF, addr, vals)
+                if cb: cb(f"  Spark therm enrich2 @ 0x{addr:06X}  n=42 Q14  "
+                           f"[{min(vals)/16384:.4f}-{max(vals)/16384:.4f}]")
+            else:
+                if cb: cb(f"  Spark therm enrich2 @ 0x{addr:06X}: validacija pala "
+                           f"[{min(vals)}-{max(vals)}]")
+
+        if cb: cb("  Spark aux tablice: skeniranje zavrseno")
 
     # ── Diff-guided scanner ───────────────────────────────────────────────────
 
@@ -3786,6 +4203,90 @@ class MapFinder:
                       f"  raw=[{min(raw)}-{max(raw)}] ({min(raw)*0.75:.1f}°-{max(raw)*0.75:.1f}°BTDC)")
 
         if cb: cb(f"  GTI ignition extra: {found}/{GTI_IGN_COUNT} pronadjeno")
+
+    # ── Lambda efficiency u8 (4 kopije × 16×16) scan ─────────────────────────
+
+    def _scan_lambda_eff_u8(self, cb=None):
+        if cb: cb("Trazim lambda efikasnost u8 lookup (4 kopije × 16x16)...")
+        data = self.eng.get_bytes()
+
+        ROWS, COLS = 16, 16
+        n = ROWS * COLS  # 256B po kopiji
+
+        found = 0
+        for copy_idx in range(4):
+            addr = LAMBDA_EFF_U8_ADDR_1 + copy_idx * LAMBDA_EFF_U8_STRIDE
+            if addr + n > len(data):
+                continue
+
+            raw = list(data[addr: addr + n])
+
+            # Validacija: u8 vrijednosti u rasponu 85-130 (/128 = 0.664-1.016)
+            in_range = sum(1 for v in raw if 85 <= v <= 130)
+            if in_range / n < 0.70:
+                if cb: cb(f"  LambdaEffU8 kopija {copy_idx+1} @ 0x{addr:06X}: validacija pala ({in_range}/{n} u rasponu) — preskacam")
+                continue
+
+            if max(raw) - min(raw) < 3:
+                continue
+
+            # Svakom kopijom pripada isti MapDef, ali s adresom te kopije
+            import copy as _copy
+            defn_copy = _copy.copy(_LAMBDA_EFF_U8_DEF)
+            defn_copy.name = f"Lambda efikasnost u8 lookup — kopija {copy_idx+1}"
+            defn_copy.notes = (
+                f"Kopija {copy_idx+1}/4 @ 0x{addr:06X}. "
+                f"Stride={LAMBDA_EFF_U8_STRIDE}B (256B data + 34B X-os). "
+                "NPRo STG2: C0,C1 svih redova +5 do +8. "
+                "SC300 vs NA130: 222/240 razlika. Confidence 70%."
+            )
+
+            self.results.append(FoundMap(
+                defn    = defn_copy,
+                address = addr,
+                sw_id   = self._sw(),
+                data    = raw,
+            ))
+            found += 1
+            if cb: cb(f"  LambdaEffU8 kopija {copy_idx+1} @ 0x{addr:06X}"
+                      f"  16x16 u8  raw=[{min(raw)}-{max(raw)}]"
+                      f"  /128=[{min(raw)/128:.3f}-{max(raw)/128:.3f}]")
+
+        if cb: cb(f"  Lambda eff u8: {found}/4 kopija pronadjeno")
+
+    # ── Lambda threshold pragovi (KFWIRKBA adjacent) scan ────────────────────
+
+    def _scan_lambda_thresh(self, cb=None):
+        if cb: cb("Trazim lambda threshold parametre (KFWIRKBA pragovi)...")
+        data = self.eng.get_bytes()
+
+        addr = LAMBDA_THRESH_ADDR
+        COLS = 79
+        n_bytes = COLS * 2  # 158B u16 LE
+
+        if addr + n_bytes > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(COLS)]
+
+        # Validacija: Q15 lambda vrijednosti — normalnu raspon 14000-65535
+        # STG2 postavlja na 0xFFFF (bypass); ORI ima 0.43-1.80 lambda raspon
+        in_range = sum(1 for v in vals if 14000 <= v <= 65535)
+        if in_range < COLS * 0.70:
+            if cb: cb(f"  LambdaThresh @ 0x{addr:06X}: validacija pala ({in_range}/{COLS} u rasponu) — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _LAMBDA_THRESH_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        lam_min = min(vals) / 32768
+        lam_max = max(vals) / 32768
+        if cb: cb(f"  LambdaThresh @ 0x{addr:06X}  1x79 u16 LE Q15"
+                  f"  lambda=[{lam_min:.3f}-{lam_max:.3f}]")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

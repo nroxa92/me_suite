@@ -105,23 +105,48 @@
 
 ### Base Specifications
 
-| Parameter | GTI 155 | GTI 130 |
-|-----------|---------|---------|
-| Displacement | ~1503cc | ~1503cc |
-| Configuration | SOHC, 3-cyl, inline | SOHC, 3-cyl, inline |
-| Stroke vs 1630 | Shorter (same bore, shorter stroke) | — |
-| Supercharger | None | None |
-| Idle RPM (spec) | ~1700 RPM | ~1700 RPM |
-| ECU hard cut (from binary) | **7700 RPM** (GTI 155 2018) | — |
-| ECU soft cut | 7517 RPM | — |
-| ECU SW (GTI 155) | 10SW025752 | 10SW040008 / 10SW040962 |
+| Parameter | GTI 155 (2018) | GTI 130/155/230 (2019) | GTI 130 (2020) |
+|-----------|----------------|------------------------|----------------|
+| Displacement | ~1503cc | ~1503cc | ~1503cc |
+| Configuration | SOHC, 3-cyl, inline | SOHC, 3-cyl, inline | SOHC, 3-cyl, inline |
+| Stroke vs 1630 | Shorter (same bore) | Shorter (same bore) | Shorter (same bore) |
+| Supercharger | None | None | None |
+| Idle RPM (spec) | ~1700 RPM | ~1700 RPM | ~1700 RPM |
+| ECU hard cut (from binary) | **7700 RPM** (5374 ticks) | **7892 RPM** (5243 ticks) | **7892 RPM** (5243 ticks) |
+| ECU soft cut | 7517 RPM | 7700 RPM | 7700 RPM |
+| ECU SW | 10SW025752 | 10SW040008 | 10SW040962 |
 
-> Note: GTI SE 155 uses SW 10SW025752. GTI SE 130/155 2019 use same SW 10SW040008.
+> **Analiza binarija 2026-03-19 (potvrđeno):**
+> - 10SW040008: 130hp = 155hp = 230hp — **identični binariji, 0 razlika!** Razlika samo mehanička.
+> - Rev limiter za 10SW040008/10SW040962: **7892 RPM** (5243 ticks @ 0x028E96) = isti kao 1630 130hp NA
+> - 7700 RPM vrijedi samo za stariji 10SW025752 (2018 model)
 
-### Key difference from 1630 series:
-- Different injection map format: GTI uses direct raw values @ 0x022066 (not Q15)
-- 8 additional ignition maps @ 0x028310 (stride 144B) — GTI-specific
-- SC bypass maps present but inactive (NA motor)
+### Rev limiter po SW verziji
+
+| SW ID | Hard cut ticks | Hard cut RPM | Soft cut RPM |
+|-------|---------------|-------------|-------------|
+| 10SW025752 (2018) | 5374 | 7700 RPM | 7517 RPM |
+| 10SW040008 (2019) | 5243 | **7892 RPM** | 7700 RPM |
+| 10SW040962 (2020) | 5243 | **7892 RPM** | 7700 RPM |
+
+### Key differences from 1630 series
+
+- **Injection format**: GTI uses direct raw values @ 0x022066 (not Q15 rk) — 1503 vrijednosti niže od 1630 pri visokom loadu (~5–8% manji injekt na row 12–15)
+- **8 additional ignition maps** @ 0x028310 (stride 144B) — prisutne i aktivne u svim 1503 varijantama
+- **SC bypass**: prisutna ali s niskim vrijednostima (30–255, dominantno otvorena = nema boosta)
+- **Lambda**: 1503 ima širi raspon (λ 0.961–1.042) vs 1630 NA (λ 0.984–1.026); 1503 bogatiji pri niskom load
+- **Torque limit**: 1503 = 100–110% (MSB 128–141), 1630 NA = 100–117% (MSB 128–150) — 1503 ima niži gornji limit
+- **Lambda overtemp**: 1503 ima aktivnu zaštitu λ 0.157–1.161 (agresivno bogaćenje); 1630 NA = flat 1.004 (neutralna)
+- **SC boost factor @ 0x025DF8**: 1503 = flat 23130 (+41.2% Q14) — anomalija, viši od 300hp SC (+22.4%)!
+
+### 2019 vs 2020 (10SW040008 vs 10SW040962) razlike
+
+CODE razlika: 536 bajta, 25 blokova — **sve poznate mape su IDENTIČNE!**
+Razlike su u:
+- Embedded cal @ 0x012C7C (132B) — motor-specifična kalibracija
+- Kalibracija ID @ 0x02CD74 (build tag 'PI0' → 'PG0')
+- Nova 8×8 tablica @ 0x029C58 (64B): u 2019 = sve nule, u 2020 = aktivne vrijednosti 9–64 raw (6.75–48° timing raspon)
+- Manji parametarski popravci na 5 lokacija
 
 ---
 

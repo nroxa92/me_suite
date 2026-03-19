@@ -1,6 +1,133 @@
 # ME17Suite — Work Log
 
 
+## 2026-03-19 22:00 — 4tec1503 kompletna binarna analiza
+
+### Sto je napravljeno
+
+Sveobuhvatna analiza 5 dumpova za Rotax 1503 (4tec1503) varijante (130/155/230hp 2019, 130hp 2020) u usporedbi s 1630 referencama.
+
+**Fajlovi promijenjeni:** `core/map_finder.py`, `_docs/MAPS_REFERENCE.md`, `_docs/ENGINE_SPECS.md`, `_docs/SW_VERSIONS.md`
+
+### Kljucni rezultati
+
+**DEO 1: 130hp vs 155hp vs 230hp (10SW040008, 2019)**
+- POTVRDJENO: Sva tri dumpa su byte-for-byte identicna (0 razlika ukupno, 0 u BOOT, 0 u CODE, 0 u CAL)
+- Razlika u snazi = iskljucivo mehanicka
+
+**DEO 2: 4tec1503 vs 1630 NA razlike u mapama**
+- CODE razlika 1503 vs 1630: 17389B u 660 blokova
+- Identicno: RPM os, rev limiter, Q15 injection (0x02436C), Idle RPM
+- Razlicito: GTI injection (191/192), Lambda main (409/432), Torque (211/256), sve ignition mape, SC boost factor (40/40)
+- 1503 torque limit: 100-110% vs 1630 130hp: 100-117%
+- 1503 lambda: 0.961-1.042 vs 1630: 0.984-1.026
+
+**DEO 3: GTI injection i ignition extra u 1503**
+- GTI injection @ 0x022066: AKTIVNO u 1503 (3193-14432 raw), razlicito od 1630 (301/384B)
+- GTI ignition 8 extra mapa @ 0x028310: SVE aktivne u 1503 (40-67 raw = 30-50.25deg), ali razlicite od 1630
+
+**DEO 4: Rev limiter 1503**
+- 10SW040008 (2019): 5243 ticks @ 0x028E96 = 7892 RPM
+- 10SW040962 (2020): 5243 ticks @ 0x028E96 = 7892 RPM
+- KOREKCIJA: Prethodna napomena "7700 RPM za GTI 155" odnosi se SAMO na 10SW025752 (2018)!
+- Novije verzije 2019/2020 = 7892 RPM = isti kao 1630 130hp NA
+
+**DEO 5: 1503_230 SC/NA analiza**
+- SC bypass: iste niske vrijednosti kao 1503_130 (NA obrazac, 0 razlike)
+- Sve kljucne mape 1503_130 == 1503_230 (IDENTICNO)
+- **ANOMALIJA: SC boost factor @ 0x025DF8 = flat 23130 (+41.2% Q14)** — visi od 300hp SC (+22.4%)!
+
+**DEO 6: 2019 vs 2020 4tec1503**
+- CODE razlika: 536B, 25 blokova
+- Sve poznate mape identicne! Razlika samo u parametrima i build tagu
+- Nova 8x8 tablica @ 0x029C58 u 2020 (64B, 9-64 raw = 6.75-48deg timing raspon) — u 2019 sve nule
+
+---
+
+## 2026-03-19 20:15 — Identifikacija nedefiniranih osi i mapa (8 ciljeva)
+
+### Što je napravljeno
+
+Sveobuhvatna binarna analiza 7 dumpova za 8 ciljnih mapa. Čitane binarne vrijednosti i uspoređeni svi dumpovi.
+
+**Fajlovi promijenjeni:** `core/map_finder.py`, `_docs/MAPS_REFERENCE.md`
+
+### Rezultati po točkama
+
+**1. SC Boost Fuel Correction Y-os (0x0221EC) — POTVRĐENA**
+- Y-os = load %; 300hp: [46.9–179.7%], 130hp: [7.8–109.4%] — VARIJANTA-SPECIFIČNO
+- 130hp: mapa sve 0% (neutralna, NA motor bez SC) — potvrđeno
+- X-os = RPM raw/8; 300hp: [1250–4250 RPM], 130hp: malo drugačiji raspored
+
+**2. Thermal Enrichment X-os (0x02AA02) — IDENTIFICIRANA, IDENTIČNA**
+- X-os = [6400,8000,9600,11200,12800,14400,16000] = load [100–250%] (raw/64)
+- IDENTIČNO za sve 4 varijante (300hp=130hp=230hp=GTI90)
+- Mapa podataka: 300hp = 130hp (IDENTIČNA!) — toplinska zaštita je ista bez obzira na SC
+
+**3. Lambda Protection X-os (0x02469C) — ANALIZIRANA**
+- X-os nije standardni vektor — mapa je dijagonalna (lambda × lambda pragovi)
+- Nema vektora osi ispred mape (sve nule @ 0x024682)
+- 300hp = 130hp IDENTIČNO u ORI — nije SW-specifično, samo STG2 saturira na 65535
+
+**4. Injector Deadtime (0x025900) — DIMENZIJE POTVRĐENE**
+- 14×7 = 98 u16; kraj = 0x0259C4 = EFF_CORR X-os (BINARNO POTVRĐENO)
+- Skala: ×0.5µs/raw (R0[0]=2594→1297µs realan deadtime)
+- X-os (napon) nije embeddana kao binarni vektor — interio u ECU CODE logici
+- 300hp vs 130hp: praktički identični (isti injektori)
+
+**5. Ignition Correction osi (0x022374) — IDENTIFICIRANE**
+- Y-os (@ 0x022364): raw × 40 = RPM; 300hp=[3000–8000], 130hp=[2520–8000]
+- X-os (@ 0x02236C): raw/2.55 = load%; 300hp max=255=100%, 130hp max=127=100% (normirano)
+- VARIJANTA-SPECIFIČNO — osi se razlikuju između 300hp i 130hp
+- STG2 cap: sve >180 → 180 (zaštita)
+
+**6. Lambda Adapt (0x0268A0) — confidence 85→90%**
+- 300hp 2021: λ0.966–1.039 (112 unique), 230hp: λ1.009–1.059 (9u), 130hp: λ0.999–1.025 (8u), GTI90: λ0.984–1.014 (5u)
+- 300hp 2020 vs 2021: 105/216 razlika (drugačiji SW, ne isti dump!)
+- STG2 vs ORI: 105/216 razlika
+
+**7. Decel RPM Ramp (0x028C30) — confidence 75→80%**
+- 300hp col[2]=10670t=3878 RPM (const), col[0]=4791–5877 RPM po load
+- 130hp col[0]=10731–11129 RPM (drastično viši!), col[2]=8649 RPM
+- GTI90: col[0]=9255 RPM (vlastiti raspon)
+- Spark 900: nema validnih vrijednosti — nije aplicabilno na Spark platformu
+
+**8. KFWIRKBA 2D sub (0x0259D2) — analiziran**
+- STG2 = ORI (0/70 razlika) — ova tablica nije tuningom promijenjiva
+- 300hp vs 130hp: 41/70 razlika, vs GTI90: 39/70 — varijanta-specifično
+- col[0] embedded Y-os nije linearan ([0.40,1.10,1.00,...]) — nije klasična os
+- Confidence ostaje 65% (struktura jasna, namjena bez A2L pretpostavljena)
+
+
+## 2026-03-19 14:30 — UI reskin: "Clean Professional" dark theme prema mockupu
+
+### Što je napravljeno
+
+Implementiran novi vizualni stil za cijeli UI prema `_docs/me17suite_style2_mockup.html`.
+
+**Fajl promijenjen:** `ui/main_window.py`
+
+**Paletne promjene:**
+- Pozadina: `#1e1e1e` → `#111113` (dublja crna)
+- Surface: `#252526` → `#1C1C1F`, `#2d2d2d` → `#141418`
+- Border: `#333333` → `#2A2A32`, `#555555` → `#3A3A48`
+- Accent: `#0e639c` / `#9cdcfe` → `#4FC3F7` (teal/plava iz mockupa)
+- Tekst: `#cccccc` → `#C8C8D0`, sekundarni `#969696` → `#808090`
+- Success: `#4ec9b0` → `#4CAF50`, Warn: `#e5c07b` → `#FFB74D`, Error: `#f48771` → `#EF5350`
+- Status bar / Menubar: `#007acc` / `#323233` → `#1c2b4a` (tamno plava iz mockupa)
+
+**Font:** Dodan IBM Plex Sans/Mono kao primarni font (s Segoe UI fallback)
+
+**Layoutna poboljšanja:**
+- Header labeli: font-size 11px → 10px, letter-spacing 1.5px
+- Search polja: visina 32px → 30px
+- Tab bar: padding tighten, border-radius dodan
+- Scroll barovi: širina 10px → 8px, boja #555 → #2A2A32
+- Progress bar: visina 6px → 4px
+
+**Testirano:** `python -c "from ui.main_window import MainWindow"` + headless QApplication init — OK, bez grešaka.
+
+
 ## 2026-03-19 02:00 — Binarni scan: 3 nove/ispravljene mape dodane u map_finder.py
 
 ### Što je napravljeno
@@ -2650,3 +2777,21 @@ Ručni pregled svih _docs/*.md fajlova i CLAUDE.md — pronađene i ispravljene 
 - _docs/CANBUS_NOTES.md
 - CLAUDE.md
 - memory/MEMORY.md
+
+## 2026-03-19 00:30 — eeprom.py poboljšan, eeprom_parser.py uklonjen
+
+### Što je napravljeno
+- Mergirani svi ODO nalazi iz `core/eeprom_parser.py` u `core/eeprom.py`
+- Dodane adrese za "stari layout" (0x4562 za 064, 0x0490 za stari 064)
+- Popravljen wrapping layout logic: 0x1562 se koristi SAMO kao mirror potvrda za 0x0D62, ne samostalno
+- 063 ODO: max(0x0562, 0x4562) — stari layout sada podrzan i za 063
+- Brisanjem `eeprom_parser.py` — logika mergana, nema duplikata
+- Brisanjem `_docs/DOC_AGENT_LOG.md` — ephemeral agent log
+
+### Fajlovi
+- `core/eeprom.py` — konstante i ODO logika poboljšane
+- `core/eeprom_parser.py` — obrisan
+- `_docs/DOC_AGENT_LOG.md` — obrisan
+
+### Testovi
+- test_core.py: sve 3 EEPROM provjere prolaze (064/063/062)

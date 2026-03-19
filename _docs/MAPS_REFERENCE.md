@@ -1,8 +1,8 @@
 # Maps Reference — Bosch ME17.8.5 / Rotax ECU
 
-> *Revidirano: 2026-03-18*
+> *Revidirano: 2026-03-19*
 
-**Last updated:** 2026-03-18
+**Last updated:** 2026-03-19
 **Source:** `core/map_finder.py` (complete), binary analysis
 **Coverage:** All confirmed maps in CODE region 0x010000–0x05FFFF
 
@@ -12,14 +12,21 @@
 
 | Variant | SW ID | Maps found |
 |---------|-------|-----------|
-| 300hp SC | 10SW066726 | 53 |
-| 230hp SC | 10SW053727 | 53 |
-| 130/170hp NA | 10SW053729 | 62 |
-| GTI SE 90 | 10SW053774 | 60 |
-| Spark 90 (2019+) | 10SW039116 | 27 |
+| 300hp SC | 10SW066726 | **53** |
+| 300hp SC STG2 | 10SW040039 | **53** |
+| 230hp SC | 10SW053727 | **52** |
+| 130/170hp NA | 10SW053729 | **61** |
+| GTI SE 90 | 10SW053774 | **59** |
+| Spark 90 (2019+) | 10SW039116 | **52** (27 ign A/B/B2/C + 4λ + 3 inj + 14 aux) |
 | GTI SE 155 | 10SW025752 | 9 GTI-specific + shared |
+| GTI/GTS 130/155/230hp 1503 2019 | 10SW040008 | GTI layout (injection+8 ign mapa) |
+| GTI/GTS 130hp 1503 2020 | 10SW040962 | GTI layout (injection+8 ign mapa) |
+
+> **Napomena:** Brojevi su rezultat stvarnog testa `python test/test_core.py` — 2026-03-19.
 
 > **2026-03-18**: +2 nove mape (Lambda adapt 0x0268A0, Decel RPM ramp 0x028C30); knock params ispravljen 24→52 u16.
+> **2026-03-19 (a)**: SC boost fuel Y-os potvrđena load%; Thermal enrichment X-os potvrđena load%; Lambda Prot. X-os=lambda skala (dijagonalna mapa, bez standardne osi); Deadtime dimenzije finalne (14×7, skala 0.5µs/raw); Ign Corr. osi identificirane (Y=RPM raw×40, X=load% raw/2.55); Lambda Adapt confidence 85→90%; Decel RPM Ramp confidence 75→80%, Spark negativno potvrđen; KFWIRKBA 2D sub: STG2=ORI (0/70), varijanta-specifično.
+> **2026-03-19 (b)**: 4tec1503 kompletna analiza — 130/155/230hp 2019 identični binariji (0 razlika, potvrđeno "isti SW za sve snage"); 2020 vs 2019: 536B CODE razlika (25 blokova, bez promjene u mapama); rev limiter 7892 RPM @ 0x028E96 (isti kao 1630 130hp NA); SC boost factor = +41.2% (flat 23130, anomalija u 1503); GTI injection @ 0x022066 aktivno i razlikuje se od 1630; 8 extra ignition mapa @ 0x028310 prisutne i aktivne.
 
 ---
 
@@ -122,7 +129,7 @@
 
 | Address | Name | Format | Scale | Notes |
 |---------|------|--------|-------|-------|
-| **0x022374** | Ignition correction / efficiency | 8×8 u8 | raw | Y-axis @ 0x022364: [75,100,150,163,175,181,188,200]; X-axis: [53,80,107,120,147,187,227,255]; ORI: 145–200; STG2 caps all >180 |
+| **0x022374** | Ignition correction / efficiency | 8×8 u8 | raw | **Y-axis (RPM) @ 0x022364**: raw×40=RPM; 300hp=[3000–8000], 130hp=[2520–8000]; **X-axis (load%) @ 0x02236C**: raw/2.55=%; 300hp=[20.8–100%], 130hp max=127=100% (normirano). VARIJANTA-SPECIFIČNO — osi se razlikuju! ORI: 145–200; STG2 caps >180→180. Confidence 70%. |
 
 ---
 
@@ -137,7 +144,7 @@
 | **0x025CDC** | Start injection (cranking) | u16 LE | 1×6 | raw | +0x1A → 0x025CF6 | 6-pt RPM axis embedded: [0,1024,1707,3413,5120,7680] rpm |
 | **0x025CF6** | Start injection — mirror | u16 LE | 1×6 | raw | | Mirror (+0x1A from main) |
 | **0x028059** | Accel enrichment (transient) | u16 LE Q14 | 5×5 | ×100/16384-100% | none | dTPS axis [°/s] embedded per-row; ORI: 76–160%, STG2: 48–264% |
-| **0x02220E** | SC boost fuel correction | u16 LE Q14 | 9×7 | ×100/16384-100% | none | X-axis (RPM) @ 0x022200, Y-axis (load) @ 0x0221EC; 130/170hp = all 0% (NA, no SC) |
+| **0x02220E** | SC boost fuel correction | u16 LE Q14 | 9×7 | ×100/16384-100% | none | **X-axis (RPM) @ 0x022200**: [1250,1875,2250,2500,3000,4000,4250] RPM (raw/8); **Y-axis (load%) @ 0x0221EC**: raw/64=%; 300hp=[46.9–179.7%], 130hp=[7.8–109.4%] — osi VARIJANTA-SPECIFIČNE! 130/170hp = all 0% (NA, no SC boost). |
 | **0x025E50** | CTS warm-up correction | u16 LE Q14 | 1×156 | ×100/16384-100% | none | 300hp: flat +20.8%; 230hp: −18.4%; 130/170hp: ~0% |
 | **0x025DF8** | SC base fuel factor | u16 LE Q14 | 1×40 | ÷16384-1 | none | 300hp SC: flat +22.4% (raw=20046); 130hp NA: 0; lambda axis (8pt) @ 0x025DE8 |
 
@@ -169,12 +176,12 @@
 | **0x0266F0** | Lambda — target AFR (open-loop) | u16 LE Q15 | 12×18 | ÷32768 = λ | +0x518 → 0x026C08 | ORI: 0.965–1.073 λ; STG2: 0.984–1.080 λ |
 | **0x026C08** | Lambda — mirror | u16 LE Q15 | 12×18 | ÷32768 = λ | | Mirror (+0x518) |
 | **0x0265D6** | Lambda bias (global AFR trim) | u16 LE Q15 | 1×141 | ×100/32768-100% | none | 300hp: +0.47% lean; 230hp: +2.41%; 130/170hp: −0.07% |
-| **0x0268A0** | Lambda adaptation base (STF base) | u16 LE Q15 | 12×18 | ÷32768 = λ | none | **NEW 2026-03-18.** +0x1B0 from lambda main. Per-HP calibration: 300hp λ 0.963–1.047, 230hp λ 0.869–1.081, 130hp λ 0.886–1.047. STG2 changes 105/216 values. Confidence 85%. A2L name unconfirmed (KFLAMBAS?). |
+| **0x0268A0** | Lambda adaptation base (STF base) | u16 LE Q15 | 12×18 | ÷32768 = λ | none | +0x1B0 from lambda main. Per-HP: **300hp λ0.966–1.039** (112 unique), **230hp λ1.009–1.059** (9u), **130hp λ0.999–1.025** (8u), **GTI90 λ0.984–1.014** (5u). STG2 changes 105/216. 2020 vs 2021 300hp: 105/216 razlika (drugačiji SW). Confidence **90%**. A2L nepoznat (KFLAMBAS?). |
 | **0x026DB8** | Lambda trim (RPM×load) | u16 LE Q15 | 12×18 | ×100/32768-100% | none | Per-variant calibration; 300hp: 0.965–1.001 |
-| **0x02469C** | Lambda protection (max injection) | u16 LE Q15 | 12×13 | ÷32768 = λ | none | ORI: diagonal 0.04–1.80; STG2: all 65535 (max freedom) |
+| **0x02469C** | Lambda protection (max injection) | u16 LE Q15 | 12×13 | ÷32768 = λ | none | ORI: diagonal 0.04–1.80; STG2: all 65535 (max freedom). **X-os: nije pronađena kao standardni vektor** — mapa je dijagonalna (R×C lambda pragovi), obje dimenzije kodiraju lambda vrijednosti direktno. 300hp=130hp IDENTIČNO u ORI. Y-os = load 12-pt @ 0x02AFAC. |
 | **0x025ADA** | Lambda overtemp protection (sub-A) | u16 LE Q15 | 1×63 | ÷32768 | none | 300hp SC: all 0xFFFF (bypass); 130hp NA: 0.855–0.926 |
 | **0x025B58** | Lambda neutral correction (sub-B) | u16 LE Q14 | 1×63 | ÷16384 | none | 300hp SC: flat 16448 = Q14 1.004 (+0.4%, neutral bypass); 130hp NA: active 0.855–0.933 |
-| **0x0259D2** | Lambda efficiency sub-table (KFWIRKBA 2D sub) | u16 LE Q15 | 10×7 | ÷32768 | none | col[0] = embedded Y-axis (lambda Q15); X-axis @ 0x0259C4: λ 0.40–1.34; KFWIRKBA sub-table for short lambda range (cranking/warm-up/overrun); STG2=ORI; confidence ~65% |
+| **0x0259D2** | Lambda efficiency sub-table (KFWIRKBA 2D sub) | u16 LE Q15 | 10×7 | ÷32768 | none | col[0] = embedded Y-axis (lambda Q15, NELINEARNO: [0.40,1.10,1.00,1.15,...]); X-axis @ 0x0259C4: λ 0.40–1.34. **STG2=ORI (0/70 razlika)**. 300hp vs 130hp: 41/70 razlika, vs GTI90: 39/70 razlika — varijanta-specifično. Confidence ~65%. |
 | **0x02AE5E** | Lambda efficiency (KFWIRKBA) 41×18 | u16 LE Q15 | 41×18 | ÷32768 | none | X-axis: λ 0.66–1.80 (18 pts, embedded in row 0); Y-axis @ 0x02AE40: [3840..15360] SC / [3840..12800] GTI90; 300hp SC: bypass (rows=X-os); GTI90: active 0.51–0.71; STG2: lean side 0xFFFF |
 
 ### Spark 900 ACE
@@ -262,7 +269,7 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 | **0x02586A** | Cold start enrichment | u16 LE | 1×6 | ORI: [500,1000,1690,1126,1096,1024]; STG2: [100,1000,1690,1126,1075,1024] |
 | **0x025896** | CTS temperature axis | u16 LE | 1×10 | [37,51,64,77,91,104,117,131,144,157] °C |
 | **0x0258AA** | NTC ADC lookup | u16 LE | 1×10 | [5383..1425] hardware calibration — DO NOT MODIFY |
-| **0x02AA42** | Thermal enrichment (high CTS) | u16 LE | 8×7 | /64 = %; Y-axis (CTS) @ 0x02AA32: [80..150]°C; X-axis (load) @ 0x02AA02: [6400..16000]; ORI: 168–210%; STG2: 105–208% |
+| **0x02AA42** | Thermal enrichment (high CTS) | u16 LE | 8×7 | /64 = %; **Y-axis (CTS) @ 0x02AA32**: [80,90,100,110,120,130,140,150]°C; **X-axis (load) @ 0x02AA02**: [6400,8000,9600,11200,12800,14400,16000] — IDENTIČNO za sve varijante (300hp=130hp=230hp=GTI90). ORI: 168–210%; STG2: 105–208%. Mapa je IDENTIČNA za 300hp i 130hp — toplinska zaštita je ista bez obzira na SC! |
 
 ---
 
@@ -272,9 +279,9 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 |---------|------|--------|------|-------|
 | **0x02B600** | Idle RPM target | u16 LE | 5×12 | Direct RPM; 1840–3340 rpm; identical across all SC/NA variants; 5 conditions × 12 temp/time steps |
 | **0x02202E** | DFCO RPM thresholds | u16 LE | 1×7 | 130/170hp: [853–2560]; 300hp: [1067–3413 rpm] |
-| **0x028C30** | Decel/DFCO RPM ramp table | u16 LE | 16×11 (stride 22B) | **NEW 2026-03-18.** 16 entries × 22B = 352B (0x028C30–0x028D8F). Each entry: 3× RPM period-ticks + 8× load-axis values. RPM = 40MHz×60/(ticks×58). 300hp: col[0]=8636–7041t (4791–5877 RPM), col[1]=9653–8554t (4287–4837 RPM), col[2]=10670t=3878 RPM (const). STG2 increases all → higher RPM limits. Per-HP variant. Confidence 75%. |
+| **0x028C30** | Decel/DFCO RPM ramp table | u16 LE | 16×11 (stride 22B) | 16 entries × 22B = 352B. Entry: 3× RPM ticks + 8× load values. **300hp**: col[2]=10670t=3878 RPM (const), col[0]=4791–5877 RPM; **130hp**: col[0]=10731–11129 RPM (drastično viši!), col[2]=8649 RPM; **GTI90**: col[0]=9255 RPM; **Spark 900**: nema validnih vrijednosti — nije aplicabilno. STG2 snižava RPM limite. Confidence **80%** (Spark negativno potvrđen). |
 | **0x0256F8** | Knock threshold parameters | u16 LE | 1×**52** | **CORRECTED 2026-03-18: was 1×24, actual 1×52 (104B, 0x0256F8–0x02575F).** ORI: [0-1]=44237, rest=7967; STG2: [0-1]=65535, selective cells=39578 or 8090. 230hp: all remain 7967. Repeating groups of 7967/39578/8090. |
-| **0x025900** | Injector deadtime (TVKL) | u16 LE | 14×7 | Hardware constant — DO NOT MODIFY; identical across all SW variants; X-axis = battery voltage |
+| **0x025900** | Injector deadtime (TVKL) | u16 LE | 14×7 | Hardware constant — DO NOT MODIFY. **Skala: ×0.5µs/raw** (R0[0]=2594→1297µs). Kraj @ 0x0259C4 (=EFF_CORR X-os, POTVRĐENO). X-os (napon baterije) nije embeddana — interio u ECU CODE. 300hp vs 130hp: praktički identični (isti HW injektori). |
 
 ---
 
@@ -309,24 +316,161 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 
 ## 12. Variant Availability Matrix
 
-| Map | 300hp SC | 230hp SC | 130/170hp NA | GTI90 NA | Spark 900 |
-|-----|----------|----------|-------------|----------|-----------|
-| Ignition 19× (0x02B730) | ✅ | ✅ | ✅ | ✅ | ❌ (diff. addr) |
-| Injection main (0x02436C) | ✅ | ✅ | ✅ | ✅ | ❌ (diff. addr) |
-| GTI injection (0x022066) | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Lambda main (0x0266F0) | ✅ | ✅ | ✅ | ✅ | ❌ (diff. addr) |
-| Torque (0x02A0D8) | ✅ | ✅ | ✅ | ✅ flat | ❌ |
-| SC bypass (0x020534/A8/9993) | ✅ active | ✅ active | ❌ present/inactive | ❌ present/inactive | ❌ |
-| SC boost factor (0x025DF8) | ✅ +22.4% | ✅ | ✅ 0 (NA) | ✅ −18.4% | ❌ |
-| Thermal enrichment (0x02AA42) | ✅ | ✅ | ✅ (diff. values) | ✅ | ❌ |
-| KFWIRKBA (0x02AE5E) | ✅ bypass | ✅ bypass | ✅ bypass | ✅ **ACTIVE** | ❌ |
-| Lambda main flat (GTI90) | — | — | — | ✅ flat 0.984 | — |
-| Lambda mirror active (GTI90) | — | — | — | ✅ active 0.90–1.02 | — |
-| Rev limiter (0x028E96) | ✅ | ✅ | ✅ | ❌ diff. addr | ❌ diff. addr |
+| Map | 300hp SC | 230hp SC | 130/170hp NA | GTI90 NA | 1503 GTI | Spark 900 |
+|-----|----------|----------|-------------|----------|----------|-----------|
+| Ignition 19× (0x02B730) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (diff. addr) |
+| GTI IGN 8× (0x028310) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Injection main (0x02436C) | ✅ | ✅ | ✅ | ✅ | ✅ (same as GTI90) | ❌ (diff. addr) |
+| GTI injection (0x022066) | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Lambda main (0x0266F0) | ✅ | ✅ | ✅ | ✅ | ✅ (diff. values) | ❌ (diff. addr) |
+| Torque (0x02A0D8) | ✅ | ✅ | ✅ | ✅ flat | ✅ (100–110%) | ❌ |
+| SC bypass (0x020534/A8/9993) | ✅ active | ✅ active | ✅ present/low | ✅ present/low | ✅ present/low | ❌ |
+| SC boost factor (0x025DF8) | ✅ +22.4% | ✅ | ✅ variable | ✅ −18.4% | ✅ **+41.2%** (flat 23130) | ❌ |
+| Thermal enrichment (0x02AA42) | ✅ | ✅ | ✅ (diff. values) | ✅ | ✅ | ❌ |
+| KFWIRKBA (0x02AE5E) | ✅ bypass | ✅ bypass | ✅ bypass | ✅ **ACTIVE** | ✅ bypass | ❌ |
+| Lambda main flat (GTI90) | — | — | — | ✅ flat 0.984 | — | — |
+| Lambda mirror active (GTI90) | — | — | — | ✅ active 0.90–1.02 | — | — |
+| Rev limiter (0x028E96) | ✅ 8158 RPM | ✅ 8158 RPM | ✅ 7892 RPM | ❌ diff. addr | ✅ **7892 RPM** | ❌ diff. addr |
 
 ---
 
-## 13. Spark 900 ACE — STG2 vs ORI diff summary
+## 13. Rotax 1503 (4tec1503) — Kompletna analiza 2026-03-19
+
+### 130hp vs 155hp vs 230hp (svi 10SW040008, 2019)
+
+**POTVRĐENO: 130.bin == 155.bin == 230.bin — identični binariji, 0 razlika!**
+
+- Sve tri datoteke su byte-for-byte identične (ukupno i u BOOT, CODE i CAL regijama)
+- Razlika u snazi je isključivo mehanička (različit impeler ili opterećenje pogona)
+- Isto ponašanje kao 1630 130hp vs 170hp (isti SW 10SW053729)
+
+### 1503 vs 1630 NA — razlike u mapama
+
+| Mapa | Adresa | 1503 vs 1630 | Napomena |
+|------|--------|--------------|---------|
+| RPM osa | 0x024F46 | IDENTIČNO | Isti globalni RPM niz |
+| Rev limiter | 0x028E96 | IDENTIČNO | Obje = 5243 ticks = 7892 RPM |
+| GTI injection | 0x022066 | RAZLIČITO (301/384B) | 1503 nešto niže vrijednosti pri visokom load |
+| Q15 injection | 0x02436C | IDENTIČNO | Zajednička sekundarna tablica |
+| Lambda main | 0x0266F0 | RAZLIČITO (409/432B) | 1503: λ 0.961–1.042, 1630: λ 0.984–1.026 (1503 lean/bogatije pri niskom load) |
+| Torque | 0x02A0D8 | RAZLIČITO (211/512B) | 1503: 100–110% (MSB 128–141), 1630: 100–117% (MSB 128–150) |
+| Ignition #00 | 0x02B730 | RAZLIČITO (100/144B) | Specifično za motor |
+| GTI IGN #00–#07 | 0x028310+ | RAZLIČITO (136–143/144B) | Sve 8 mapa različite, ali isti raspon (40–67 raw) |
+| Idle RPM | 0x02B600 | IDENTIČNO | Iste idle postavke |
+| SC bypass shadow | 0x020534 | RAZLIČITO (4/49B) | Neznatna razlika |
+| SC bypass active | 0x0205A8 | RAZLIČITO (15/49B) | Različite kalibracije, ali oba NA (niske vrijednosti) |
+| SC boost factor | 0x025DF8 | RAZLIČITO (40/40) | **1503: flat 23130 (+41.2%) vs 1630 NA: varijabilno** |
+| Lambda overtemp | 0x025ADA | RAZLIČITO (60/63B) | 1503: 0.157–1.161, 1630: flat 1.004 — 1503 ima puno aktivniju zaštitu |
+| Knock thresholds | 0x0256F8 | RAZLIČITO (4/104B) | Neznatna razlika |
+| Embedded cal | 0x012C7C | RAZLIČITO (132/132B) | Motor-specifična kalibracija |
+
+### Rev limiter za sve 1503 varijante
+
+| Varijanta | Adresa | Ticks | RPM | Status |
+|-----------|--------|-------|-----|--------|
+| 10SW040008 (130/155/230hp 2019) | 0x028E96 | 5243 | **7892 RPM** | POTVRĐENO |
+| 10SW040962 (130hp 2020) | 0x028E96 | 5243 | **7892 RPM** | POTVRĐENO |
+
+> **Napomena:** Rev limiter 7892 RPM je ISTI kao na 1630 130hp/170hp NA (10SW053729).
+> Prethodna napomena u dokumentaciji "7700 RPM za GTI 155" odnosila se na stariju verziju 10SW025752 (2018).
+> Novije verzije 10SW040008/10SW040962 (2019/2020) koriste 7892 RPM = isti limit kao 1630 NA.
+
+### 2019 (10SW040008) vs 2020 (10SW040962) razlike
+
+| Region | Adresa | Veličina | Napomena |
+|--------|--------|---------|---------|
+| Embedded cal | 0x012C7C | 132B | Motor-specifična kalibracija |
+| Kalibracija ID | 0x02CD74 | 2B | Build ID razlika ('PI0' → 'PG0') |
+| Mapa @ 0x029C58 | 0x029C58 | 64B | **NOVA u 2020**: aktivna 8×8 u8 tablica (7–48°, timing raspon) — u 2019 = sve nule |
+| Parametri | 0x029492 | 20B | Konfiguracija promjena |
+| Razno | ostalo | ~300B | Mali parametarski popravci |
+
+- **KLJUČNI NALAZ**: Sve poznate mape (injection, lambda, torque, ignition, rev limiter) su IDENTIČNE između 2019 i 2020 verzije. Razlika je samo u kalibracijskim parametrima i jednoj novoj 8×8 tablici @ 0x029C58.
+
+### SC bypass — NA vs SC analiza
+
+1503 (sve varijante): SC bypass mapa **prisutna ali s niskim vrijednostima** (30–255 raw)
+- Vrijednosti 30–36 pri punoj gazu = SC skoro potpuno otvoren = nema boost
+- Isto ponašanje kao 1630 130hp NA — obje varijante NA imaju isti obrazac
+- 1630 300hp SC: vrijednosti 38–131 = SC djelomično zatvoren = aktivni boost
+
+### SC boost factor anomalija (@0x025DF8)
+
+| Varijanta | Vrijednost | Q14 faktor | Napomena |
+|-----------|-----------|-----------|---------|
+| 300hp SC | 20046 (flat) | +22.4% | SC enrichment |
+| 1630 130hp NA | 16191–20303 | +0.99–1.24 | Varijabilno |
+| **1503 sve varijante** | **23130 (flat)** | **+41.2%** | **Anomalija — neočekivano visoko** |
+| GTI90 NA | 13364 (flat) | −18.4% | Negativna korekcija |
+
+> **UPOZORENJE**: 1503 SC boost factor (+41.2%) je viši od 300hp SC (+22.4%) unatoč tome što je NA motor. Fizikalni razlog nepoznat bez A2L dekompostiranja. Moguće da ECU koristi ovu tablicu drugačije na 1503 platformi ili da je bug u kalibraciji.
+
+---
+
+## 14. Spark 900 ACE — Kompletna mapa lista
+
+### Ignition mape (27 ukupno — 4 serije)
+
+Spark 900 ACE ima 4 serije ignition mapa, sve s bazom 0.75°/bit (osim serije C).
+
+#### Serija A — osnovna timing mapa (8 mapa @ 0x026A76, stride 0x90)
+
+| Index | Adresa | Naziv | Format | Raspon | Notes |
+|-------|--------|-------|--------|--------|-------|
+| A#00 | 0x026A76 | base_low_load | 12×12 u8 | 9°–42.75° | STG2 mijenja |
+| A#01 | 0x026B06 | base_mid_load | 12×12 u8 | 9°–42.75° | |
+| A#02 | 0x026B96 | base_high_load | 12×12 u8 | 9°–42.75° | |
+| A#03 | 0x026C26 | boost_low | 12×12 u8 | 9°–42.75° | |
+| A#04 | 0x026CB6 | boost_mid | 12×12 u8 | 9°–42.75° | |
+| A#05 | 0x026D46 | idle | 12×12 u8 | 9°–42.75° | |
+| A#06 | 0x026DD6 | (aux) | 12×12 u8 | 9°–42.75° | Prethodno propuštena |
+| A#07 | 0x026E66 | (aux) | 12×12 u8 | 9°–42.75° | Prethodno propuštena |
+
+Mirror kopija: +0x140 od base svake mape.
+
+#### Serija B — uski raspon, knock/decel (8 mapa @ 0x0295C0, stride 0x90)
+
+| Index | Adresa | Format | Raspon | Notes |
+|-------|--------|--------|--------|-------|
+| B#00–B#04 | 0x0295C0–0x029930 | 12×12 u8 | 20.25–27° | STG2 mijenja (+2–7°) |
+| B#05–B#07 | 0x029940–0x0299C0 | 12×12 u8 | flat 20.25° | Sigurna rezervna mapa, STG2 ne mijenja |
+
+#### Serija B2 — warm-up/adaptation (8 mapa @ 0x029B60, stride 0x90)
+
+| Index | Adresa | Format | Raspon | Notes |
+|-------|--------|--------|--------|-------|
+| B2#00–B2#07 | 0x029B60–0x029F40 | 12×12 u8 | 20.25–27° | Svi modificirani STG2 (+2–7°) |
+
+#### Serija C — u16 format (3 mape @ 0x02803A, stride 0x90)
+
+| Index | Adresa | Format | Raspon | Notes |
+|-------|--------|--------|--------|-------|
+| C#00 | 0x02803A | 9×8 u16 LE | 110–125 raw × 0.25° = 27.5–31.25° | MSB uvijek 0, STG2 mijenja +0.5–1.0° |
+| C#01 | 0x0280CA | 9×8 u16 LE | 27.5–31.25° | |
+| C#02 | 0x02815A | 9×8 u16 LE | 27.5–31.25° | |
+
+### Spark aux mape (14 ukupno)
+
+| Adresa | Naziv | Format | Dims | Notes |
+|--------|-------|--------|------|-------|
+| **0x028E34** | Rev limiter | u16 LE | 1×1 | 5120 ticks = 8081 RPM (identično 2018/2021/STG2) |
+| **0x027E3A** | Torque limit | u16 BE Q8 | 16×16 | Mirror +0x518; ×100/128 = % |
+| **0x024EC4** | Lambda trim | u16 LE Q15 | 30×20 | STG2 izravnava na λ1.004 |
+| **0x024468** | Overtemp lambda | u16 LE Q15 | 1×63 | Termalna zaštita (Q15) |
+| **0x0222C0** | Lambda protection | u16 LE Q15 | 12×18 | Dijagonalna struktura, mirror +0x518 |
+| **0x025BAA** | Thermal enrichment | u16 LE /64 | 8×7 | STG2 mijenja ~112B |
+| **0x0237AC** | Neutral correction | u16 LE Q14 | 1×80 | Flat = 16384 (neutral, nema korekcije) |
+| **0x021748** | DFCO RPM thresholds | u16 LE | 1×7 | Identično GTI90 @ 0x02202E |
+| **0x0241F8** | Cold start enrichment | u16 LE | 1×6 | Identično GTI90 @ 0x02586A |
+| **0x0287A4** | Injector deadtime | u16 LE | 8×8 | Period-encoded; 9632–13440 ticks |
+| **0x02408C** | Knock thresholds | u16 LE | 1×24 | Identično GTI90 |
+| **0x024676** | Start injection | u16 LE | 1×6 | Spark-specific |
+| **0x024786** | Warm-up enrichment | u16 LE Q14 | 1×156 | STG2 povećava ~1.83× |
+| **0x0224A0** | Idle RPM target | u16 LE | 5×12 | Identično GTI90 (isti idle) |
+
+---
+
+## 15. Spark 900 ACE — STG2 vs ORI diff summary
 
 Spark ORI 2019 == Spark ORI 2021: **0 razlika** (identični binariji, isti SW 10SW039116).
 

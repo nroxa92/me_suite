@@ -4,6 +4,24 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-19 22:00 — 4tec1503 kompletna binarna analiza]**
+👤 Kompletni map inventar za Rotax 1503 (4tec1503) — usporedba 130/155/230hp 2019 i 2020, GTI injection/ignition extra provjera, rev limiter potvrda, SC bypass i SC boost factor analiza.
+🤖 DEO 1: 130/155/230hp 2019 su byte-for-byte identicni (0 razlika). DEO 2: 1503 vs 1630 = 17389B CODE razlika u 660 blokova; kljucne mape razlicite (injection, lambda, torque, ignition), ali RPM os i rev limiter identicni. DEO 3: GTI injection i 8 extra ignition mapa aktivne u 1503. DEO 4: Rev limiter = 7892 RPM (5243 ticks) za 2019/2020 (KOREKCIJA: 7700 RPM vrijedi samo za 10SW025752/2018). DEO 5: SC bypass NA (iste vrijednosti kao 1630 NA); anomalija SC boost factor +41.2% (flat 23130). DEO 6: 2019 vs 2020 = 536B razlika, mape identicne. Azurirani map_finder.py, MAPS_REFERENCE.md, ENGINE_SPECS.md, SW_VERSIONS.md.
+
+---
+---
+**[2026-03-19 20:15 — Identifikacija nedefiniranih osi i mapa (8 ciljeva)]**
+👤 Identificiraj nedefinirana polja i osi koristeći sve dostupne dumpove — SC boost fuel Y-os, Thermal enrichment X-os, Lambda Protection X-os, Deadtime dimenzije, Ign Correction osi, Lambda Adapt confidence, Decel RPM Ramp potvrda, KFWIRKBA 2D sub analiza.
+🤖 Identificirane/potvrđene sve 8 točaka: SC boost Y-os=load% varijanta-specifično; Thermal X-os=[6400–16000] identično svim varijantama; Lambda Prot=dijagonalna (nema standardne X-osi); Deadtime=14×7×0.5µs/raw; Ign Corr Y=RPM×40/X=load%/2.55 (varijanta-specifično); Lambda Adapt confidence→90%; Decel RPM ramp confidence→80% (Spark negativno potvrđen); KFWIRKBA STG2=ORI. Ažurirani map_finder.py i MAPS_REFERENCE.md.
+
+---
+---
+**[2026-03-19 14:30 — UI reskin prema Clean Professional mockupu]**
+👤 Implementiraj UI poboljšanja prema `_docs/me17suite_style2_mockup.html` — CSS/QSS stilovi, boje, fontovi, razmaci. Ne mijenjaj funkcionalnu logiku ni DTC stablo.
+🤖 Implementiran novi dark theme: pozadina #111113, accent #4FC3F7, font IBM Plex Sans/Mono. Ažurirani globalni STYLESHEET + svi inline setStyleSheet pozivi u svim panelima. Program se pokreće bez grešaka.
+
+---
+---
 **[2026-03-19 02:00 — Sveobuhvatni binarni scan za neidentificirane mape u 300hp]**
 👤 Pronađi sve neidentificirane mape u 300hp binary — NPRo diff analiza, pattern scan, analiza regija 0x02B380, 0x024700, 0x012C80, 0x022096, 0x025DF8. Dodaj u map_finder.py, ažuriraj MAPS_REFERENCE.md, work_log, chat_log.
 🤖 Pronađene i implementirane 3 nove/ispravljene mape: Lambda adapt @ 0x0268A0 (12×18 Q15, 85% conf), Decel RPM ramp @ 0x028C30 (16×22B, 75% conf), Knock params ispravak 24→52 u16 (0x0256F8–0x02575F). Total mapa: 51→53.

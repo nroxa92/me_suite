@@ -44,9 +44,11 @@
 
 | SW ID | Description | Vehicles | Notes |
 |-------|-------------|----------|-------|
-| **10SW025752** | GTI SE 155 2018 | GTI SE 155 | Primary 1503 reference. Hard cut 7700 RPM |
-| **10SW040008** | GTI/GTS 130/155hp 1503 NA 2019 | GTI SE 130/155, GTS 130 | Same SW for both 130 and 155hp variants |
-| **10SW040962** | GTI/GTS 130hp 1503 NA 2020 | GTI SE 130 2020 | 1503 NA |
+| **10SW025752** | GTI SE 155 2018 | GTI SE 155 | Primary 1503 reference. Hard cut **7700 RPM** (5374 ticks) |
+| **10SW040008** | GTI/GTS 130/155/230hp 1503 NA 2019 | GTI SE 130/155, GTS 130/230 | **IDENTIČNI BINARIJI za 130, 155 i 230hp (0 razlika!)** Hard cut **7892 RPM** |
+| **10SW040962** | GTI/GTS 130hp 1503 NA 2020 | GTI SE 130 2020 | Hard cut **7892 RPM**. Iste mape kao 10SW040008, 536B razlika u parametrima |
+
+> **2026-03-19**: Potvrđeno binarnim skanom da su 10SW040008 varijante (130/155/230hp) apsolutno identični binariji. Razlika u snazi je isključivo mehanička.
 
 ### Rotax 900 HO ACE (GTI SE 90)
 
