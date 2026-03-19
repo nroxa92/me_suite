@@ -128,7 +128,7 @@ GTI/230/300:    108 110 12C 138 13C 15B 15C 17C 214  +  148 (2×15C)
 
 ## 8. Analysis Methodology
 
-- Binary analysis of 5 ECU files: 10SW039116, 10SW053774, 10SW053727, 10SW066726
+- Binary analysis of 4 ECU files: 10SW039116, 10SW053774, 10SW053727, 10SW066726
 - CAN ID table found in CODE region (Big-Endian u16 array, null-terminator)
 - Cross-referenced Spark vs non-Spark binaries
 - **Note:** TX/RX direction is not explicitly encoded in the table — assumption that these are ECU→SAT messages based on 300hp+Spark SAT working without ECU adaptation

@@ -1,5 +1,173 @@
 # ME17Suite — Work Log
 
+
+## 2026-03-19 02:00 — Binarni scan: 3 nove/ispravljene mape dodane u map_finder.py
+
+### Što je napravljeno
+
+Sveobuhvatna NPRo diff analiza: 300hp ORI (10SW040039) vs STG2 — pronađene 3 nove/ispravljene kalibracije.
+
+**Nove mape dodane u core/map_finder.py:**
+
+1. **Lambda adaptacijska baza @ 0x0268A0** (nova, confidence 85%)
+   - 12×18 u16 LE Q15, 432B
+   - Odmah iza lambda main (offset +0x1B0)
+   - Per-HP: 300hp λ0.963–1.047, 230hp λ0.869–1.081, 130hp λ0.886–1.047
+   - STG2 mijenja 105/216 vrijednosti
+   - Scan metoda: `_scan_lambda_adapt()`
+
+2. **Decel/DFCO RPM ramp tablica @ 0x028C30** (nova, confidence 75%)
+   - 16×11 u16 LE, stride 22B/unos, 352B ukupno (0x028C30–0x028D8F)
+   - Struktura: 3 RPM period-ticks + 8 load-os po unosu
+   - 300hp: col[2]=10670t≈3878 RPM (konstanta), col[0-1] silazni DFCO pragovi
+   - STG2 podiže sve RPM limite
+   - Scan metoda: `_scan_decel_rpm_cut()`
+
+3. **Knock params ispravak: 24 → 52 u16** (korekcija, 0x0256F8–0x02575F)
+   - Prvobitna dokumentacija: 1×24; stvarno: 1×52 (104B)
+   - Regije 0x025738 i 0x02574E su nastavak istog bloka
+   - Header (44237/65535) + repetirajuće grupe 7967/39578/8090
+   - 230hp: sve ostaju 7967 (STG2 ne mijenja 230hp)
+
+**Fajlovi promijenjeni:**
+- `core/map_finder.py` — 3 nova/ispravljena MapDef + 2 nove scan metode
+- `_docs/MAPS_REFERENCE.md` — Lambda adapt + Decel RPM cut + Knock ispravak
+- `work_log.md`, `chat_log.md`
+
+**Verifikacija:** `find_all()` na 300hp binary → 53 mapa pronađeno (ranije 51).
+
+## 2026-03-18 23:30 — Identifikacija ignition aux mapa #10-#18
+
+### Sto je napravljeno
+
+**ZADATAK: Binarni dump analysis za neidentificirane ignition mape**
+
+Analizirani dump fajlovi: 300hp 2021 ORI, NPRo STG2 2020, 230hp 2021 ORI, 130hp 2021 ORI.
+
+**Kljucni nalazi:**
+
+1. **Mape #10, #12, #14 -- "Aux A" grupa:**
+   - Apsolutne timing mape, raspon 25.5-30deg BTDC
+   - Sve 144 celije aktivne, zigzag row pattern
+   - NPRo STG2 dodaje +2.25 do +6.75deg
+   - 300hp i 130hp imaju slicne prosjeke -- nije SC-specificno
+
+2. **Mape #11, #13 -- "Aux B" grupa s dip retkom:**
+   - Apsolutne timing mape, raspon 24-33.75deg BTDC
+   - #11: "dip" redak na R07 (vrijednosti 32-33 = 24.0-24.75deg, ispod baseline)
+   - #13: "dip" redak na R09 (isti efekt)
+   - NPRo STG2 dodaje +2.25 do +9.0deg (najveci advance od svih)
+   - POTVRDJENO: Map #18.R00-R02 == Map #11.R04-R06 (exact byte match)
+
+3. **Mapa #15 -- SC/boost-specificna:**
+   - 300hp SC: prosjek 29.8deg; 130hp NA: prosjek 26.5deg s flat redovima
+   - Razlika ukazuje na SC/boost-uvjetovanu aktivaciju
+
+4. **Mapa #18 -- Conditional/Fallback:**
+   - Samo 40/144 celija aktivno (R00-R03); R00-R02 == #11.R04-R06
+   - 130hp: konstantnih 25.5deg (sigurnosni minimum)
+   - STG2 modificira aktivne redove, nule ostaju nulama
+
+**Fajlovi promijenjeni:**
+- `core/map_finder.py` -- _IGN_NAMES[] i _make_ign_def() (nova logika is_aux_a/b/sc)
+- `_docs/MAPS_REFERENCE.md` -- sekcija 2 Ignition Maps, tablicni opisi #10-#18
+
+**Ogranicenja:** Tocni uvjeti aktivacije (cold start, hot restart, decel...) nepoznati bez A2L.
+
+---
+
+# 2026-03-18 23:30 — KFWIRKBA parser, Spark/GTI completeness check
+
+### Što je napravljeno
+
+**ZADATAK 1: KFWIRKBA (0x02AE5E) — binarna analiza i TODO uklonjen**
+- Y-os potvrdjena: `[3840..15360]` za SC, `[3840..12800]` za GTI90 NA
+- Ključni nalaz: 300hp SC = BYPASS kalibracija (redovi 0-8 = lambda X-os vrijednosti ponavlja se)
+- GTI90 NA = AKTIVNA kalibracija: faktori 0.51-0.71 (pravi lambda efficiency)
+- 130hp NA = bypass ali s drugačijim lambda X-os rasponom ([19988-43254] = 0.61-1.32λ)
+- Red 9: separator `[4617, 64736, 65136, ...]` zajednički za sve varijante
+- `core/map_finder.py`: KFWIRKBA opis i komentar ažurirani, TODO uklonjen
+
+**ZADATAK 2: 0x0259D2 (eff_corr) — fizikalni smisao potvrđen**
+- Identifikacija: KFWIRKBA sub-tablica za kratki lambda raspon (0.40-1.34)
+- X-os = `[0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34]` λ Q15
+- col[0] = embedded Y-os (lambda referentne točke)
+- Namjena: specijalni uvjeti (cranking/warm-up/overrun), confidence ~65%
+- TODO uklonjen, opis ažuriran na "KFWIRKBA 2D sub"
+
+**ZADATAK 3: Spark 900 ACE completeness**
+- Spark 2019 == Spark 2021: **0 razlika** (identični binariji, isti SW)
+- STG2 vs ORI: 6428B, 959 diff regija
+  - Lambda trim 0x024EC4: STG2 izravnava lean bias → neutral (1.004)
+  - Lambda copies 0x025F5C/607E: STG2 mijenja AFR cilj
+  - Warm-up 0x024786: STG2 povećava ~1.83× (13364→24415)
+  - Lambda os 0x024775: STG2 proširuje raspon
+- Sve 27 Spark mapa već su u map_finder.py (nema propuštenih)
+
+**ZADATAK 4: GTI90 completeness**
+- Lambda main @ 0x0266F0: flat 0.984 (5 jedinstvenih vrijednosti) — NEUTRALNA
+- Lambda mirror @ 0x026C08: AKTIVNA kalibracija (127 jedinstvenih, 0.90-1.02)
+  - GTI90 koristi mirror kao primarnu lambda mapu!
+- KFWIRKBA @ 0x02AE5E: GTI90 = aktivni faktori 0.51-0.71 (NA motor koristi efficiency)
+- Torque @ 0x02A0D8: GTI90 = aktivna kalibracija (88-99%, drugačija od 300hp)
+- Ignition @ 0x02B730: GTI90 = niži timing (20.25° vs 24-30° 300hp)
+- GTI injection @ 0x022066: aktivna (3224-18727), razlikuje se od GTI155
+- GTI90 vs 300hp: 24428B razlika, 2801 diff regija
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — KFWIRKBA i eff_corr opisi + TODO uklonjeni
+- `_docs/MAPS_REFERENCE.md` — nova sekcija 13 (Spark STG2 diff), GTI90 lambda nalaz, KFWIRKBA matrica
+- `_docs/TUNING_NOTES.md` — confidence procjene ažurirane
+
+---
+
+## 2026-03-18 22:15 — Kompletni EEPROM audit: 062/063/064, parser popravak, misprog detekcija
+
+### Što je napravljeno
+
+**ZADATAK 1: Kompletni audit 35 EEPROM dumpova**
+- Skenirani svi dumpovi u: mat/062 (6), mat/063 (8), mat/064 (18), ECU/alen (2+1 donor), BACKUP/kruno (1)
+- 35 dumpova ukupno, svi validni (0 grešaka parsiranja)
+
+**ZADATAK 2: Detekcija misprogramiranih**
+- `062 1-4` u mat/062 folderu: ima MPEM 1037525858 = 063 HW (pogrešno svrstano u 062 folder)
+- `064 0` u mat/064 folderu: hw_parser=063 (063 HW koji je pogrešno svrstano u 064 folder)
+- `064 85-31 ex063`: potvrđen 063→064 reprogramirani MPEM — ODO=5131 min (isti kao 063 85-31), timer='60620' (factory default), MPEM part=1037550003 (064). Fizički isti ECU, MPEM chip zamijenjen ili reprogramiran.
+
+**ZADATAK 3: Kopiranje ECU/ u _materijali/**
+- SHA256 provjera: sve 062/063/064 fajlove identični između ECU/ i _materijali/
+- Kopiranje nije potrebno.
+
+**Kritični popravci eeprom_parser.py:**
+- Otkriven novi/stari EEPROM layout: MPEM string samo u headeru @ 0x0032 (ne @ 0x05B0)
+  - Standardni layout: anchor @ 0x0550, ODO @ 0x0562
+  - Stari layout A: anchor @ 0x4550, ODO @ 0x4562 (+0x4000 pomak)
+    - Potvrđeno: 063 0-55, 063 77-16, 063 121-55, 063 167, 064 13
+  - Stari layout B: anchor @ 0x047E, ODO @ 0x0490
+    - Potvrđeno: 064 58 (3503 min), 064 211.bin (12667 min)
+  - 0x1562 je mirror od 0x0D62 SAMO u wrapping layoutu (ne koristiti samostalno!)
+- Parser refaktoriran: prioritetni redosljed (0x0562 → 0x4562 → 0x0D62+mirror → 0x0490 → 0x0DE2)
+- Verifikacijski test: 20/20 OK
+
+**Fajlovi promijenjeni:**
+- `core/eeprom_parser.py` — `_find_odo_063_064()` metoda potpuno revidirana
+
+### Ključni rezultati
+
+| HW   | Dumpova | ODO min         | ODO max          |
+|------|---------|-----------------|------------------|
+| 062  | 5       | 86h24m (5184)   | 848h33m (50913)  |
+| 063  | 10      | 0h55m (55)      | 585h41m (35141)  |
+| 064  | 20      | 0h59m (59)      | 211h07m (12667)  |
+
+HW timer zanimljivi slučajevi:
+- '60620' = factory default (uočeno u: 062 228-52, 064 135 GTI 18, 064 99-50, 064 85-31 ex063)
+- 'BRP10' = BRP dealerski programmer (064 9-5, 064 58)
+- '09424' = najstariji HW timer u kolekciji (063 585-42 = najstariji ECU, 585h41m)
+- 'b'\x00\x00\x00\x00\x00'' = erased timer (064 0, koji je zapravo 063 HW)
+
+---
+
 ## 2026-03-18 18:30 — Istraživanje: 0x024700 blok, Spark 2016 mape, 1503 vs SC, folder audit
 
 ### Što je napravljeno
@@ -2440,3 +2608,45 @@ Direktni Python scan svih 9 firmware fajlova (ori_300, stg2, 130/230/260hp, dono
 - _docs/SW_VERSIONS.md, EEPROM_GUIDE.md, CANBUS_NOTES.md, TUNING_NOTES.md
 - _docs/ECU_BINARY_FORMAT.md, DTC_REFERENCE.md, MAPS_REFERENCE.md, ENGINE_SPECS.md
 - _docs/USER_MANUAL.html
+
+## 2026-03-18 23:30 — Kompletna revizija dokumentacije: greške i nedosljednosti
+
+### Što je napravljeno
+Ručni pregled svih _docs/*.md fajlova i CLAUDE.md — pronađene i ispravljene sve greške.
+
+### Greške ispravljene
+
+**SW_VERSIONS.md:**
+- Phantom row `dumps/2019/1630ace/170.bin` (fajl ne postoji) → zamijenjen s `2019/1630ace/300.bin`
+- Brisanje napomene o "misplaced 2020 model in 2019 folder" (neispravna)
+- HW 061 red u HW Classification tabeli → obrisan (korisnik: zanemariti 060/061)
+- 10SW011328 bio naveden kao "Unsupported" — pogrešno, SW je podržan (25 mapa, u KNOWN_SW i _SPARK_10SW_IDS)
+
+**MAPS_REFERENCE.md:**
+- Spark mapa count "20 (13 base + 7 aux)" → **27** (Spark map agent dodao 6+ mapa)
+- Spark deadtime tablica: adresa 0x02428E → **0x0287A4** (8×8=64 u16 LE) — zbunjujuća nota uklanjena
+
+**EEPROM_GUIDE.md:**
+- Napomena o HW 061 u sekciji 9 → obrisana
+
+**CANBUS_NOTES.md:**
+- "Binary analysis of 5 ECU files" ali listao 4 SW ID-a → ispravljeno na 4
+
+**CLAUDE.md (projektne instrukcije):**
+- Injection adresa: 0x02439C → **0x02436C** (ispravak iz map_finder.py: "ISPRAVLJENO: bio 0x02439C")
+- Mirror: 0x02451C → **0x0244EC** (+0x180)
+- Dimenzije: 12×32 → **16×12** (potvrđeno map_finder.py line 2276)
+- Ignition count: 16× → **19×** (IGN_COUNT = 19 u map_finder.py)
+
+**MEMORY.md:**
+- HW 061 ODO adrese obrisane (061 zanemariti)
+- KFWIRKBA: 0x02AE9E → **0x02AE5E** (potvrđeno: LAMBDA_EFF_ADDR u map_finder.py)
+- Stale "Aktivni agenti" sekcija obrisana (ephemeral info)
+
+### Fajlovi
+- _docs/SW_VERSIONS.md
+- _docs/MAPS_REFERENCE.md
+- _docs/EEPROM_GUIDE.md
+- _docs/CANBUS_NOTES.md
+- CLAUDE.md
+- memory/MEMORY.md

@@ -206,5 +206,4 @@ print(info.mpem_model_guess()) # "300hp (RXP-X / GTX 300 / RXT-X 300)"
 - EEPROM is read/written separately from the main ECU flash dump
 - The dealer name field (0x0102) can be up to 16 ASCII characters
 - Service SW ID (0x0040) is always `1037500313` across all known samples — hardcoded by BUDS2
-- **HW 061** ECU folder postoji (viđen u ECU dump kolekciji), ali MPEM prefix za HW 061 još nije identificiran — `eeprom.py` parser vraća `hw_type=""` za taj tip
 - **RXT-X 260 "nepoznati epprom"**: 2MB container dump, aktivan sadržaj 128KB @ offset 0x020000. SW=1037524060, Bosch part `7A1124OA0RDS1`. Nije standard 32KB format — EepromParser nije kompatibilan.

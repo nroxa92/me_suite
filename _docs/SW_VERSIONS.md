@@ -81,12 +81,10 @@
 | `dumps/2020/1630ace/130.bin` | 10SW053729 | 130hp ORI 2020 |
 | `dumps/2020/900ace/gti90.bin` | 10SW053774 | GTI SE 90 ORI 2020 |
 | `dumps/2020/900ace/spark90.bin` | 10SW039116 | Spark 90 ORI 2020 (identical to 2021) |
+| `dumps/2019/1630ace/300.bin` | 10SW040039 | 300hp ORI 2019 |
 | `dumps/2019/900ace/spark90.bin` | 10SW039116 | Spark 90 ORI 2019 (identical to 2020/2021) |
-| `dumps/2019/1630ace/170.bin` | 10SW053729 | **2020 model in 2019 folder** (misplaced) |
 | `dumps/2018/900ace/spark90.bin` | 10SW011328 | Spark 90 2018 ORI (different layout from 2019+) |
 | `dumps/2018/900ace/spark_stg2` | 1037544876 | NPRo Spark STG2 |
-
-> **Note:** `dumps/2019/170.bin` is actually a **2020 model** — incorrectly placed in 2019 folder.
 
 ---
 
@@ -127,7 +125,6 @@
 | **064** | 10375500xxx | 300hp SC, 230hp SC (Rotax 1630 SC) |
 | **063** | 10375258xx | Spark 90/115hp, GTI SE 155 (1.5L NA) |
 | **062** | 10375091xx / 10375092xx | GTI 130/155 older (2015–16), RXT-X 260 |
-| **061** | (neidentificiran prefiks) | Prisutan u ECU folder-u — još neidentificiran u parseru |
 
 > **Napomena:** HW 063 = i Spark i GTI SE 155 koriste ISTI MPEM prefiks, ali imaju RAZLIČITU DTC arhitekturu (Spark = single-storage, GTI155 = main+mirror).
 
@@ -143,9 +140,10 @@ HW type affects:
 | SW / MPEM | Engine | Reason |
 |-----------|--------|--------|
 | 1037524060 (rxtx_260) | Rotax 1503/1504 SC 260hp | Pre-2016, different CODE layout, DTC single-storage |
-| 10SW011328 (Spark 2016/2018) | Rotax 900 ACE | Different CODE layout from 2019+ — different map addresses |
 | 1037504475 | Unknown (2013?) | Not analyzed |
 | Rotax 1504 SC 260hp | 1.5L SC | Pre-2016, completely different binary structure |
+
+> **Napomena o 10SW011328 (Spark 2016/2018):** Ovaj SW JE podržan u map_finder.py i prisutan u KNOWN_SW. Ima drugačiji CODE layout od 10SW039116 (2019+) — 622,954B razlika — ali adrese mapa su mapirane za oba layout-a.
 
 ---
 

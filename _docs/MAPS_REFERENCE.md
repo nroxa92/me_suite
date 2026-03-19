@@ -12,12 +12,14 @@
 
 | Variant | SW ID | Maps found |
 |---------|-------|-----------|
-| 300hp SC | 10SW066726 | 51 |
-| 230hp SC | 10SW053727 | 51 |
-| 130/170hp NA | 10SW053729 | 60 |
-| GTI SE 90 | 10SW053774 | 58 |
-| Spark 90 (2019+) | 10SW039116 | 20 (13 base + 7 aux) |
+| 300hp SC | 10SW066726 | 53 |
+| 230hp SC | 10SW053727 | 53 |
+| 130/170hp NA | 10SW053729 | 62 |
+| GTI SE 90 | 10SW053774 | 60 |
+| Spark 90 (2019+) | 10SW039116 | 27 |
 | GTI SE 155 | 10SW025752 | 9 GTI-specific + shared |
+
+> **2026-03-18**: +2 nove mape (Lambda adapt 0x0268A0, Decel RPM ramp 0x028C30); knock params ispravljen 24→52 u16.
 
 ---
 
@@ -78,15 +80,15 @@
 | #07 | 0x02BB20 | Ignition — Base 8 | 12×12 u8 | ×0.75°/bit | |
 | **#08** | **0x02BBB0** | **Knock correction 1** | 12×12 u8 | ×0.75° | CONFIRMED: negative delta/retard trim |
 | **#09** | **0x02BC40** | **Knock correction 2** | 12×12 u8 | ×0.75° | CONFIRMED: knock delta/trim map |
-| #10 | 0x02BCD0 | Auxiliary 1 | 12×12 u8 | ×0.75°/bit | unidentified |
-| #11 | 0x02BD60 | Auxiliary 2 | 12×12 u8 | ×0.75°/bit | unidentified |
-| #12 | 0x02BDF0 | Auxiliary 3 | 12×12 u8 | ×0.75°/bit | unidentified |
-| #13 | 0x02BE80 | Auxiliary 4 | 12×12 u8 | ×0.75°/bit | unidentified |
-| #14 | 0x02BF10 | Auxiliary 5 | 12×12 u8 | ×0.75°/bit | unidentified |
-| #15 | 0x02BFA0 | Auxiliary 6 | 12×12 u8 | ×0.75°/bit | unidentified |
+| **#10** | **0x02BCD0** | **Aux A1 — Operating Cond. timing** | 12×12 u8 | ×0.75°/bit | ANALYSED 2026-03-18: absolute timing 25.5–30°, all 144 cells active, NPRo +2.25–+6.75° |
+| **#11** | **0x02BD60** | **Aux B1 — Knock/decel dip (R07)** | 12×12 u8 | ×0.75°/bit | ANALYSED: absolute 24–33.75°; R07 dips to 24° (retard zone); R04-R06 == #18.R00-R02; NPRo +2.25–+9.0° |
+| **#12** | **0x02BDF0** | **Aux A2 — Operating Cond. timing** | 12×12 u8 | ×0.75°/bit | ANALYSED: absolute 25.5–30°, all active, NPRo +2.25–+6.75° |
+| **#13** | **0x02BE80** | **Aux B2 — Knock/decel dip (R09)** | 12×12 u8 | ×0.75°/bit | ANALYSED: absolute 24–33.75°; R09 dips to 24° (retard zone); NPRo +2.25–+9.0° |
+| **#14** | **0x02BF10** | **Aux A3 — Operating Cond. timing** | 12×12 u8 | ×0.75°/bit | ANALYSED: absolute 25.5–30°, all active, NPRo +2.25–+6.75° |
+| **#15** | **0x02BFA0** | **Aux B3/SC — SC/boost-specific timing** | 12×12 u8 | ×0.75°/bit | ANALYSED: 300hp avg 29.8°; 130hp NA avg only 26.5° (flat rows) → SC-conditional; NPRo +2.25–+9.0° |
 | **#16** | **0x02C030** | **Extended 1** | 12×12 u8 | ×0.75°/bit | CONFIRMED: NPRo STG2 modifies |
 | **#17** | **0x02C0C0** | **Extended 2** | 12×12 u8 | ×0.75°/bit | CONFIRMED: NPRo STG2 modifies |
-| #18 | 0x02C150 | Conditional | 12×12 u8 | ×0.75°/bit | first 3 rows active, rest zero |
+| **#18** | **0x02C150** | **Conditional/Fallback (partial)** | 12×12 u8 | ×0.75°/bit | ANALYSED: only 40 active cells (R00–R02); R00-R02 == #11.R04-R06; 130hp = constant 25.5° (safe min) |
 
 **Layout:** Base address 0x02B730, stride 144B (12×12×1 byte), 19 maps total.
 
@@ -98,6 +100,23 @@
 - Represent retard delta applied when knock is detected
 - Negative/small values = less timing retard allowed
 - ORI: 0–40 raw, STG2: caps at 40
+
+**Auxiliary maps #10–#15 (analysed 2026-03-18):**
+- All are ABSOLUTE timing maps (same range/format as base maps #00–#07)
+- Two structural groups:
+  - **Group A** (#10, #12, #14): narrow range 25.5–30° BTDC; all 144 cells active; NPRo adds +2.25–+6.75°
+  - **Group B** (#11, #13, #15): wider range 24–33.75° BTDC; NPRo adds up to +9.0°
+- #11 and #13 have "dip rows" (timing drops to 24.0–24.75°) — knock/decel retard zone
+- #15 is SC/boost-specific: 130hp NA has drastically lower advance (26.5° avg) with flat rows
+- NPRo STG2 modifies ALL 6 maps (consistent with advancing all timing tables)
+- Exact operating condition names unknown without A2L/decompilation
+
+**Conditional/fallback map #18:**
+- Partial map: only R00–R03 contain data (40/144 active cells), R04–R11 = zero
+- R00–R02 are IDENTICAL to #11.R04–R06 (exact byte match)
+- 130hp NA version = constant 34 raw (25.5°) across all active rows — safe minimum
+- 300hp version: 31.5–33.75° active range (higher than 130hp)
+- STG2 modifies R00–R03 (+2.25–+9.0°), zero rows unchanged
 
 ### Ignition Correction (2D u8)
 
@@ -141,6 +160,7 @@
 ## 4. Lambda / AFR Maps
 
 > NOTE: Rotax ACE 1630 and 900 HO have NO physical lambda sensor. These maps are open-loop AFR targets.
+> NOTE GTI90: Lambda main @ 0x0266F0 = flat 0.984 (only 5 unique values, effectively neutral). Lambda mirror @ 0x026C08 = ACTIVE calibration (0.90–1.02, 127 unique values). GTI90 uses mirror as primary lambda map.
 
 ### Rotax 1630 (all SC/NA variants)
 
@@ -149,12 +169,13 @@
 | **0x0266F0** | Lambda — target AFR (open-loop) | u16 LE Q15 | 12×18 | ÷32768 = λ | +0x518 → 0x026C08 | ORI: 0.965–1.073 λ; STG2: 0.984–1.080 λ |
 | **0x026C08** | Lambda — mirror | u16 LE Q15 | 12×18 | ÷32768 = λ | | Mirror (+0x518) |
 | **0x0265D6** | Lambda bias (global AFR trim) | u16 LE Q15 | 1×141 | ×100/32768-100% | none | 300hp: +0.47% lean; 230hp: +2.41%; 130/170hp: −0.07% |
+| **0x0268A0** | Lambda adaptation base (STF base) | u16 LE Q15 | 12×18 | ÷32768 = λ | none | **NEW 2026-03-18.** +0x1B0 from lambda main. Per-HP calibration: 300hp λ 0.963–1.047, 230hp λ 0.869–1.081, 130hp λ 0.886–1.047. STG2 changes 105/216 values. Confidence 85%. A2L name unconfirmed (KFLAMBAS?). |
 | **0x026DB8** | Lambda trim (RPM×load) | u16 LE Q15 | 12×18 | ×100/32768-100% | none | Per-variant calibration; 300hp: 0.965–1.001 |
 | **0x02469C** | Lambda protection (max injection) | u16 LE Q15 | 12×13 | ÷32768 = λ | none | ORI: diagonal 0.04–1.80; STG2: all 65535 (max freedom) |
 | **0x025ADA** | Lambda overtemp protection (sub-A) | u16 LE Q15 | 1×63 | ÷32768 | none | 300hp SC: all 0xFFFF (bypass); 130hp NA: 0.855–0.926 |
 | **0x025B58** | Lambda neutral correction (sub-B) | u16 LE Q14 | 1×63 | ÷16384 | none | 300hp SC: flat 16448 = Q14 1.004 (+0.4%, neutral bypass); 130hp NA: active 0.855–0.933 |
-| **0x0259D2** | Lambda efficiency correction (2D) | u16 LE Q15 | 10×7 | ÷32768 | none | col[0] = embedded Y-axis (lambda); X-axis @ 0x0259C4: λ 0.40–1.34; KFWIRKBA sub-table (TODO confirm) |
-| **0x02AE5E** | Lambda efficiency (KFWIRKBA) 41×18 | u16 LE Q15 | 41×18 | ÷32768 | none | X-axis: λ 0.66–1.80 (18 pts); Y-axis (15 load pts) @ 0x02AE40: [3840..15360]; STG2: lean side (λ>1.0) all 0xFFFF |
+| **0x0259D2** | Lambda efficiency sub-table (KFWIRKBA 2D sub) | u16 LE Q15 | 10×7 | ÷32768 | none | col[0] = embedded Y-axis (lambda Q15); X-axis @ 0x0259C4: λ 0.40–1.34; KFWIRKBA sub-table for short lambda range (cranking/warm-up/overrun); STG2=ORI; confidence ~65% |
+| **0x02AE5E** | Lambda efficiency (KFWIRKBA) 41×18 | u16 LE Q15 | 41×18 | ÷32768 | none | X-axis: λ 0.66–1.80 (18 pts, embedded in row 0); Y-axis @ 0x02AE40: [3840..15360] SC / [3840..12800] GTI90; 300hp SC: bypass (rows=X-os); GTI90: active 0.51–0.71; STG2: lean side 0xFFFF |
 
 ### Spark 900 ACE
 
@@ -251,7 +272,8 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 |---------|------|--------|------|-------|
 | **0x02B600** | Idle RPM target | u16 LE | 5×12 | Direct RPM; 1840–3340 rpm; identical across all SC/NA variants; 5 conditions × 12 temp/time steps |
 | **0x02202E** | DFCO RPM thresholds | u16 LE | 1×7 | 130/170hp: [853–2560]; 300hp: [1067–3413 rpm] |
-| **0x0256F8** | Knock threshold parameters | u16 LE | 1×24 | ORI: [0-1]=44237, rest=7967; STG2: [0-1]=65535, selective cells=39578 |
+| **0x028C30** | Decel/DFCO RPM ramp table | u16 LE | 16×11 (stride 22B) | **NEW 2026-03-18.** 16 entries × 22B = 352B (0x028C30–0x028D8F). Each entry: 3× RPM period-ticks + 8× load-axis values. RPM = 40MHz×60/(ticks×58). 300hp: col[0]=8636–7041t (4791–5877 RPM), col[1]=9653–8554t (4287–4837 RPM), col[2]=10670t=3878 RPM (const). STG2 increases all → higher RPM limits. Per-HP variant. Confidence 75%. |
+| **0x0256F8** | Knock threshold parameters | u16 LE | 1×**52** | **CORRECTED 2026-03-18: was 1×24, actual 1×52 (104B, 0x0256F8–0x02575F).** ORI: [0-1]=44237, rest=7967; STG2: [0-1]=65535, selective cells=39578 or 8090. 230hp: all remain 7967. Repeating groups of 7967/39578/8090. |
 | **0x025900** | Injector deadtime (TVKL) | u16 LE | 14×7 | Hardware constant — DO NOT MODIFY; identical across all SW variants; X-axis = battery voltage |
 
 ---
@@ -262,13 +284,11 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 |---------|------|--------|------|-------|
 | 0x021748 | Spark DFCO RPM thresholds | u16 LE | 1×7 | Spark DFCO |
 | 0x0241F8 | Spark cold start enrichment | u16 LE | 1×6 | Same as GTI90 |
-| 0x02428E | Spark deadtime | u16 LE | 14×7 | Same as GTI90 |
+| **0x0287A4** | Spark deadtime | u16 LE | 8×8 = 64 | Period-encoded ticks 9632–13440; potvrđeno binarnim skanom 2026-03-18 |
 | 0x02408C | Spark knock thresholds | u16 LE | 1×24 | Same as GTI90 |
 | 0x024676 | Spark start injection | u16 LE | 1×6 | Spark-specific |
 | 0x024786 | Spark warm-up enrichment | u16 LE Q14 | 1×156 | |
 | 0x0224A0 | Spark idle RPM target | u16 LE | 5×12 | |
-
-> Note: Spark deadtime corrected to 0x0287A4 in later work (8×8=64 u16 LE, period-encoded 9632–13440 ticks)
 
 ---
 
@@ -299,5 +319,24 @@ Only relevant for SC variants (300hp, 230hp). Present but inactive on NA motors.
 | SC bypass (0x020534/A8/9993) | ✅ active | ✅ active | ❌ present/inactive | ❌ present/inactive | ❌ |
 | SC boost factor (0x025DF8) | ✅ +22.4% | ✅ | ✅ 0 (NA) | ✅ −18.4% | ❌ |
 | Thermal enrichment (0x02AA42) | ✅ | ✅ | ✅ (diff. values) | ✅ | ❌ |
-| KFWIRKBA (0x02AE5E) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| KFWIRKBA (0x02AE5E) | ✅ bypass | ✅ bypass | ✅ bypass | ✅ **ACTIVE** | ❌ |
+| Lambda main flat (GTI90) | — | — | — | ✅ flat 0.984 | — |
+| Lambda mirror active (GTI90) | — | — | — | ✅ active 0.90–1.02 | — |
 | Rev limiter (0x028E96) | ✅ | ✅ | ✅ | ❌ diff. addr | ❌ diff. addr |
+
+---
+
+## 13. Spark 900 ACE — STG2 vs ORI diff summary
+
+Spark ORI 2019 == Spark ORI 2021: **0 razlika** (identični binariji, isti SW 10SW039116).
+
+| Region | Adresa | Veličina | Promjena |
+|--------|--------|---------|---------|
+| Lambda trim | 0x024EC4 | 1200B (30×20) | STG2 izravnava na 1.004 (lean bias uklonjen) |
+| Lambda copies 1–2 | 0x025F5C–0x02617F | 2×256B | STG2 mijenja AFR cilj (bogaće pri WOT, lean na idle) |
+| Warm-up enrichment | 0x024786 | 156×2B | STG2 povećava ~1.83× (više goriva pri zagrijavanju) |
+| Lambda os (X-os) | 0x024775 | 16B | STG2 proširuje raspon lambda osi |
+| Ignition timing | 0x027EBA–0x028760 | ~320B | STG2 povećava timing |
+| Thermal enrichment | 0x025BAA | 112B | STG2 mijenja korekciju |
+
+> Spark 2019 i 2021 su **identični** — isti SW, nema razlike u binariju.

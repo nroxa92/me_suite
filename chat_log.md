@@ -4,9 +4,26 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-19 02:00 — Sveobuhvatni binarni scan za neidentificirane mape u 300hp]**
+👤 Pronađi sve neidentificirane mape u 300hp binary — NPRo diff analiza, pattern scan, analiza regija 0x02B380, 0x024700, 0x012C80, 0x022096, 0x025DF8. Dodaj u map_finder.py, ažuriraj MAPS_REFERENCE.md, work_log, chat_log.
+🤖 Pronađene i implementirane 3 nove/ispravljene mape: Lambda adapt @ 0x0268A0 (12×18 Q15, 85% conf), Decel RPM ramp @ 0x028C30 (16×22B, 75% conf), Knock params ispravak 24→52 u16 (0x0256F8–0x02575F). Total mapa: 51→53.
+
+---
+---
+**[2026-03-18 23:30 — KFWIRKBA parser + Spark/GTI completeness check]**
+👤 KFWIRKBA (0x02AE5E) implementirati (ukloniti TODO), 0x0259D2 identificirati, Spark 27 mapa provjera vs STG2, GTI90 completeness + lambda mape status.
+🤖 KFWIRKBA: 300hp SC = bypass (redovi=lambda X-os), GTI90 = aktivan (0.51-0.71 faktori), Y-os razlikuje se po varijanti. Spark 2019=2021 identicni (0B diff). GTI90: lambda main flat 0.984, mirror aktivan (0.90-1.02). TODO uklonjeni, dokumentacija ažurirana.
+
+---
+---
 **[2026-03-18 18:30 — Istraživanje: 0x024700, Spark 2016, 1503 vs SC, folder audit]**
 👤 4 istraživačka zadatka: (1) identificiraj 0x024700 blok (NPRo mijenja ~212B), (2) zašto Spark 2016 ima 25 umjesto 27 mapa, (3) zašto 1503 ima 59 mapa a SC samo 51, (4) provjeri 2018/4tec1503 i 2018/1630ace foldere.
 🤖 (1) 0x024700 je dio lambda zaštitne mape @ 0x02469C (već registrovano); 0x012C80 = kriptografski blok VM_CB.04.80.00 (READ-ONLY). (2) Spark 2016 sad ima 27 mapa — prošireni validacijski pragovi (warmup max 16000→25000, therm min 9000→8500). (3) 1503 extra 9 mapa su legitimne GTI-specifičné (ignition blok 0x028310, direktni injection). (4) 2018/1630ace i 2018/4tec1503 su PRAZNI folderi.
+
+---
+**[2026-03-18 22:15]**
+👤 Kompletni EEPROM audit (062/063/064): pokreni EepromParser na svim dumpovima, detektiraj misprogramirane (063→064 i obrnuto), provjeri kopije ECU/ vs _materijali/, statistika po HW tipu.
+🤖 Audit završen: 35 dumpova, 0 grešaka. Pronađena 2 misprogramirana (062 1-4 = stvarno 063 HW; 064 0 = stvarno 063 HW) i 1 namjerni reprog (064 85-31 ex063 = 063 chip programiran kao 064). Parser popravljen: otkriven stari layout (ODO @ 0x4562 ili 0x0490), 20/20 verifikacijskih testova prolazi.
 
 ---
 ---
@@ -588,5 +605,25 @@ Nastavak: TODO rijesavanje u map_finder.py. Ispravljeni: _scan_eff_corr ROWS 11-
 **[2026-03-18 — Korekcija: HW 060 i HW 061 zanemariti]**
 👤 VAŽNA KOREKCIJA: Korisnik je potvrdio da HW 060 i HW 061 su NEVAŽNI — potpuno ih zanemariti. Ne istraži HW 061, ne dodavaj podršku za 061 u eeprom.py. Fokusiraj se samo na 062/063/064.
 🤖 Potvrđeno. eeprom.py je provjeren — nema HW 061 koda. Nema potrebe za promjenama. Podržani HW tipovi ostaju: 062, 063, 064.
+
+---
+
+---
+**[2026-03-18 23:30]**
+👤 Ja bih zamolio tebe da prođeš kroz dokumentaciju i analiziraš greške.
+🤖 Pregledano 8 doc fajlova + CLAUDE.md + MEMORY.md. Pronađeno i ispravljeno 12 grešaka: phantom dump fajl (2019/170.bin ne postoji), HW 061 reference (zanemariti), 10SW011328 pogrešno "Unsupported", Spark mapa count 20→27, deadtime adresa 0x02428E→0x0287A4, injection adresa u CLAUDE.md 0x02439C→0x02436C (+mirror+dims), ignition count 16→19, KFWIRKBA 0x02AE9E→0x02AE5E, "5 ECU files" → 4.
+
+---
+---
+**[2026-03-18 23:30]**
+User: Identificiraj ignition aux mape #10-#18 (binarni dump analysis, 4 varijante dumpova)
+Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna timing 25.5-30deg; #11/13=Aux B s knock/decel "dip" retkom (24deg); #15=SC/boost-specificna (130hp NA drasticno drugacija); #18=partial fallback (R00-R02==11.R04-06, 130hp=25.5deg konstanta). Azurirani map_finder.py i MAPS_REFERENCE.md.
+
+---
+
+---
+**[2026-03-18 23:55]**
+👤 samo upoi agente neka rade.. ima mnogo nedostajucih i nedefeniniranih mala
+🤖 Pokrenuta 3 agenta: (1) ignition aux #10-#18 — sve 19 mapa identificirane, #15 SC-specifična, #18 fallback identičan #11.R04-R06; (2) komprehensivni CODE scan — 2 nove mape: lambda adapt @0x0268A0 (85%) + decel RPM ramp @0x028C30 (75%), 300hp sad 53 mape; (3) KFWIRKBA + Spark/GTI — TODO uklonjen, GTI90 koristi lambda mirror kao primarnu, Spark 27 mapa potvrđeno kompletno.
 
 ---

@@ -240,8 +240,8 @@ Koliko je svaka kategorija mapa pouzdano identificirana, bazirano na NPRo diff v
 | **SC bypass** | POUZDANA | 3 kopije identificirane, NPRo potvrđuje shadow vs active razliku |
 | **GTI injection (0x022066)** | POUZDANA | GTI-specifična direktna tablica, NEMA mirrora — potvrđeno full CODE scan-om |
 | **Thermal enrichment** | ~85% | 0x02AA42 identificiran NPRo difom, OS adrese potvrđene; fizikalni smisao logičan |
-| **KFWIRKBA (0x02AE5E)** | ~80% | Format identificiran, ali parser markiran TODO — lambda os i dimenzije još se verifikuju |
-| **Eff. corr. (0x0259D2)** | ~60% | Adresa identificirana, dimenzije confirmirane (~10×7), ali fizikalni smisao nije potvrđen |
+| **KFWIRKBA (0x02AE5E)** | ~90% | Binarno potvrdeno 2026-03-18: 300hp=bypass, GTI90=aktivan (0.51-0.71 faktori). Y-os razlikuje se po varijanti. TODO uklonjen. |
+| **Eff. corr. (0x0259D2)** | ~65% | KFWIRKBA sub-tablica za kratki lambda raspon (0.40–1.34). Struktura jasna, namjena pretpostavljena. |
 
 > **KRITIČNO: CAL regija (0x060000+) = NE DIRATI**
 > Izgleda kao kalibracija, ali je TriCore AUTOSAR/ASCET kompajlirani bytekod. 754 pokazivača u CODE regiji upućuju na CAL. Pisanje u CAL = korupcija firmware-a.

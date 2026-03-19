@@ -18,8 +18,8 @@
 ## Memorija Map (sve su u CODE regiji 0x010000-0x05FFFF):
 - RPM ose: 0x024F46, 0x025010, 0x0250DC (u16 BE, 16 tačaka)
 - Rev limiter: 0x022096, 0x0220B6, 0x0220C0, 0x02B72A, 0x02B73E
-- Ignition: 16× mapa od 0x02B730, svakih 144B, 12×12 u8, 0.75°/bit
-- Injection: 0x02439C + mirror 0x02451C (12×32 u16 LE)
+- Ignition: 19× mapa od 0x02B730, svakih 144B, 12×12 u8, 0.75°/bit
+- Injection: 0x02436C + mirror 0x0244EC (+0x180, 16×12 u16 LE Q15)
 - Torque: 0x02A0D8 + mirror 0x02A5F0 (16×16 Q8)
 - Lambda: 0x0266F0 + mirror 0x026C08 (12×18 Q15 LE)
 - CAL regija (0x060000+) je TriCore BYTEKOD, ne kalibracija!

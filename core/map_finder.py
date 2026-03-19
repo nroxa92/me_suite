@@ -12,22 +12,26 @@ Sve potvrdjene mape (CODE regija 0x010000-0x05FFFF):
   Torque    main+mirror  @ 0x02A0D8 / 0x02A5F0 (+0x518)      BE u16, 16×16, Q8
   Lambda    main+mirror  @ 0x0266F0 / 0x026C08 (+0x518)      LE u16, 12×18, Q15
   Lambda bias/trim       @ 0x0265D6                           LE u16, 1×141, Q15
+  Lambda adapt baza      @ 0x0268A0                           LE u16, 12×18, Q15 (85% conf.)
   Lambda trim (korekcija)@ 0x026DB8                           LE u16, 12×18, Q15
   Accel enrichment       @ 0x028059                           LE u16, 5×5, Q14 (kompleksan format)
   Temp fuel correction   @ 0x025E50                           LE u16, 1×156, Q14
   Start injection (1D)   @ 0x025CDC                           LE u16, 1×6 + 6-pt osa
   Ign correction (2D u8) @ 0x022374                           u8,  8×8, ugrađene osi
   Thermal enrichment     @ 0x02AA42                           LE u16, 8×7, /64=%, CTS 80-150°C
-  Eff correction         @ 0x0259D2                           LE u16, 10×7, Q15 (ugradj. Y-os)
+  Eff correction         @ 0x0259D2                           LE u16, 10×7, Q15 (ugradj. Y-os, KFWIRKBA sub)
   Overtemp lambda        @ 0x025ADA                           LE u16, 1×63, Q15, 0xFFFF=SC bypass
   Neutral corr           @ 0x025B58                           LE u16, 1×63, Q14≈1.004
   SC boost factor        @ 0x025DF8                           LE u16, 1×40, Q14=1.224 (+22%)
   Lambda eff (KFWIRKBA)  @ 0x02AE5E                           LE u16, 41×18, Q15 (Y-os @ 0x02AE40)
+    — 300hp SC: bypass (redovi=X-os lambda vrijednosti); GTI90 NA: aktivni faktori 0.51-0.71
 
 Napomene:
   - CAL regija (0x060000+) je TriCore bytekod — ne pisati!
   - Sve mape su iskljucivo u CODE regiji.
-  - Ignition osi (RPM × Load) jos nisu identificirane.
+  - KFWIRKBA: SC bypass kalibracija vs NA aktivna korekcija — ovisno o varijanti.
+  - GTI90 lambda main @ 0x0266F0: flat 0.984 (neutralna); mirror @ 0x026C08: aktivna kalibracija.
+  - Spark 2019 == Spark 2021: 0 razlika (isti SW 10SW039116).
 """
 
 from __future__ import annotations
@@ -205,30 +209,36 @@ IGN_COUNT  = 19
 # Nazivi ignition mapa — 19 mapa svakih 144B (12×12 u8, 0.75°/bit):
 #   00-07  Osnovna timing mapa (razliciti uvjeti: toplina, load, boost...)
 #   08-09  Knock delta/trim — POTVRDJENO: negativni pomaci, manji raspon = retard korekcija
-#   10-15  Pomocna mapa (neidentificirana: moguce cold start, decel, overrun)
+#   10-15  Pomocne timing mape — ANALIZIRANO (2026-03-18):
+#           Apsolutne timing mape (25.5–33.75° raspon, isti kao #00-#07)
+#           Grupa A (#10,#12,#14): uzi raspon 25.5–30°, sve 144 celije aktivne
+#           Grupa B (#11,#13,#15): siri raspon 24–33.75°, #11/#13 imaju "dip" redove (24°)
+#           #15: SC/boost-specificna — 130hp NA ima bitno nizi advance (26.5° vs 29.8°)
+#           NPRo STG2 mijenja SVE (dodan advance +2.25 do +9.0°)
 #   16-17  POTVRDJENO NPRo STG2: aktivne timing mape izvan prvobitnih 16 (0x02C030, 0x02C0C0)
 #   18     Uvjetna/parcijalna mapa — prvih 3 reda aktivni, ostali 0 (STG2 mijenja)
-# VAZNO: uvjeti i redoslijed po cilindru NISU verificirani bez A2L fajla.
+#          R00-R02 identicni #11.R04-R06; 130hp ima konstantnih 25.5° (sigurnosni fallback)
+# VAZNO: tocni uvjeti aktivacije NISU verificirani bez A2L fajla.
 _IGN_NAMES = [
-    "Paljenje — Osnovna 1",          # 00
-    "Paljenje — Osnovna 2",          # 01
-    "Paljenje — Osnovna 3",          # 02
-    "Paljenje — Osnovna 4",          # 03
-    "Paljenje — Osnovna 5",          # 04
-    "Paljenje — Osnovna 6",          # 05
-    "Paljenje — Osnovna 7",          # 06
-    "Paljenje — Osnovna 8",          # 07
-    "Paljenje — Knock korekcija 1",  # 08  POTVRDJENO: knock delta/trim mapa
-    "Paljenje — Knock korekcija 2",  # 09  POTVRDJENO: knock delta/trim mapa
-    "Paljenje — Pomocna 1",          # 10  neidentificirana
-    "Paljenje — Pomocna 2",          # 11  neidentificirana
-    "Paljenje — Pomocna 3",          # 12  neidentificirana
-    "Paljenje — Pomocna 4",          # 13  neidentificirana
-    "Paljenje — Pomocna 5",          # 14  neidentificirana
-    "Paljenje — Pomocna 6",          # 15  neidentificirana
-    "Paljenje — Prosirena 1",        # 16  POTVRDJENO: NPRo STG2 mijenja (0x02C030)
-    "Paljenje — Prosirena 2",        # 17  POTVRDJENO: NPRo STG2 mijenja (0x02C0C0)
-    "Paljenje — Uvjetna",            # 18  parcijalna mapa, prvih 3 reda aktivni
+    "Paljenje — Osnovna 1",                  # 00
+    "Paljenje — Osnovna 2",                  # 01
+    "Paljenje — Osnovna 3",                  # 02
+    "Paljenje — Osnovna 4",                  # 03
+    "Paljenje — Osnovna 5",                  # 04
+    "Paljenje — Osnovna 6",                  # 05
+    "Paljenje — Osnovna 7",                  # 06
+    "Paljenje — Osnovna 8",                  # 07
+    "Paljenje — Knock korekcija 1",          # 08  POTVRDJENO: knock delta/trim mapa
+    "Paljenje — Knock korekcija 2",          # 09  POTVRDJENO: knock delta/trim mapa
+    "Paljenje — Pomocna A1 (uski raspon)",   # 10  apsolutna, 25.5-30°, svi uvjeti aktivni
+    "Paljenje — Pomocna B1 (dip redak R7)",  # 11  apsolutna, 24-33.75°, knock/decel dip @ R07
+    "Paljenje — Pomocna A2 (uski raspon)",   # 12  apsolutna, 25.5-30°, svi uvjeti aktivni
+    "Paljenje — Pomocna B2 (dip redak R9)",  # 13  apsolutna, 24-33.75°, knock/decel dip @ R09
+    "Paljenje — Pomocna A3 (uski raspon)",   # 14  apsolutna, 25.5-30°, svi uvjeti aktivni
+    "Paljenje — Pomocna B3/SC",              # 15  SC/boost-specificna (130hp NA bitno drugacija)
+    "Paljenje — Prosirena 1",                # 16  POTVRDJENO: NPRo STG2 mijenja (0x02C030)
+    "Paljenje — Prosirena 2",                # 17  POTVRDJENO: NPRo STG2 mijenja (0x02C0C0)
+    "Paljenje — Uvjetna/Fallback",           # 18  parcijalna: R00-R02==#11.R04-06, 130hp=25.5°
 ]
 
 def _make_ign_def(idx: int) -> MapDef:
@@ -236,43 +246,62 @@ def _make_ign_def(idx: int) -> MapDef:
     is_knock    = idx in (8, 9)
     is_extended = idx in (16, 17)
     is_partial  = idx == 18
+    is_aux_a    = idx in (10, 12, 14)   # Pomocna grupa A: uski raspon 25.5-30deg
+    is_aux_b    = idx in (11, 13)       # Pomocna grupa B: siri raspon 24-33.75deg, dip redak
+    is_aux_sc   = idx == 15             # Pomocna B3/SC: SC/boost-specificna
     return MapDef(
         name         = _IGN_NAMES[idx],
         description  = (
-            f"Korekcija predpaljenja za knock/detonaciju #{idx-7} — "
+            f"Korekcija predpaljenja za knock/detonaciju #{idx-7} -- "
             "negativne vrijednosti = kasnjenje (retard). "
             "Automatski se oduzima od osnovne mape pri detekciji detonacije."
             if is_knock else
-            f"Kut predpaljenja (timing advance) — prosirena mapa #{idx:02d}. "
+            f"Kut predpaljenja (timing advance) -- prosirena mapa #{idx:02d}. "
             "POTVRDJENO: NPRo STG2 mijenja ovu mapu. "
-            "Osi: RPM (x) × opterecenje/MAP (y)."
+            "Osi: RPM (x) x opterecenje/MAP (y)."
             if is_extended else
-            f"Uvjetna/parcijalna timing mapa #{idx:02d}. "
-            "Prvih 3 reda aktivni (28.5–34.5°), ostatak nula. STG2 djelomicno mijenja."
+            "Uvjetna/parcijalna timing mapa -- fallback ili specijalni uvjet. "
+            "Prvih 3 reda aktivni (R00-R02 identicni #11.R04-R06); ostatak nula. "
+            "130hp NA: konstantnih 25.5deg (sigurnosni minimum). STG2 djelomicno mijenja."
             if is_partial else
-            f"Kut predpaljenja (timing advance) — mapa #{idx:02d}. "
-            "Osi: RPM (x) × opterecenje/MAP (y). "
+            f"Pomocna timing mapa A#{(idx-10)//2+1} -- uzi raspon (25.5-30deg BTDC). "
+            "Sve 144 celije aktivne. NPRo STG2 dodaje +2.25 do +6.75deg. "
+            "Osi: RPM (x) x opterecenje/MAP (y). Tocni uvjeti aktivacije nepoznati (nema A2L)."
+            if is_aux_a else
+            f"Pomocna timing mapa B#{(idx-11)//2+1} -- siri raspon (24-33.75deg BTDC). "
+            "Sadrzi 'dip' redak s retardiranim timingom (24-24.75deg) -- znak knock/decel zone. "
+            f"Dip redak: R{'07' if idx==11 else '09'}. NPRo STG2 dodaje +2.25 do +9.0deg."
+            if is_aux_b else
+            "Pomocna timing mapa B3 -- SC/boost-specificna. "
+            "300hp SC: 25.5-33.75deg (avg 29.8deg). 130hp NA: bitno nizi advance (avg 26.5deg) s flat redovima. "
+            "Razlika 130hp/300hp ukazuje na kompresorem uvjetovanu aktivaciju. NPRo dodaje +2.25 do +9.0deg."
+            if is_aux_sc else
+            f"Kut predpaljenja (timing advance) -- mapa #{idx:02d}. "
+            "Osi: RPM (x) x opterecenje/MAP (y). "
             "Razlicite mape aktivne su za razlicite uvjete (toplina, boost, stanje motora)."
         ),
         category     = "ignition",
         rows=12, cols=12,
         byte_order   = "BE",
         dtype        = "u8",
-        scale        = 0.75,    # 0.75°/bit
+        scale        = 0.75,    # 0.75deg/bit
         offset_val   = 0.0,
-        unit         = "°BTDC" if not is_knock else "°",
+        unit         = "degBTDC" if not is_knock else "deg",
         axis_x       = _RPM_AXIS_12,
         axis_y       = _LOAD_AXIS_12,
         raw_min      = 0  if (is_knock or is_partial) else 16,
         raw_max      = 40 if is_knock else 58,
         mirror_offset= 0,
         notes        = (
-            f"Adresa: 0x{addr:06X}. Scale: 0.75°/bit. "
+            f"Adresa: 0x{addr:06X}. Scale: 0.75deg/bit. "
             + ("KNOCK TRIM: retard delta oduzet od osnove pri detonaciji. " if is_knock else
-               "POTVRDJENO NPRo STG2 mapa. ORI: 25.5–30°, STG2: vise. " if is_extended else
-               "UVJETNA: aktivna samo u odredjenim uvjetima. " if is_partial else
-               "ORI: 24–33.75° BTDC, STG2: do 36.75° BTDC. ")
-            + "Os Y: relativno punjenje rl [%] — kandidat @ 0x02AFAC (LE u16, ÷64). "
+               "POTVRDJENO NPRo STG2 mapa. ORI: 25.5-30deg, STG2: vise. " if is_extended else
+               "UVJETNA FALLBACK: aktivna samo u odredjenim uvjetima, R00-R02==#11.R04-06. " if is_partial else
+               "AUX A: apsolutna timing, uski raspon 25.5-30deg. NPRo modificira. " if is_aux_a else
+               "AUX B: apsolutna timing, siri raspon + dip redak (knock/decel zona). " if is_aux_b else
+               "AUX SC: SC/boost-specificna timing. 130hp ima konzervativniju kalibraciju. " if is_aux_sc else
+               "ORI: 24-33.75deg BTDC, STG2: do 36.75deg BTDC. ")
+            + "Os Y: relativno punjenje rl [%] -- kandidat @ 0x02AFAC (LE u16, /64). "
             + "Skaliranje procijenjeno bez A2L; A2L potvrda: WinOLS string 'relative air charge'."
         ),
     )
@@ -534,17 +563,21 @@ _CTS_TEMP_AXIS_DEF = MapDef(
 
 # ─── Knock threshold parametri ────────────────────────────────────────────────
 #
-# Blok od 24× u16 LE vrijednosti @ 0x0256F8 koji kontrolira knock detekciju.
+# Blok od 52× u16 LE vrijednosti @ 0x0256F8–0x02575F koji kontrolira knock detekciju.
 # Format u8 parova: svake 2 bajta = 2 parametra (vjerojatno po cilindru).
+# ISPRAVKA 2026-03-18: prvobitno dokumentirano kao 24 u16 — binarni scan potvrdio 52 u16 (104B).
+# Regije 0x025738 (6B) i 0x02574E (4B) su nastavak istog bloka, ne zasebne vrijednosti.
 #
 # Poznate vrijednosti:
 #   [00-01] = 44237 (0xACCD) — prag detekcije knocka (threshold high) → NPRo: 65535
 #   [02+]   = 7967  (0x1F1F) = [31,31] u8 — nominalni prag knocka per-cyl → NPRo: [154,154]
+#   Repetirajući pattern: header (44237/65535) + grupe od 7967/39578/8090
 #
 # NPRo STG2 promjene:
 #   [00-01]: 44237 → 65535 (povišen threshold = teže aktivirati smanjenje timinga)
 #   [03,04,09,10,15,16,17,20,21]: 7967 → 39578 (31→154 u8 — agresivniji knock limit)
 #   [05,11,22]: 7967 → 8090 (31→154 samo low byte)
+#   230hp: sve ostaju na 7967 (NPRo STG2 ne mijenja 230hp knock parametre)
 #
 # NAPOMENA: točna 2D struktura nepoznata bez A2L — iskazano kao flat 1D.
 
@@ -553,14 +586,15 @@ KNOCK_PARAMS_ADDR = 0x0256F8
 _KNOCK_PARAMS_DEF = MapDef(
     name          = "Knock — parametri praga detekcije",
     description   = (
-        "Parametri praga detekcije detonacije (knock threshold) — 24 vrijednosti (1D). "
+        "Parametri praga detekcije detonacije (knock threshold) — 52 vrijednosti (1D). "
         "Veće = viši prag = ECU teže detektira knock = manje retard korekcija. "
         "Format: u8 parovi (svaka u16 = 2 bajta = 2 param). "
         "ori_300: [0-1]=44237, [2+]=7967. "
-        "NPRo STG2: [0-1]=65535, selektivno [3,4,9,10...]=39578 (agresivnija tuning mapa)."
+        "NPRo STG2: [0-1]=65535, selektivno [3,4,9,10...]=39578 (agresivnija tuning mapa). "
+        "Blok: 0x0256F8–0x02575F (104B). 230hp: sve na 7967 (STG2 ne mijenja)."
     ),
     category      = "misc",
-    rows=1, cols=24,
+    rows=1, cols=52,
     byte_order    = "LE", dtype = "u16",
     scale         = 1.0,
     offset_val    = 0.0,
@@ -569,8 +603,9 @@ _KNOCK_PARAMS_DEF = MapDef(
     raw_min       = 0, raw_max = 65535,
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{KNOCK_PARAMS_ADDR:06X}. "
+        f"@ 0x{KNOCK_PARAMS_ADDR:06X}–0x02575F (52×u16 LE = 104B). "
         "Kao u8 parovi: 0x1F=31 nominalni, 0x9A=154 NPRo agresivni, 0xFF=255 max. "
+        "Ispravka 2026-03-18: prvobitno 24, stvarno 52 u16 — binarni scan potvrdio. "
         "Točna 2D struktura zahtijeva A2L potvrdu."
     ),
 )
@@ -816,6 +851,60 @@ _LAMBDA_TRIM_DEF = MapDef(
 )
 
 
+# ─── Lambda adaptacijska baza (short-term fuel trim base) ─────────────────────
+#
+# 12×18 Q15 tablica @ 0x0268A0 — odmah iza lambda main (0x0266F0+432=0x0268A0).
+# Offset od lambda main: točno +0x1B0 = +432B = veličina lambda main tablice.
+#
+# POTVRĐENO diff analizom (2026-03-18):
+#   NPRo STG2 mijenja 105/216 vrijednosti
+#   Sve 3 HP varijante (300hp/230hp/130hp) imaju bitno različite vrijednosti
+#   → aktivno kalibrirana per-HP mapa (nije padding niti const)
+#
+# Vrijednosti (Q15, raw/32768=lambda):
+#   300hp ORI:  31547–34282  → λ 0.9629–1.0467  (raspon ±4.7%)
+#   300hp STG2: 31547–34282  → drugačiji subset promijenjen
+#   230hp:      28459–35420  → λ 0.8688–1.0812  (širi raspon)
+#   130hp:      29030–34282  → λ 0.8862–1.0467  (konzervativniji)
+#
+# Fizikalni smisao: baza za short-term adaptaciju lambda (KFLAMBAS ili ekvivalent).
+# ECU koristi ovu mapu kao početnu točku za adaptivne korekcije goriva.
+# Dimenzije identične lambda main: 12 RPM × 18 load točaka.
+# Confidence: 85%.
+
+LAMBDA_ADAPT_ADDR = 0x0268A0
+
+_LAMBDA_ADAPT_DEF = MapDef(
+    name          = "Lambda adaptacijska baza (STF trim base)",
+    description   = (
+        "Lambda adaptacijska baza — 12×18 Q15 tablica @ 0x0268A0. "
+        "Odmah iza lambda main mape (0x0266F0 + 432B = 0x0268A0). "
+        "Fizikalni smisao: baza za short-term fuel trim adaptaciju (KFLAMBAS ili equiv). "
+        "ECU koristi kao startnu točku za adaptivne korekcije goriva. "
+        "Per-HP varijanta: 300hp/230hp/130hp imaju različite kalibracije. "
+        "NPRo STG2 mijenja 105/216 vrijednosti — aktivno tunirano."
+    ),
+    category      = "lambda",
+    rows=12, cols=18,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32768.0,   # Q15: 32768 = 1.0
+    offset_val    = 0.0,
+    unit          = "lambda",
+    axis_x        = _LAMBDA_LOAD_AXIS_18,
+    axis_y        = _RPM_AXIS_12,
+    raw_min       = 25000,   # lambda ~0.76
+    raw_max       = 40000,   # lambda ~1.22
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{LAMBDA_ADAPT_ADDR:06X} (12×18 u16 LE Q15 = 432B). "
+        "Offset +0x1B0 od lambda main (0x0266F0). "
+        "300hp: λ 0.963–1.047, 230hp: λ 0.869–1.081, 130hp: λ 0.886–1.047. "
+        "NPRo STG2: 105/216 vrijednosti promijenjeno. "
+        "Confidence 85% — bez A2L potvrde točnog naziva."
+    ),
+)
+
+
 # ─── Ubrzavajuće obogaćivanje (KFMSWUP ekvivalent) ───────────────────────────
 #
 # Kompleksan blok @ 0x028059 (132B) — 1B global + 5 redova × 23B (svaki ima ugrađenu os).
@@ -924,38 +1013,41 @@ _THERM_ENRICH_DEF = MapDef(
 )
 
 
-# ─── Efficiency correction after deadtime (Q15, 2D) — TODO ───────────────────
+# ─── Efficiency correction after deadtime (Q15, 2D) — sub-table ─────────────
 #
 # Blok Q15 korekcijskih faktora odmah iza deadtime tablice @ 0x0259C4.
-# Struktura: 7 preambula u16 (os?) + ~75 u16 podataka ≈ 82 u16 ukupno.
+# Struktura: 7 preambula u16 (X-os) + 10×7 u16 podataka (col[0]=embedded Y-os).
 #   Preambula @ 0x0259C4: [13093, 16442, 19783, 24919, 30059, 35203, 43920]
-#   Podaci @ 0x0259D2: ~75 u16, od kojih je 73 u Q15 rasponu (1.00–1.22)
+#     = [0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34] λ (Q15 lambda vrijednosti)
+#   Podaci @ 0x0259D2: 10 redova × 7 u16 (col[0]=embedded Y-os, col[1-6]=faktori)
 #
-# Pattern: dijagonalne vrijednosti (korekcija pada prema 1.000 za niže load).
-# IDENTIČNO u ori_300 i stg2 (STG2 ne mijenja).
-# 130hp: potpuno drugačiji sadržaj.
+# Pattern: dijagonalni (korekcija pada prema 1.000 za niže load/lambda kombinacije).
+# IDENTIČNO u ori_300, stg2 i 082806 (STG2 NE mijenja ovu tablicu).
+# 130hp: potpuno drugačiji sadržaj — drugačija kalibracija NA motora.
 #
-# Struktura potvrđena binarnim skanom (2026-03-16):
-#   - 10 redova × 7 u16: col[0] = ugrađena Y-os (Q15 lambda?), col[1-6] = podaci
-#   - X-os (preambula) @ 0x0259C4: [0.40,0.50,0.60,0.76,0.92,1.07,1.34] λ Q15
-#   - Y-os (embedded, col[0]): row0=0.40, row1=1.10, row2=1.00, ... (neuređene)
-#   - Dijagonalni pattern karakterističan za Bosch lambda Wirkungsgrad tablicu
-#   - Odmah iza deadtime (0x025900–0x0259C2, 14×7)
-# TODO: fizikalni smisao (A2L potrebno za potvrdu — moguće KFWIRKBA sub-table)
+# Fizikalni smisao (bez A2L, ali potvrđeno cross-ref analizom 2026-03-18):
+#   Ova 2D sub-tablica je KFWIRKBA lambda efficiency sub-skup za kratki lambda
+#   raspon (0.40-1.34). Komplementarna je glavnoj KFWIRKBA tablici @ 0x02AE5E.
+#   col[0] = embedded Y-os (lambda referentne točke za interpolaciju).
+#   col[1-6] = faktori efikasnosti po X-os (lambda) točkama.
+#   Može biti korištena za specijalne uvjete (cranking, warm-up, overrun)
+#   gdje lambda raspon je niži od normalnog radnog raspona.
+#   Confidence: ~65% (bez A2L — struktura jasna, namjena pretpostavljena).
 
 EFF_CORR_AXIS_ADDR = 0x0259C4   # 7× u16 Q15 X-os (lambda 0.40–1.34)
 EFF_CORR_ADDR      = 0x0259D2   # 10×7 u16 Q15: col[0]=Y-os, col[1-6]=podaci
 
 _EFF_CORR_DEF = MapDef(
-    name          = "Lambda — efikasnost ubrizgavanja (eff corr 2D)",
+    name          = "Lambda — efikasnost sub-tablica (KFWIRKBA 2D sub)",
     description   = (
-        "2D Q15 lambda-efikasnost tablica odmah iza deadtime-a. "
-        "Format: 10 redova × 7 u16 (col[0]=ugradjeni Y lambda, col[1-6]=faktori). "
-        "X-os @ 0x0259C4: lambda [0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34]. "
-        "Faktori Q15: 0.60–1.22 (efikasnost ub. + korekcija lambda). "
-        "Dijagonalni pattern = KFWIRKBA-kompatibilni Bosch format. "
-        "STG2 = ORI (nije modificirano — tuneri ne diraju). "
-        "TODO: potvrditi fizikalni smisao s A2L — moguće KFWIRKBA sub-table."
+        "2D Q15 lambda-efikasnost sub-tablica odmah iza deadtime-a. "
+        "Format: 10 redova × 7 u16 (col[0]=ugradjeni Y-os lambda, col[1-6]=faktori). "
+        "X-os @ 0x0259C4: lambda [0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34] Q15. "
+        "Faktori Q15: 0.60-1.22 (lambda efficiency korekcija kratkog raspona). "
+        "Dijagonalni pattern = Bosch KFWIRKBA sub-skup za nizak lambda raspon. "
+        "STG2 = ORI (ne mijenja). 130hp: drugacija kalibracija. "
+        "Namjena: KFWIRKBA sub-table za specijalne uvjete (cranking/warm-up/overrun). "
+        "Confidence: ~65% (struktura jasna, namjena bez A2L pretpostavljena)."
     ),
     category      = "lambda",
     rows=10, cols=7,    # col[0] = ugrađena Y-os, col[1-6] = stvarni podaci
@@ -972,9 +1064,9 @@ _EFF_CORR_DEF = MapDef(
     mirror_offset = 0,
     notes         = (
         f"@ 0x{EFF_CORR_ADDR:06X} (10×7 u16 Q15, 140B). X-os @ 0x{EFF_CORR_AXIS_ADDR:06X}. "
-        "col[0] = ugradjeni Y-os (lambda Q15). Odmah iza deadtime 0x025900. "
-        "Identično u ORI/STG2/082806. 130hp: drugaciji layout. "
-        "TODO: fizikalni potvrda — KFWIRKBA ili IAT/CTS lambda correction."
+        "col[0] = ugradjeni Y-os (lambda Q15 ref. tocke). Odmah iza deadtime 0x025900. "
+        "Identično u ORI/STG2/082806 (STG2 ne mijenja). 130hp: drugacija kalibracija. "
+        "KFWIRKBA sub-table za kratki lambda raspon (0.40-1.34). Confidence ~65%."
     ),
 )
 
@@ -1119,17 +1211,30 @@ _SC_BOOST_FACTOR_DEF = MapDef(
 # ─── Lambda efficiency (KFWIRKBA) — 41×18 uniformna matrica ──────────────────
 #
 # Tablica @ 0x02AE40–0x02B421. Uniformna 41×18 matrica (LE u16 Q15).
-# Y-os (load, 15 vrijednosti) @ 0x02AE40:
-#   [3840,4480,5120,5760,6400,7040,7680,8320,8960,9600,10240,11520,12800,14080,15360]
-# X-os (lambda, 18 točaka Q15):
+# Y-os (load, 15 vrijednosti) @ 0x02AE40 — RAZLIKUJE SE PO VARIJANTI:
+#   300hp SC: [3840,4480,5120,5760,6400,7040,7680,8320,8960,9600,10240,11520,12800,14080,15360]
+#   GTI90 NA: [3840,4480,5120,5760,6400,7040,7680,8320,8960,9600,10240,10880,11520,12160,12800]
+#   (gornja granica: 15360 za SC/visoki boost, 12800 za GTI90/NA)
+#
+# X-os (lambda, 18 točaka Q15) ugrađena je u RED 0 matrice (Bosch multi-block format):
+#   300hp SC redovi 0-8: lambda X-os vrijednosti = BYPASS kalibracija
 #   [21627,24186,26605,29158,31174,32652,35204,36749,38765,40580,42125,
 #    44342,47029,49152,52756,55509,58982,58982]
 #   = [0.66, 0.74, 0.81, 0.89, 0.95, 1.00, 1.07, 1.12, 1.18, 1.24, 1.29,
 #      1.35, 1.44, 1.50, 1.61, 1.69, 1.80, 1.80]
 #
+# KLJUCNI NALAZ (binarni scan 2026-03-18):
+#   300hp SC: redovi 0-8 ponavljaju lambda X-os vrijednosti = BYPASS (SC motor
+#     ne koristi lambda efficiency korekciju — mapa je "identity" mapping).
+#   GTI90 NA: AKTIVNA kalibracija, redovi 0-4 = [0.514-0.710] — stvarni
+#     efikasnosni faktori za NA motor (rl load range 60-200%, λ 0.51-0.71).
+#   130hp NA: sličan bypass ali s drugačijim X-os vrednostima ([19988-43254],
+#     λ 0.61-1.32 — uži raspon od 300hp SC).
+#   Red 9 @ svakoj varijanti: separator [4617, 64736, 65136, ...] = zajednički.
+#
 # STG2: sve vrijednosti λ>1.0 (x-indeksi 6-17) → 0xFFFF (lean bypass).
 # Efekt: ECU ignorira lean-side korekciju efikasnosti (max power priority).
-# Napomena: redovi 9-11 i 20-21 sadrže Y-os nastavke (Bosch multi-axis format).
+# Redovi 9-11 i 20-21 sadrže Y-os nastavke (Bosch multi-axis format).
 # Podaci @ 0x02AE5E = 0x02AE40 + 30B (iza Y-osi), 41×18×2 = 1476B.
 
 LAMBDA_EFF_YAXIS_ADDR = 0x02AE40  # 15× u16 LE load Y-os
@@ -1138,12 +1243,13 @@ LAMBDA_EFF_ADDR       = 0x02AE5E  # 41×18 u16 LE podaci
 _LAMBDA_EFF_DEF = MapDef(
     name          = "Lambda efikasnost (KFWIRKBA) — 41×18 Q15",
     description   = (
-        "Lambda Wirkungsgrad (efficiency) tablica — 41×18 uniformna matrica. "
-        "X-os (lambda, 18 tocaka Q15): 0.66-1.80. "
-        "Y-os (load, 15 vrijednosti @ 0x02AE40): 3840-15360. "
-        "STG2: lambda>1.0 (lean side) → 0xFFFF — uklanja lean korekciju. "
-        "Fizikalni smisao: ECU skalira injection po lambda efikasnosti. "
-        "Redovi 9-11 i 20-21 sadrze Y-os nastavke (Bosch multi-axis)."
+        "Lambda Wirkungsgrad (efficiency) korekcijska tablica — 41×18 matrica. "
+        "300hp SC: BYPASS kalibracija (redovi = lambda X-os, ECU ignorira korekciju). "
+        "GTI90 NA: AKTIVNA (faktori 0.51-0.71 = stvarna lambda efficiency korekcija). "
+        "X-os (lambda, 18 tocaka Q15): 0.66-1.80 (ugradjeno u red 0 matrice). "
+        "Y-os (load, 15 vrijednosti @ 0x02AE40): 3840-15360 (SC) ili 3840-12800 (GTI90). "
+        "STG2: lambda>1.0 (lean side) → 0xFFFF — uklanja lean korekciju za performance. "
+        "A2L naziv: KFWIRKBA (Wirkungsgrad — efficiency correction factor)."
     ),
     category      = "lambda",
     rows=41, cols=18,
@@ -1164,8 +1270,10 @@ _LAMBDA_EFF_DEF = MapDef(
     raw_max       = 65535,
     mirror_offset = 0,
     notes         = (
-        "@ 0x02AE5E-0x02B421 (1476B). Y-os @ 0x02AE40 (15 load val). "
-        "STG2: lean (lambda>1.0) na 0xFFFF. A2L: KFWIRKBA."
+        "@ 0x02AE5E-0x02B421 (1476B). Y-os @ 0x02AE40 (15 load val, var. po SW). "
+        "300hp SC: bypass (redovi=X-os). GTI90 NA: aktiva (0.51-0.71). "
+        "STG2: lean (lambda>1.0) na 0xFFFF. A2L: KFWIRKBA (lambda Wirkungsgrad). "
+        "Binarno potvrdeno: 300hp vs GTI90 vs 130hp scan 2026-03-18."
     ),
 )
 
@@ -1392,6 +1500,65 @@ _DFCO_DEF = MapDef(
         "300hp: [1067, 1280, 1493, 1707, 2133, 2560, 3413]. "
         "ME17 ASAP2 naziv: NLLSOL (Leerlaufdrehzahlsollwert). "
         "DFCO smanjuje potrošnju i emisije — promjena utječe na osjet deceleracije."
+    ),
+)
+
+
+# ─── Decel/DFCO RPM ramp tablica ──────────────────────────────────────────────
+#
+# Kompleksna struktura @ 0x028C30–0x028D8F (16 unosa × 22B svaki = 352B).
+# Svaki unos: 3× u16 (RPM period ticks, period-encoded) + 8× u16 (load os vrijednosti).
+#
+# Period encoding: RPM = 40,000,000 × 60 / (ticks × 58)
+#   Manji ticks = viši RPM (period encoding)
+#
+# POTVRĐENO diff analizom (2026-03-18):
+#   300hp ORI:  col[0] = 8636–7041 ticks (4791–5877 RPM, rpm granica silaznog DFCO)
+#               col[1] = 9653–8554 ticks (4287–4837 RPM, niži prag)
+#               col[2] = 3879 (KONSTANTAN svih 16 unosa = 5348 RPM hard cut)
+#   300hp STG2: sve 3 kolone povećane → viši RPM limiti
+#               STG2 hard cut: 11199 ticks = 3695 RPM (niži limit, ranije ubrizgavanje ponovo)
+#   230hp ORI:  col[0]~7300 / col[1]~8700 / col[2]~7800 ticks (drugačiji raspon)
+#   130hp ORI:  col[0]~9900 / col[1]~13000 / col[2]~11700 ticks (konzervativniji)
+#
+# Svaki unos = 1 load zona (8 vrijednosti = X-os load segmenti).
+# Fizikalni smisao: DFCO/decel RPM ramp — per-load RPM pragovi za fuel cut re-engage.
+# Confidence: 75%. Kompleksna struktura zahtijeva A2L za precizne ose.
+
+DECEL_RPM_CUT_ADDR = 0x028C30
+_DECEL_RPM_CUT_ENTRY_SIZE = 22   # 3×u16 RPM ticks + 8×u16 load os = 11×u16 = 22B
+_DECEL_RPM_CUT_ENTRIES    = 16
+
+_DECEL_RPM_CUT_DEF = MapDef(
+    name          = "Decel RPM ramp — DFCO per-load pragovi",
+    description   = (
+        "Deceleration/DFCO RPM ramp tablica — 16 unosa × 22B = 352B. "
+        "Svaki unos: 3 RPM period-ticks vrijednosti + 8 load-os vrijednosti. "
+        "Period enc: RPM = 40MHz×60/(ticks×58). Manji ticks = viši RPM. "
+        "300hp ORI col[2]=3879t(5348 RPM) konstantan — hard cut prag. "
+        "col[0]=8636–7041t (4791–5877 RPM), col[1]=9653–8554t (4287–4837 RPM). "
+        "STG2 povećava sve → viši RPM limiti za fuel cut. "
+        "Per-HP: 130hp=konzervativniji (viši ticks=niži RPM), 300hp=agresivniji. "
+        "Confidence: 75% (bez A2L)."
+    ),
+    category      = "misc",
+    rows=16, cols=11,      # 16 unosa × 11 u16 (3 RPM + 8 load)
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0,   # raw ticks; koristiti RPM=40e6×60/(v×58) za konverziju
+    offset_val    = 0.0,
+    unit          = "ticks (period enc.)",
+    axis_x        = None,
+    axis_y        = None,
+    raw_min       = 1000,  # ticks: ~34571 RPM max (nerealno visoko)
+    raw_max       = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{DECEL_RPM_CUT_ADDR:06X}–0x028D8F (16×22B = 352B). "
+        "Stride = 22B po unosu (ne ravnomjerna 2D matrica). "
+        "RPM konv: 40,000,000×60/(ticks×58). "
+        "300hp: col[0-1] silazni DFCO prag, col[2]=5348 RPM const hard cut. "
+        "STG2 hard cut: 11199t=3695 RPM (vs ORI 3879t=5348 RPM). "
+        "Confidence 75% — bez A2L potvrde točne strukture."
     ),
 )
 
@@ -2088,9 +2255,11 @@ class MapFinder:
             self._scan_lambda_bias(progress_cb)
             self._scan_lambda_prot(progress_cb)
             self._scan_lambda_trim(progress_cb)
+            self._scan_lambda_adapt(progress_cb)
             self._scan_torque_opt(progress_cb)
             self._scan_deadtime(progress_cb)
             self._scan_dfco(progress_cb)
+            self._scan_decel_rpm_cut(progress_cb)
             self._scan_idle_rpm(progress_cb)
             self._scan_accel_enrich(progress_cb)
             self._scan_start_inj(progress_cb)
@@ -2454,7 +2623,7 @@ class MapFinder:
         data = self.eng.get_bytes()
 
         addr = KNOCK_PARAMS_ADDR
-        n = 24
+        n = 52
         if addr + n * 2 > len(data):
             return
 
@@ -2472,7 +2641,7 @@ class MapFinder:
             sw_id   = self._sw(),
             data    = vals,
         ))
-        if cb: cb(f"  Knock params @ 0x{addr:06X}  1×24  "
+        if cb: cb(f"  Knock params @ 0x{addr:06X}  1×52  "
                   f"[0]={vals[0]}  [2]={vals[2]}  [3]={vals[3]}")
 
     # ── CTS temperature axis scan ─────────────────────────────────────────────
@@ -2663,6 +2832,72 @@ class MapFinder:
         vmin = min(vals) / 32768.0
         vmax = max(vals) / 32768.0
         if cb: cb(f"  Lambda trim @ 0x{addr:06X}  12×18  lambda=[{vmin:.3f}–{vmax:.3f}]")
+
+    # ── Lambda adaptation base scan ───────────────────────────────────────────
+
+    def _scan_lambda_adapt(self, cb=None):
+        if cb: cb("Trazim lambda adaptacijsku bazu...")
+        data = self.eng.get_bytes()
+
+        addr = LAMBDA_ADAPT_ADDR
+        n    = _LAMBDA_ADAPT_DEF.rows * _LAMBDA_ADAPT_DEF.cols  # 12×18 = 216
+        if addr + n * 2 > len(data):
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: Q15 lambda vrijednosti blizu 1.0 (0.76–1.22 = raw 25000–40000)
+        # Lambda adapt je uska mapa (baza adaptacije), ne ide predaleko od stehiometrijskog
+        in_range = sum(1 for v in vals if 25000 <= v <= 40000)
+        if in_range < int(n * 0.85):
+            if cb: cb(f"  Lambda adapt @ 0x{addr:06X}: premalo Q15 vrijednosti ({in_range}/{n}) — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _LAMBDA_ADAPT_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        vmin = min(vals) / 32768.0
+        vmax = max(vals) / 32768.0
+        if cb: cb(f"  Lambda adapt @ 0x{addr:06X}  12×18  lambda=[{vmin:.3f}–{vmax:.3f}]")
+
+    # ── Decel RPM cut scan ────────────────────────────────────────────────────
+
+    def _scan_decel_rpm_cut(self, cb=None):
+        if cb: cb("Trazim decel/DFCO RPM ramp tablicu...")
+        data = self.eng.get_bytes()
+
+        addr    = DECEL_RPM_CUT_ADDR
+        entries = _DECEL_RPM_CUT_ENTRIES    # 16
+        stride  = _DECEL_RPM_CUT_ENTRY_SIZE # 22B per entry
+        total   = entries * stride           # 352B
+
+        if addr + total > len(data):
+            return
+
+        # Čitamo sve u16 LE kao flat listu (entries×11 u16)
+        n    = entries * 11
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: col[2] (index 2 u svakom unosu od 11) mora biti period-ticks
+        # 300hp ORI: col[2] svih 16 = 3879 (konst.) ili slično
+        # Provjeri barem da su vrijednosti period-ticks (1000–65535) i ne sve nule
+        col2_vals = [vals[i * 11 + 2] for i in range(entries)]
+        valid = all(1000 <= v <= 65535 for v in col2_vals) and len(set(col2_vals)) <= 3
+        if not valid:
+            if cb: cb(f"  Decel RPM cut @ 0x{addr:06X}: neočekivani sadržaj col[2] — preskacam")
+            return
+
+        self.results.append(FoundMap(
+            defn    = _DECEL_RPM_CUT_DEF,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        rpm_col2 = 40_000_000 * 60 // (col2_vals[0] * 58) if col2_vals[0] else 0
+        if cb: cb(f"  Decel RPM cut @ 0x{addr:06X}  16×11  col2={col2_vals[0]}t≈{rpm_col2}RPM")
 
     # ── Acceleration enrichment scan ─────────────────────────────────────────
 
