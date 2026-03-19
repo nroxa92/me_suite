@@ -332,8 +332,8 @@ _INJ_DEF = MapDef(
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
     unit          = "rk [Q15]",
-    axis_x        = None,   # 12-pt RPM os (sve celije identicne unutar reda — RPM neovisan)
-    axis_y        = None,   # 16-pt load os @ ~0x024342 (potrebna A2L potvrda)
+    axis_x        = _RPM_AXIS_16,   # 16pt RPM u16 BE @ 0x024F46 (poznata RPM os)
+    axis_y        = _LOAD_AXIS_12,  # 12pt load u16 LE @ 0x02AE30 (globalna os, potvrđena)
     raw_min       = 0,
     raw_max       = 65535,
     mirror_offset = INJ_MIRROR_OFFSET,
@@ -791,7 +791,11 @@ _LAMBDA_PROT_DEF = MapDef(
     scale         = 1.0 / 32768.0,
     offset_val    = 0.0,
     unit          = "lambda (Q15)",
-    axis_x        = None,   # 13 kolona — neidentificirana os
+    axis_x        = AxisDef(count=13, byte_order="LE", dtype="u16",
+                            scale=1.0/32768.0, unit="λ",
+                            values=[656, 1967, 3933, 5899, 7865, 9830, 13107,
+                                    19661, 26214, 32768, 39321, 45875, 52428]),
+                            # @ 0x02480A (Q15: 0.02–1.60 λ, 13pt)
     axis_y        = _LOAD_AXIS_12,
     raw_min       = 0,
     raw_max       = 65535,
@@ -1038,43 +1042,43 @@ _THERM_ENRICH_DEF = MapDef(
 #   gdje lambda raspon je niži od normalnog radnog raspona.
 #   Confidence: ~65% (bez A2L — struktura jasna, namjena pretpostavljena).
 
-EFF_CORR_AXIS_ADDR = 0x0259C4   # 7× u16 Q15 X-os (lambda 0.40–1.34)
-EFF_CORR_ADDR      = 0x0259D2   # 10×7 u16 Q15: col[0]=Y-os, col[1-6]=podaci
+EFF_CORR_AXIS_Y_ADDR = 0x0259C4   # 14× u8 Y-os lambda (0.37–1.71, scale /100)
+EFF_CORR_AXIS_X_ADDR = 0x0259D2   # 10× u8 X-os lambda (0.37–1.44, scale /100)
+EFF_CORR_ADDR        = 0x0259DC   # 14×10 u8 data (ISPRAVKA: bilo 0x0259D2 s dim 10×7 u16)
+# Backwards compat alias
+EFF_CORR_AXIS_ADDR   = EFF_CORR_AXIS_Y_ADDR
 
 _EFF_CORR_DEF = MapDef(
     name          = "Lambda — efikasnost sub-tablica (KFWIRKBA 2D sub)",
     description   = (
-        "2D Q15 lambda-efikasnost sub-tablica odmah iza deadtime-a. "
-        "Format: 10 redova × 7 u16 (col[0]=ugradjeni Y-os lambda, col[1-6]=faktori). "
-        "X-os @ 0x0259C4: lambda [0.40, 0.50, 0.60, 0.76, 0.92, 1.07, 1.34] Q15. "
-        "Faktori Q15: 0.60-1.22 (lambda efficiency korekcija kratkog raspona). "
-        "Dijagonalni pattern = Bosch KFWIRKBA sub-skup za nizak lambda raspon. "
-        "STG2 = ORI (ne mijenja). 130hp: drugacija kalibracija. "
-        "Namjena: KFWIRKBA sub-table za specijalne uvjete (cranking/warm-up/overrun). "
-        "Confidence: ~65% (struktura jasna, namjena bez A2L pretpostavljena)."
+        "KFWIRKBA 2D lambda-efikasnost sub-tablica odmah iza deadtime-a. "
+        "14 redova (izmjerena lambda) × 10 kolona (referentna lambda). u8, scale /128. "
+        "Y-os: λ 0.37–1.71 (izmjerena). X-os: λ 0.37–1.44 (referentna). "
+        "Vrijednosti 128–159 → 1.0–1.24 (korekcijski faktor ≥ 1.0). "
+        "Kod visokih lambda (Y≥1.44) sve ćelije = 1.0 (nema korekcije). "
+        "STG2 = ORI (ne mijenja). 130hp: drugačija kalibracija. "
+        "Namjena: KFWIRKBA efektivnost pri bogatim mješavinama (enrichment correction)."
     ),
     category      = "lambda",
-    rows=10, cols=7,    # col[0] = ugrađena Y-os, col[1-6] = stvarni podaci
-    byte_order    = "LE", dtype = "u16",
-    scale         = 1.0 / 32768.0,
+    rows=14, cols=10,   # ISPRAVKA: bilo 10×7 u16 (pogrešno čitanje u8 osi kao u16)
+    byte_order    = "BE", dtype = "u8",
+    scale         = 1.0 / 128.0,
     offset_val    = 0.0,
-    unit          = "faktor Q15",
-    axis_x        = AxisDef(count=7, byte_order="LE", dtype="u16",
-                             scale=1.0 / 32768.0, unit="lambda",
-                             values=[13093, 16442, 19783, 24919, 30059, 35203, 43920]),
-    axis_y        = None,   # col[0] svakoga reda = embedded Y-os (lambda Q15)
-                            # col[0] vrijednosti: [13093,35983,32899,37783,34441,39065,35983,32899,35467,33669]
-                            # = [0.40, 1.098, 1.004, 1.153, 1.051, 1.192, 1.098, 1.004, 1.082, 1.027] λ
-                            # NE raste linearno → nije klasična os; radi se o lookuptable stupcima
-    raw_min       = 13000,  # ~0.40 λ (min col[0] embedded Y-os)
-    raw_max       = 45000,  # ~1.37 λ
+    unit          = "faktor /128",
+    axis_x        = AxisDef(count=10, byte_order="BE", dtype="u8",
+                             scale=1.0 / 100.0, unit="λ (ref.)",
+                             values=[37, 51, 64, 77, 91, 104, 117, 131, 137, 144]),
+    axis_y        = AxisDef(count=14, byte_order="BE", dtype="u8",
+                             scale=1.0 / 100.0, unit="λ (izmjerena)",
+                             values=[37, 51, 58, 64, 71, 77, 87, 97, 107, 117, 131, 137, 144, 171]),
+    raw_min       = 108,
+    raw_max       = 170,
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{EFF_CORR_ADDR:06X} (10×7 u16 Q15, 140B). X-os @ 0x{EFF_CORR_AXIS_ADDR:06X}. "
-        "col[0] = ugradjeni Y-os (lambda Q15, NE linearno: 0.40,1.10,1.00,1.15,...). "
-        "Odmah iza deadtime 0x025900 (kraj deadtime = 0x0259C4 = ova X-os). "
-        "STG2=ORI (0/70 razlika). 130hp: 41/70 razlika. GTI90: 39/70 razlika. "
-        "Varijanta-specificno — NIJE univerzalna. Confidence 65%."
+        f"@ 0x{EFF_CORR_ADDR:06X} (ISPRAVKA: bilo 0x0259D2 dim 10×7 u16). "
+        "14×10=140 u8. Count @ 0x0259C2:[0E,0A]. "
+        f"Y-os @ 0x{EFF_CORR_AXIS_Y_ADDR:06X} (14 u8), X-os @ 0x{EFF_CORR_AXIS_X_ADDR:06X} (10 u8). "
+        "Kraj 0x025A68. 130hp: drugačija kalibracija. GTI90: razlika vs 300hp."
     ),
 )
 
@@ -1449,48 +1453,59 @@ _TORQUE_OPT_DEF = MapDef(
 # ─── Injector deadtime ────────────────────────────────────────────────────────
 #
 # Hardware konstanta — ne tunable! Kompenzira kašnjenje otvaranja injektora.
-# 7 kolona × 14 redova u16 LE @ 0x025900 (POTVRĐENO: kraj @ 0x0259C4 = EFF_CORR_AXIS).
-# Identično u svim SW varijantama (hardware-fixed karakteristika injektora).
 #
-# Kontekst ME17 standard (ASAP2: TVKL — "Totzeitkennlinie"):
-#   X os = napon baterije (battery voltage) — NIJE pronađena kao eksplicitni vektor ispred
-#          tablice; X-os je interno u ECU CODE logici (ne binarno embeddana ispred tablice).
-#          Standardni ME17 TVKL X: [7.2, 8.0, 8.8, 10.0, 11.0, 12.0, 14.0] V (procjena)
-#   Y os = temperatura/uvjet (neustanavljen bez A2L)
-#   Vrijednosti = kašnjenje × 0.5 µs (R0[0]=2594 × 0.5 = 1297 µs pri najnižem naponu)
-#   Raw 1024 = min (512 µs @ 0.5µs/raw), max ~3000 = 1500 µs
-# BINARNI DOKAZ: kraj mape = 0x025900 + 14×7×2 = 0x0259C4 = točno EFF_CORR X-os start.
-# Razlika 300hp vs 130hp: R0[0] = 2594 vs 2560 (neznatno) — isti injektori, isti HW.
+# ISPRAVLJENA STRUKTURA (binarnom analizom 2026-03-19):
+#   @ 0x025876: count bytes [0x0E=14, 0x0A=10] (dva u16 LE)
+#   @ 0x02587A: X-os — 14 vrijednosti trajanja impulsa (u16 LE, direktno µs):
+#               [1, 2, 3, 4, 6, 8, 10, 20, 40, 60, 120, 240, 480, 960]
+#   @ 0x025896: Y-os — 10 vrijednosti temperature (u16 LE, direktno °C):
+#               [37, 51, 64, 77, 91, 104, 117, 131, 144, 157]
+#   @ 0x0258AA: 10×14 u16 LE data (10 temp × 14 duration = 280B, ends 0x0259C2)
+#   → 0x0259C2: count bytes za KFWIRKBA [0x0E, 0x0A] — potvrda granice
+#
+# Vrijednosti × 0.5µs: raspon 512–2692µs (0.5–2.7ms pri hladnom/niskom naponu)
+# Smanjuje se s temperaturom (topliji motor = brži injektor otvor = kraći deadtime)
+# Identično u svim SW varijantama (hardware-fixed karakteristika injektora).
+# ME17 ASAP2 naziv: TVKL (Totzeitkennlinie). Stara adresa 0x025900 bila POGREŠNA.
 
-DEADTIME_ADDR = 0x025900
+DEADTIME_ADDR = 0x0258AA    # ISPRAVKA: bila 0x025900 (sredina tablice)
+
+_DEADTIME_AXIS_X = AxisDef(
+    count=14, byte_order="LE", dtype="u16", scale=1.0, unit="µs (trajanje impulsa)",
+    values=[1, 2, 3, 4, 6, 8, 10, 20, 40, 60, 120, 240, 480, 960],
+)
+_DEADTIME_AXIS_Y = AxisDef(
+    count=10, byte_order="LE", dtype="u16", scale=1.0, unit="°C",
+    values=[37, 51, 64, 77, 91, 104, 117, 131, 144, 157],
+)
 
 _DEADTIME_DEF = MapDef(
     name          = "Injektori — deadtime korekcija (read-only)",
     description   = (
         "Kašnjenje otvaranja injektora (deadtime / Totzeit) — hardware konstanta. "
         "NE MIJENJATI — kalibrirano za fizičke injektore (330cc/min). "
-        "7 kolona, ~20 redova (u16 LE). X os: napon baterije. "
-        "ECU automatski kompenzira za napon pri svakom ubrizgavanju. "
+        "10 redova (temperatura) × 14 kolona (trajanje impulsa). "
+        "ECU automatski kompenzira pri svakom ubrizgavanju. "
+        "Manji deadtime pri višim temp (topliji injektor — brže otvaranje). "
         "Identično u svim SW varijantama (130/170/230/300hp)."
     ),
     category      = "misc",
-    rows=14, cols=7,
+    rows=10, cols=14,          # ISPRAVKA: bilo 14×7 (pogrešno)
     byte_order    = "LE", dtype = "u16",
-    scale         = 0.5,       # × 0.5 µs/raw (R0[0]=2594 → 1297µs, realan deadtime)
+    scale         = 0.5,       # × 0.5 µs/raw
     offset_val    = 0.0,
     unit          = "µs",
-    axis_x        = None,   # napon baterije — nije kao eksplicitni binarni vektor (ECU internal)
-    axis_y        = None,   # temp/uvjet — bez A2L neidentificirano
-    raw_min       = 1000,   # ~500 µs (min deadtime)
-    raw_max       = 6000,   # ~3000 µs (max deadtime pri niskom naponu)
+    axis_x        = _DEADTIME_AXIS_X,
+    axis_y        = _DEADTIME_AXIS_Y,
+    raw_min       = 1000,
+    raw_max       = 6000,
     mirror_offset = 0,
     notes         = (
-        f"@ 0x{DEADTIME_ADDR:06X}. Hardware konstanta — NE EDITIRATI. "
-        "14×7=98 u16 (POTVRĐENO: kraj 0x0259C4 = EFF_CORR X-os). "
-        "Skala: raw × 0.5µs (R0[0]=2594→1297µs, realno za low-Z injektore). "
-        "X-os (napon baterije) nije embeddana ispred — interio u ECU CODE logici. "
-        "300hp vs 130hp: praktički identični (isti injektori, isti HW). "
-        "ME17 ASAP2 naziv: TVKL (Totzeitkennlinie)."
+        f"@ 0x{DEADTIME_ADDR:06X} (ISPRAVKA: bila 0x025900). "
+        "10×14=140 u16 LE. Count bytes @ 0x025876: [14,10]. "
+        "X-os @ 0x02587A: trajanje [1-960µs]. Y-os @ 0x025896: temp [37-157°C]. "
+        "Kraj @ 0x0259C2 = count bytes za KFWIRKBA [0E,0A]. "
+        "300hp vs 130hp: praktički identični. ME17 ASAP2: TVKL."
     ),
 )
 
@@ -1584,8 +1599,16 @@ _DECEL_RPM_CUT_DEF = MapDef(
     scale         = 1.0,   # raw ticks; koristiti RPM=40e6×60/(v×58) za konverziju
     offset_val    = 0.0,
     unit          = "ticks (period enc.)",
-    axis_x        = None,
-    axis_y        = None,
+    axis_x        = AxisDef(count=11, byte_order="LE", dtype="u16",
+                            scale=1.0/32768.0, unit="omjer Q15",
+                            values=[0, 6554, 13107, 19661, 26214, 32768,
+                                    39322, 45875, 52429, 58982, 65535]),
+                            # @ 0x028C0A (Q15: 0.0–2.0 raspon)
+    axis_y        = AxisDef(count=16, byte_order="LE", dtype="u16",
+                            scale=0.01, unit="mg/hub (air mass)",
+                            values=[6000, 7200, 8800, 10400, 12000, 14000, 16000, 18000,
+                                    20000, 22000, 24000, 26000, 28000, 30000, 32000, 36000]),
+                            # @ 0x028BEA (60–360 mg/hub)
     raw_min       = 1000,  # ticks: ~34571 RPM max (nerealno visoko)
     raw_max       = 65535,
     mirror_offset = 0,
@@ -1630,8 +1653,14 @@ _IDLE_RPM_DEF = MapDef(
     scale         = 1.0,
     offset_val    = 0.0,
     unit          = "rpm",
-    axis_x        = None,
-    axis_y        = None,
+    axis_x        = AxisDef(count=12, byte_order="LE", dtype="u16",
+                            scale=1.0, unit="°C",
+                            values=[24, 37, 51, 64, 77, 91, 104, 117, 144, 171, 197, 251]),
+                            # @ 0x02B5DE (temperatura rashladne tekućine, 12pt)
+    axis_y        = AxisDef(count=5, byte_order="LE", dtype="u16",
+                            scale=1.0, unit="RPM setpoint",
+                            values=[3340, 3220, 3100, 2990, 2880]),
+                            # @ 0x02B5F6 (5 uvjeta/modova rada, 3340→2880 RPM)
     raw_min       = 600,
     raw_max       = 4500,
     mirror_offset = 0,
@@ -1707,6 +1736,19 @@ _SPARK_INJ_DEF = MapDef(
     scale         = 1.0,
     offset_val    = 0.0,
     unit          = "µs",
+    axis_x        = AxisDef(count=20, byte_order="LE", dtype="u16",
+                            scale=1.0/4.0, unit="RPM",
+                            values=[7680, 8704, 9728, 10624, 11648, 12672, 13696, 14720,
+                                    15616, 16640, 17664, 18688, 19712, 20608, 21632, 22656,
+                                    23680, 24704, 25600, 26624]),
+                            # @ 0x02225A (raw/4 = RPM, 1920–6656)
+    axis_y        = AxisDef(count=30, byte_order="LE", dtype="u16",
+                            scale=1.0, unit="load [raw]",
+                            values=[3999, 4800, 5600, 7400, 9200, 10800, 11600, 12200,
+                                    12600, 13200, 13720, 14560, 15600, 16400, 17000, 17600,
+                                    18800, 19600, 20400, 21600, 22800, 24000, 24960, 25800,
+                                    26680, 27680, 29000, 30720, 32000, 33600]),
+                            # @ 0x022282 (load, 3999–33600)
     raw_min       = 400, raw_max = 5000,
     mirror_offset = 0x518,
     notes         = (
@@ -1862,10 +1904,23 @@ _SPARK_DEADTIME_DEF = MapDef(
     scale       = 1.0 / 40000.0,
     offset_val  = 0.0,
     unit        = "µs",
+    axis_x      = AxisDef(count=8, byte_order="LE", dtype="u16",
+                          scale=0.1, unit="V (napon)",
+                          values=[80, 90, 100, 110, 120, 130, 140, 150]),
+                          # @ 0x028794 (8pt u16 LE, /10 = 8.0-15.0V baterija)
+    axis_y      = AxisDef(count=8, byte_order="LE", dtype="u8",
+                          scale=0.1, unit="ms (trajanje injekcije)",
+                          values=[4, 10, 20, 40, 60, 80, 100, 120]),
+                          # @ 0x028784 (8pt u8, svaki pohranjen 2× kao par: [4,4,10,10,...])
+                          # /10 = 0.4ms-12ms bazno trajanje injekcije
     raw_min     = 8000, raw_max = 14500,
-    notes       = "Spark 900 ACE. @ 0x0287A4. Period ticks @ 40MHz → µs×40. "
-                  "RAZLIKUJE SE od GTI90 @ 0x025900 (GTI90 = 14×7, drukčiji raw raspon). "
-                  "2018 vs 2021 Spark: neznatno drugačije vrijednosti. Samo za prikaz!",
+    notes       = "Spark 900 ACE. @ 0x0287A4. Period ticks @ 40MHz. "
+                  "Count bytes [8,8] @ 0x028780. "
+                  "Y-os (trajanje): 8pt u8 pohranjena kao para @ 0x028784 = [4,4,10,10,...,120,120]. "
+                  "X-os (napon): 8pt u16 LE @ 0x028794 = [80..150]/10 = [8.0..15.0V]. "
+                  "Veca vrijednost deadtime pri manjem naponu i ducem impulsu. "
+                  "RAZLIKUJE SE od GTI90 @ 0x025900 (GTI90 = 14×7). "
+                  "2018 vs 2021 Spark: neznatno drugacije vrijednosti. Samo za prikaz!",
 )
 
 _SPARK_START_INJ_DEF = MapDef(
@@ -2008,13 +2063,27 @@ _SPARK_LAMBDA_TRIM_DEF = MapDef(
     scale       = 1.0 / 32768.0,
     offset_val  = 0.0,
     unit        = "λ korekcija",
+    axis_x      = AxisDef(count=20, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="brzina motora [raw]",
+                          values=[640, 853, 1067, 1280, 1493, 1707, 1920, 2133,
+                                  2347, 2560, 2773, 2987, 3200, 3413, 3627, 3840,
+                                  4053, 4267, 4480, 4693]),
+                          # @ 0x024E9C (20pt u16 LE, ista os za sve lambda trim kopije)
+    axis_y      = AxisDef(count=30, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="opterecenje [raw]",
+                          values=[4800, 5600, 7600, 8800, 10000, 10800, 11600, 12600,
+                                  13200, 13800, 14400, 14800, 15500, 16200, 17400, 18400,
+                                  19200, 20200, 21600, 22000, 23000, 23440, 24200, 25600,
+                                  26400, 28000, 29000, 30000, 31000, 32000]),
+                          # @ 0x024E60 (30pt u16 LE)
     raw_min     = 31000, raw_max = 34000,
     mirror_offset = 0,
     notes       = (
         "Spark 900 ACE. @ 0x024EC4. 30×20=600 u16 LE. "
         "Q15 korekcija lambda cilja. 2021 vs 2018 razlika: 240/600 vrijednosti. "
         "Lambda (RPM,load) × trim = efektivna ciljana lambda. "
-        "Identičan raspon kao GTI lambda trim @ 0x026DB8."
+        "Identičan raspon kao GTI lambda trim @ 0x026DB8. "
+        "Osi: Y-load @ 0x024E60, X-speed @ 0x024E9C. Count bytes [30,20] @ 0x024E5C."
     ),
 )
 
@@ -2106,12 +2175,26 @@ _SPARK_LAMBDA_TRIM2_DEF = MapDef(
     scale       = 1.0 / 32768.0,
     offset_val  = 0.0,
     unit        = "λ korekcija",
+    axis_x      = AxisDef(count=20, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="brzina motora [raw]",
+                          values=[640, 853, 1067, 1280, 1493, 1707, 1920, 2133,
+                                  2347, 2560, 2773, 2987, 3200, 3413, 3627, 3840,
+                                  4053, 4267, 4480, 4693]),
+                          # @ 0x0253B4 (20pt u16 LE, ista skala kao trim 1)
+    axis_y      = AxisDef(count=30, byte_order="LE", dtype="u16",
+                          scale=1.0, unit="opterecenje [raw]",
+                          values=[4800, 5600, 7400, 8600, 9600, 11000, 12200, 13200,
+                                  14560, 15600, 16400, 17000, 17600, 18800, 19600, 20400,
+                                  20800, 21600, 22800, 23400, 24000, 24800, 25800, 26680,
+                                  27680, 29000, 29800, 30720, 32000, 33600]),
+                          # @ 0x025378 (30pt u16 LE, STG2 mijenja 19/30 vrijednosti)
     raw_min     = 29000, raw_max = 34000,
     mirror_offset = 0,
     notes       = (
         "Spark 900 ACE. @ 0x0253DC. Odmah iza load+col osi @ 0x025378. "
         "ORI flat 32258=0.984. STG2 varijira 0.89-1.03 (aktivna kalibracija). "
-        "Završava @ 0x02588C. Parnjak lambda trim 1 @ 0x024EC4."
+        "Završava @ 0x02588C. Parnjak lambda trim 1 @ 0x024EC4. "
+        "Osi: Y-load @ 0x025378 (30pt), X-speed @ 0x0253B4 (20pt). Count bytes [30,20] @ 0x025374."
     ),
 )
 
@@ -2198,6 +2281,62 @@ _SPARK_NEUTRAL_CORR_DEF = MapDef(
         "Sve vrijednosti = 16384 (neutral = nema korekcije). "
         "GTI90 koristi 16448 (1.004) na svojoj adresi. "
         "Identično na svim Spark SW varijantama."
+    ),
+)
+
+# Lambda os za load-korekcijsku tablicu (9pt Q15, lambda vrijednosti)
+# Verificirano: ORI = [2686..49844] = Q15 [0.082..1.521], sentinel 65535 na offset+18
+# NPRo STG2 prosiruje gornji raspon: [3996..40438] = Q15 [0.122..1.235]
+_SPARK_LAMBDA_LOAD_AXIS_DEF = MapDef(
+    name        = "Spark — Lambda load os (9pt Q15)",
+    description = (
+        "Spark 900 ACE lambda os za load-korekcijsku tablicu. "
+        "9 u16 LE Q15 vrijednosti + 65535 sentinel. "
+        "ORI: Q15 = [0.082, 0.110, 0.173, 0.244, 0.326, 0.427, 0.553, 0.800, 1.521]. "
+        "NPRo STG2: prosiruje gornji raspon do Q15=1.235 (lean-side proširenje). "
+        "Adresa: 0x023910. Y-os za lambda korekcijsku tablicu @ 0x027036."
+    ),
+    category    = "axis",
+    rows=9, cols=1,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "lambda",
+    raw_min     = 2000, raw_max = 55000,
+    notes       = (
+        "Spark 900 ACE. @ 0x023910. 9 u16 LE Q15 + 65535 sentinel (offset+18). "
+        "ORI: [2686, 3607, 5685, 8002, 10694, 13999, 18118, 26214, 49844]. "
+        "NPRo: [3996, 6228, 10272, 19142, 25764, 32350, 40438, 49838]. "
+        "Y-os za Spark lambda load correction @ 0x027036."
+    ),
+)
+
+# Lambda korekcija po load-u (9x3 Q15, opada s porastom opterecenja)
+# Verificirano: ORI opada 0.992->0.730, NPRo STG2 postavlja sve na 32768 (1.0 = iskljucuje)
+# Format: 9 redova x 3 kolone (3 identične vrijednosti po redu — simetricna struktura)
+_SPARK_LAMBDA_LOAD_CORR_DEF = MapDef(
+    name        = "Spark — Lambda korekcija po load-u (9x3 Q15)",
+    description = (
+        "Spark 900 ACE lambda korekcija faktora po relativnom opterecenju. "
+        "9 redova × 3 kolone u16 LE Q15. Svaki red ima 3 identične vrijednosti. "
+        "ORI: opada od 0.992 do 0.730 (smanjuje obogacenje pri visokom load-u). "
+        "NPRo STG2: postavlja sve na 32768 (Q15=1.0 = iskljucena korekcija). "
+        "Adresa: 0x027036. Y-os @ 0x023910 (lambda), X-os load @ 0x02706C (12pt)."
+    ),
+    category    = "lambda",
+    rows=9, cols=3,
+    byte_order  = "LE", dtype = "u16",
+    scale       = 1.0 / 32768.0,
+    offset_val  = 0.0,
+    unit        = "lambda faktor",
+    raw_min     = 22000, raw_max = 33500,
+    mirror_offset = 0,
+    notes       = (
+        "Spark 900 ACE. @ 0x027036. 9x3 u16 LE Q15 = 54B. "
+        "ORI: [32522x3, 32070x3, 31179x3, 29948x3, 29127x3, 28551x3, 28223x3, 25481x3, 23921x3] "
+        "= Q15 [0.992, 0.979, 0.952, 0.914, 0.889, 0.871, 0.861, 0.778, 0.730]. "
+        "NPRo: sve 32768 (1.0 = neutralizirano). "
+        "Confidence: 80% — NPRo modificira, dakle tunabilno."
     ),
 )
 
@@ -2374,8 +2513,13 @@ _LAMBDA_EFF_U8_DEF = MapDef(
     scale         = 1.0 / 128.0,
     offset_val    = 0.0,
     unit          = "faktor /128",
-    axis_x        = None,   # X-os u8 u paddingu izmedju kopija (/128 = lambda 0.125-1.773)
-    axis_y        = None,   # Y-os neidentificirana
+    axis_x        = None,   # X-os u8 embedded per copy (@ copy_start+256B, 16 u8 /100)
+                            # Copy1 X-os @ 0x0275DF: [45,50,75,100,113,120,125,145,150,158,162,169,175,188,200,208]
+    axis_y        = AxisDef(count=16, byte_order="BE", dtype="u8",
+                            scale=1.0/100.0, unit="λ (izmjerena)",
+                            values=[20, 33, 67, 80, 93, 100, 107, 113, 120, 127,
+                                    133, 140, 147, 167, 187, 227]),
+                            # @ 0x0275CF (16 u8 /100 = 0.20–2.27 λ)
     raw_min       = 85,     # min valjanost
     raw_max       = 130,    # max valjanost
     mirror_offset = 0,      # kopije su stride 290B, ne direktni mirror_offset
@@ -3381,27 +3525,26 @@ class MapFinder:
         if cb: cb("Trazim efficiency correction Q15 tablicu (iza deadtime)...")
         data = self.eng.get_bytes()
 
-        # Provjeravamo preambulu (7 ugrađenih osi vrijednosti)
-        ax_addr = EFF_CORR_AXIS_ADDR
-        d_addr  = EFF_CORR_ADDR
-        ROWS, COLS = 10, 7
-        n = ROWS * COLS
+        # KFWIRKBA: 14×10 u8 @ EFF_CORR_ADDR (0x0259DC)
+        # Validacija: Y-os (14 u8 @ 0x0259C4) rastuća, X-os (10 u8 @ 0x0259D2) rastuća
+        d_addr = EFF_CORR_ADDR
+        ROWS, COLS = 14, 10
+        n = ROWS * COLS    # 140 u8
 
-        if d_addr + n * 2 > len(data):
+        if d_addr + n > len(data):
             return
 
-        preambula = [int.from_bytes(data[ax_addr + i*2: ax_addr+i*2+2], 'little')
-                     for i in range(7)]
-        vals = [int.from_bytes(data[d_addr + i*2: d_addr+i*2+2], 'little')
-                for i in range(n)]
+        y_axis = list(data[EFF_CORR_AXIS_Y_ADDR: EFF_CORR_AXIS_Y_ADDR + 14])
+        x_axis = list(data[EFF_CORR_AXIS_X_ADDR: EFF_CORR_AXIS_X_ADDR + 10])
+        vals   = list(data[d_addr: d_addr + n])
 
-        # Validacija: preambula rastuća, >70% u Q15 rasponu (25000-50000)
-        if not self._monotone(preambula):
-            if cb: cb(f"  Eff corr @ 0x{ax_addr:06X}: preambula nije rastuća — preskacam")
+        # Validacija: osi rastuće, data u rasponu 100–180
+        if not self._monotone(y_axis) or not self._monotone(x_axis):
+            if cb: cb(f"  Eff corr @ 0x{d_addr:06X}: osi nisu rastuće — preskacam")
             return
-        in_range = sum(1 for v in vals if 25000 <= v <= 50000)
-        if in_range < n * 7 // 10:
-            if cb: cb(f"  Eff corr @ 0x{d_addr:06X}: Q15 validacija pala ({in_range}/{n}) — preskacam")
+        in_range = sum(1 for v in vals if _EFF_CORR_DEF.raw_min <= v <= _EFF_CORR_DEF.raw_max)
+        if in_range < n * 6 // 10:
+            if cb: cb(f"  Eff corr @ 0x{d_addr:06X}: u8 validacija pala ({in_range}/{n}) — preskacam")
             return
 
         self.results.append(FoundMap(
@@ -3410,9 +3553,7 @@ class MapFinder:
             sw_id   = self._sw(),
             data    = vals,
         ))
-        q15_min = min(v for v in vals if v > 1000) / 32768
-        q15_max = max(vals) / 32768
-        if cb: cb(f"  Eff corr @ 0x{d_addr:06X}  10×7 Q15  [{q15_min:.3f}–{q15_max:.3f}]")
+        if cb: cb(f"  Eff corr @ 0x{d_addr:06X}  14×10 u8  [{min(vals)}–{max(vals)}] /128")
 
     # ── Overtemp lambda disable (all-0xFFFF for SC) scan ─────────────────────
 
@@ -3595,16 +3736,16 @@ class MapFinder:
         data = self.eng.get_bytes()
 
         addr = DEADTIME_ADDR
-        n    = _DEADTIME_DEF.rows * _DEADTIME_DEF.cols  # 14 × 7 = 98
+        n    = _DEADTIME_DEF.rows * _DEADTIME_DEF.cols  # 10 × 14 = 140
         if addr + n * 2 > len(data):
             return
 
         vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
 
-        # Validacija: deadtime vrijednosti su relativno male i ujednacene
-        non_zero = sum(1 for v in vals if v > 0)
-        if non_zero < n // 2:
-            if cb: cb(f"  Deadtime @ 0x{addr:06X}: previse nula — preskacam")
+        # Validacija: deadtime vrijednosti u rasponu 512–3000µs (raw/0.5)
+        non_zero = sum(1 for v in vals if _DEADTIME_DEF.raw_min <= v <= _DEADTIME_DEF.raw_max)
+        if non_zero < n * 6 // 10:
+            if cb: cb(f"  Deadtime @ 0x{addr:06X}: premalo valjanih vrijednosti — preskacam")
             return
 
         self.results.append(FoundMap(
@@ -3613,7 +3754,7 @@ class MapFinder:
             sw_id   = self._sw(),
             data    = vals,
         ))
-        if cb: cb(f"  Deadtime @ 0x{addr:06X}  14x7  raw=[{min(vals)}-{max(vals)}] (read-only)")
+        if cb: cb(f"  Deadtime @ 0x{addr:06X}  10x14  raw=[{min(vals)}-{max(vals)}] (read-only)")
 
     # ── DFCO thresholds scan ──────────────────────────────────────────────────
 
@@ -4093,6 +4234,41 @@ class MapFinder:
             else:
                 if cb: cb(f"  Spark therm enrich2 @ 0x{addr:06X}: validacija pala "
                            f"[{min(vals)}-{max(vals)}]")
+
+        # ─ Lambda load os @ 0x023910 (9pt Q15, Y-os za load-korekcijsku tablicu) ─
+        addr = 0x023910
+        if addr + 20 <= len(data):
+            vals = _read_u16le_n(addr, 9)
+            sentinel = int.from_bytes(data[addr+18:addr+20], 'little')
+            if (self._monotone(vals) and 2000 <= vals[0] <= 10000
+                    and vals[-1] <= 55000 and sentinel == 65535):
+                _add(_SPARK_LAMBDA_LOAD_AXIS_DEF, addr, vals)
+                if cb: cb(f"  Spark lambda load os @ 0x{addr:06X}  n=9  "
+                           f"[{vals[0]/32768:.3f}-{vals[-1]/32768:.3f}]lambda")
+            else:
+                if cb: cb(f"  Spark lambda load os @ 0x{addr:06X}: validacija pala "
+                           f"{vals[:4]} sentinel={sentinel}")
+
+        # ─ Lambda load correction @ 0x027036 (9x3 Q15, opada 0.992->0.730, NPRo=1.0) ─
+        addr  = 0x027036
+        n_llc = _SPARK_LAMBDA_LOAD_CORR_DEF.rows * _SPARK_LAMBDA_LOAD_CORR_DEF.cols  # 27
+        if addr + n_llc * 2 <= len(data):
+            vals = _read_u16le_n(addr, n_llc)
+            mn, mx = min(vals), max(vals)
+            all_flat = all(v == 32768 for v in vals)
+            in_range = all(_SPARK_LAMBDA_LOAD_CORR_DEF.raw_min <= v
+                           <= _SPARK_LAMBDA_LOAD_CORR_DEF.raw_max for v in vals)
+            if in_range or all_flat:
+                _add(_SPARK_LAMBDA_LOAD_CORR_DEF, addr, vals)
+                if all_flat:
+                    if cb: cb(f"  Spark lambda load corr @ 0x{addr:06X}  9x3 Q15  "
+                               "[NPRo: sve 1.0]")
+                else:
+                    if cb: cb(f"  Spark lambda load corr @ 0x{addr:06X}  9x3 Q15  "
+                               f"[{mn/32768:.3f}-{mx/32768:.3f}]lambda")
+            else:
+                if cb: cb(f"  Spark lambda load corr @ 0x{addr:06X}: validacija pala "
+                           f"[{mn}-{mx}]")
 
         if cb: cb("  Spark aux tablice: skeniranje zavrseno")
 

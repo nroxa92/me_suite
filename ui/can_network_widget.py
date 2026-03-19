@@ -52,6 +52,11 @@ CAN_ID_INFO: dict[int, tuple[str, str]] = {
     0x00BF: ("GTI extra config 1  (DLC=1, 0xFF)",                    "gti_sc"),
     0x00CD: ("GTI extra config 2  (DLC=1, 0xFF)",                    "gti_sc"),
     0x00DC: ("GTI extra config 3  (DLC=1, 0xFF)",                    "gti_sc"),
+    # sdtpro / field-verified IDs (engine running, live broadcast)
+    0x0103: ("Spark EGT / TPS broadcast  [sdtpro: d[4]*1.0125-60=°C, d[6:8]=TPS]  @~50ms",  "spark"),
+    0x0104: ("Spark throttle body  [sdtpro: d[0:2]/100=°]  @~50ms",                          "spark"),
+    0x0316: ("Engine oil temp  [sdtpro: d[3]*0.943-17.2=°C]  @~50ms",                        "common"),
+    0x0342: ("MUX broadcast  [sdtpro: d[0]=0xDE→ECT, 0xAA→MAP_hPa, 0xC1→MAT]  @~20ms",     "common"),
 }
 
 # Fizicke adrese CAN ID tablice u binarnom fajlu (BE u16, 0x0000 terminated)

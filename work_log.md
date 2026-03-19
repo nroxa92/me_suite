@@ -1,5 +1,314 @@
 # ME17Suite — Work Log
 
+## 2026-03-19 16:30 — Osi za Spark lambda trim 1/2 i deadtime (binarna verifikacija)
+
+### Sto je napravljeno
+Binarna analiza `spark90.bin` (2021) za pronalazak axis definicija za jos 3 Spark mape:
+
+**Lambda Trim 1 (0x024EC4, 30x20)** — IMPLEMENTIRANO:
+- Y-os (load 30pt) @ 0x024E60: [4800..32000] raw load
+- X-os (speed 20pt) @ 0x024E9C: [640..4693] raw speed
+- Count bytes [30,20] @ 0x024E5C potvrdjeni
+
+**Lambda Trim 2 (0x0253DC, 30x20)** — IMPLEMENTIRANO:
+- Y-os (load 30pt) @ 0x025378: [4800..33600] (STG2 mijenja 19/30 vrijednosti)
+- X-os (speed 20pt) @ 0x0253B4: [640..4693] (ista os kao trim 1)
+- Count bytes [30,20] @ 0x025374 potvrdjeni
+
+**Deadtime (0x0287A4, 8x8)** — IMPLEMENTIRANO:
+- X-os (napon 8pt) @ 0x028794: [80..150]/10 = [8.0..15.0V] baterija
+- Y-os (trajanje 8pt) @ 0x028784: [4,10,20,40,60,80,100,120] (u8 parovi, scale 0.1 = ms)
+- Count bytes [8,8] @ 0x028780 potvrdjeni
+
+**Lazi pozitivi DETEKTIRANI** (adrese ostaju ali dodani komentari):
+- `_SPARK_LAMBDA_PROT_DEF`: 0x0222C0 je UNUTAR injection data (row 12-14) — lazi pozitiv!
+  Stvarna lambda zastitna lokacija nije pronadjena (nema count bytes [12,18] ni u Sparku ni GTI90)
+- `_SPARK_IDLE_RPM_DEF`: 0x0224A0 je UNUTAR injection data — lazi pozitiv!
+  Stvarna adresa nije pronadjena
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`: axis_x/axis_y dodani za 3 mape
+
+### Testovi
+- `python test/test_core.py` — 9/9 PASS
+
+---
+
+## 2026-03-19 — Binarna analiza osi za 10 Spark 900 ACE mapa (agent sesija)
+
+### Što je napravljeno
+Potpuna binarna analiza `_materijali/dumps/2018/900ace/spark90.bin` (SW 10SW011328) i usporedba s `spark_stg2` (NPRo STG2 1037544876) za pronalazak axis definicija za 10 Spark 900 ACE mapa.
+
+### Rezultati po mapi
+
+**MAP 1 (Injection, 0x0222BE):** POTVRĐENO
+- Header @ 0x022256: [ncols=20, nrows=30]
+- X-os LOAD (20pt) @ 0x02225A, /256 = [30..104%]
+- Y-os RPM (30pt) @ 0x022282, /4 = [999..8400 RPM]
+- Injection mirror @ 0x0227D6 (+0x518 offset), potvrđen
+
+**MAP 2 (Lambda Protection, 0x0222C0):** ADRESA NETOČNA
+- 0x0222C0 je unutar injection tablice (injection data) — nije lambda prot mapa
+- Stvarna lokacija nije pronađena s dovoljnom sigurnošću
+
+**MAP 3 (Injector Deadtime, 0x028786):** POTVRĐENO
+- Header @ 0x028780: [ncols=8, nrows=8]
+- X-os PW (8pt) @ 0x028784, /40e6 = [25.7..771 µs]
+- Y-os VBAT (8pt) @ 0x028794, /10 = [8.0..15.0 V]
+
+**MAP 4 (Idle RPM, 0x0224A0):** ADRESA SUMNJIVA
+- 0x0224A0 je unutar injection tablice (redak 12, stupac 5)
+- Nije idle RPM mapa — adresa iz zadatka je pogrešna
+
+**MAP 5 (Lambda Target, 0x025F5C):** DJELOMIČNO POTVRĐENO
+- Data @ 0x025F5C, Q15 u16LE, 8 stupaca × 8 redaka
+- Axis1 (RPM 8pt) @ 0x025F3C: /4 = [836..8540 RPM]
+- Axis2 (load 8pt) @ 0x025F4C: /32768 Q15 = [0.301..1.521]
+- STG2 mijenja ove vrijednosti → potvrđena je lambda target mapa
+- NAPOMENA: zadatak kaže 8×16 ali samo 8×8 axes pronađene; možda je lambda target u ignition map regiji
+
+**MAP 6 (Torque, 0x027D9A):** POTVRĐENO (ispravljena adresa)
+- Header @ 0x027D32: [ncols=30, nrows=20]
+- Y-os RPM (30pt) @ 0x027D36: /4 = [1000..8400 RPM]
+- X-os LOAD (20pt) @ 0x027D72: /16 = [11.8..97.7%]
+- Stvarni data start @ 0x027D9A (ne 0x027E3A iz zadatka)
+
+**MAP 7 (Lambda Trim, 0x024EC4):** POTVRĐENO
+- Header @ 0x024E5C: [ncols=30, nrows=20]
+- X-os RPM (30pt) @ 0x024E60: /4 = [1500..8000 RPM]
+- Y-os LOAD (20pt) @ 0x024E9C: /64 = [10.0..73.3%]
+
+**MAP 8 (Therm Enrich, 0x025BAA):** POTVRĐENO (dimenzije ispravljene)
+- Data @ 0x025BAA, u16LE, 8 stupaca × 12 redaka (ne 8×7)
+- X-os CTS (8pt) @ 0x025AD0: [6,44,50,75,100,125,150,160] °C (direktna temperatura)
+- Y-os (12pt): NIJE PRONAĐENA — implicitna ili nema u memoriji
+- Enkodiranje: vrijednost / 10240 = faktor obogaćivanja
+- STG2 (NPRo) povećava sve vrijednosti za ~+25%
+
+**MAP 9 (Lambda Trim2, 0x0253DC):** POTVRĐENO
+- Header @ 0x025374: [ncols=30, nrows=20]
+- X-os RPM (30pt) @ 0x025378: /4 = [1200..8400 RPM]
+- Y-os LOAD (20pt) @ 0x0253B4: /64 = [10.0..73.3%] (identična MAP 7 Y-os)
+
+**MAP 10 (Lambda Load Corr, 0x027024):** POTVRĐENO (dimenzije ispravljene)
+- Header @ 0x027002: [ncols=12, nrows=3] (ne 9×3 iz zadatka)
+- X-os RPM (12pt) @ 0x027006: /4 = [1500..7500 RPM]
+- Y-os Lambda (3pt) @ 0x02701E: /32768 Q15 = [0.35, 0.425, 0.50]
+- Data @ 0x027024, 3 redaka × 12 stupaca Q15
+- STG2 postavlja sve vrijednosti na 1.0 (NPRo onemogućio korekciju)
+- STG2 mijenja i Y-os (lambda axis) na 0x023910
+
+### Dodatni nalazi
+- Injection mirror offset: +0x518 (1304B) od data starta
+- Therm enrich enkodiranje: /10240 (ne /32768 Q15)
+- Ignition advance u Spark 900: u16LE /256 = stupnjevi (ne u8 × 0.75 kao 1630!)
+- Lambda prot Y-os (za neku mapu) na 0x023928: 13pt [0.022..1.761] Q15
+- STG2 mijenja lambda axis na 0x023928 (NPRo povećava load breakpointe)
+- Ignition advance povećan za ~+2-3° u STG2 (0x0295EE i okolne adrese)
+- Lambda target u STG2: 0x025E3C područje mijenja 1.004 → 0.738 (obogaćivanje na WOT)
+
+### Fajlovi analizirani
+- `_materijali/dumps/2018/900ace/spark90.bin` (ORI)
+- `_materijali/dumps/2018/900ace/spark_stg2` (NPRo STG2 usporedba)
+- `_materijali/dumps/2019/1630ace/300.bin` (reference)
+
+---
+
+## 2026-03-19 23:30 — KFWIRKBA ispravka: 14×10 u8 (ne 7×10 u16), osi lambda u8/100
+
+### Što je napravljeno
+Nastavak analize KFWIRKBA (MAP 7) koji je ostao neriješen. Otkrivena je prava struktura:
+- Count bytes 0x0E=14, 0x0A=10 na 0x0259C2 znače 14 redova × 10 stupaca
+- Dtype je u8 (ne u16 Q15!), skala /128 = 1.0
+- Y-os = 14 lambda točaka (u8/100) na 0x0259C4; X-os = 10 lambda točaka (u8/100) na 0x0259D2
+- Mapa počinje na 0x0259DC (ne 0x0259D2 kako je ranije pretpostavljeno)
+- Vrijednosti 128-159 → 1.0-1.24 (enrichment korekcija, min=1.0 nema korekcije)
+
+### Fajlovi promijenjeni
+- work_log.md (ispravka MAP 7 unosa)
+
+---
+
+## 2026-03-19 22:45 — Binarna analiza osi za 8 mapa (agent sesija)
+
+### Sto je napravljeno
+Potpuna binarna analiza `_materijali/dumps/2021/1630ace/300.bin` za pronalazak axis definicija.
+
+### Rezultati po mapi
+
+**MAP 1: _INJ_DEF (0x02436C, 12×16)**
+- axis_x (cols, RPM 16pt BE): DIJELJENA na 0x024F46 = [512..8448] RPM
+- axis_y (rows, LOAD 12pt LE, ×0.015625): DIJELJENA na 0x02AE30 = [0,100,200,400,800,1280,2560,3200,3840,4480,5120,5760] → 0-90%
+
+**MAP 2: _LAMBDA_PROT_DEF (0x02469C, 13×12)**
+- axis_y (cols, load mg/hub, u16 LE ×1/100): INLINE na 0x0247EE = [6000..32000] → 60-320 mg/hub
+- axis_x (rows, lambda Q15, u16 LE): INLINE na 0x02480A = [656..52428] → 0.02-1.60 lambda
+
+**MAP 3: _DEADTIME_DEF (0x0258AA, 10×14) — ISPRAVKA: stvarna adresa mape je 0x0258AA ne 0x025900!**
+- count_x=14 na 0x025876, count_y=10 na 0x025878
+- axis_x (cols, trajanje u16 LE): INLINE na 0x02587A = [1,2,3,4,6,8,10,20,40,60,120,240,480,960]
+- axis_y (rows, temp °C, u16 LE): INLINE na 0x025896 = [37,51,64,77,91,104,117,131,144,157] °C
+
+**MAP 4: _DECEL_RPM_CUT_DEF (0x028C30, 16×11)**
+- axis_y (rows, load mg/hub×100, u16 LE): INLINE na 0x028BEA = [6000..36000] → 60-360 mg/hub
+- axis_x (cols, ratio Q15, u16 LE): INLINE na 0x028C0A = [0..65535] → 0.0-2.0 Q15
+
+**MAP 5: _IDLE_RPM_DEF (0x02B600, 5×12)**
+- axis_x (cols, temp °C, u16 LE): INLINE na 0x02B5DE = [24,37,51,64,77,91,104,117,144,171,197,251] °C
+- axis_y (rows, mode, u16 LE): INLINE na 0x02B5F6 = [3340,3220,3100,2990,2880] (RPM target or mode)
+
+**MAP 6: _LAMBDA_EFF_U8_DEF (0x0275FD, 16×16 u8)**
+- axis_y (rows, lambda u8/100): DIJELJENA na 0x0275CF = [20,33,67,80,93,100,107,113,120,127,133,140,147,167,187,227] → 0.20-2.27
+- axis_x (cols, lambda u8/100): EMBEDDED +256B u svakoj kopiji = [147,167,187,227,45,50,75,100,113,120,125,145,150,158,162,169,175] (sort: 0.45-2.27)
+
+**MAP 7: _EFF_CORR_DEF / KFWIRKBA (0x0259DC, 14×10 u8) — ISPRAVKA: nije 7×10 u16 Q15!**
+- count bytes na 0x0259C2: [0x0E=14 rows, 0x0A=10 cols]
+- axis_y (rows, lambda u8/100): INLINE na 0x0259C4 = [37,51,58,64,71,77,87,97,107,117,131,137,144,171] → 0.37-1.71 lambda (14 pt)
+- axis_x (cols, lambda u8/100): INLINE na 0x0259D2 = [37,51,64,77,91,104,117,131,137,144] → 0.37-1.44 lambda (10 pt)
+- dtype: u8, skala /128 = 1.0 (Q7) — vrijednosti 128-159 (1.0-1.24 enrichment faktor)
+- fizika: y = izmjerena lambda, x = target/reference lambda; output = korekcija efektivnosti
+- mapa ends na 0x025A68
+
+**MAP 8: _ACCEL_ENRICH_DEF (0x028059, 5 rows)**
+- Struktura: [1B global=4] + 5×[u16 count=5][5×u16 dTPS x-os][5×u16 Q15 data]
+- axis_x (dTPS%, u16 LE): EMBEDDED u svakom redu = [0,150,200,350,1500] → 0-15% dTPS
+- axis_y (row condition, u8): KANDIDAT na 0x028050 = [67,93,95,97,99] → /100 = 0.67-0.99 (lambda ili load)
+
+### Fajlovi promijenjeni
+- Nema (samo analiza, nije implementirano)
+
+---
+
+## 2026-03-19 19:30 — DTC opisi i uzroci + map stanje
+
+### Što je napravljeno
+- **core/dtc_descriptions.py**: novi fajl — `DTC_INFO` dict s opisom + listom uzroka za svih 111 ECM P-kodova
+  - Standard OBD opis (EN) + mogući uzroci (HR), poredani od najvjerojatnijeg
+- **ui/main_window.py** DtcPanel: dodan `QLabel` za opis, `QListWidget` za uzroke, "Tehnički detalji" header
+  - `_refresh_display()` popunjava opis/uzroke iz `DTC_INFO[defn.code]`
+  - Import `DTC_INFO` dodan
+
+### Stanje mapa
+- 59 MapDef-ova ukupno, 3 manja problema:
+  - 2 MapDef s TODO markerima (P1550/P0523 enable flags — adrese neistražene)
+  - 1 MapDef bez `unit` (Spark load os — namjerno, osa je interni load)
+- 18 2D mapa bez axis_x/axis_y — adrese osi za većinu neistražene binarnom analizom
+
+### Fajlovi promijenjeni
+- `core/dtc_descriptions.py` (novi)
+- `ui/main_window.py` — DtcPanel layout + _refresh_display + import
+
+---
+
+## 2026-03-19 19:00 — CAN decoder + UI fixes
+
+### Što je napravljeno
+- **can_decoder.py**: Dodane 3 nove decode metode (decode_spark_egt, decode_spark_tps_103, decode_spark_throttle_body) + dispatch u decode() za 0x0103 i 0x0104
+- **can_logger_widget.py**: Import CAN_SPARK_EGT/THB + _update_tiles() proširen: EGT i TPS iz 0x0103, throttle iz 0x0104
+- **main_window.py** MapLibraryPanel: Strip engine prefiksa ("Spark — ", "Spark ", "GTI — ", "GTI ") iz display naziva u tree-u — nazivi konzistentni bez obzira koji fajl učitan
+
+### Fajlovi promijenjeni
+- `core/can_decoder.py` — dispatch + 3 metode (već su bile, sad je dispatch dodan)
+- `ui/can_logger_widget.py` — import + _update_tiles() blok za 0x0103/0x0104
+- `ui/main_window.py` — display_name strip prefiks loop
+
+---
+
+## 2026-03-19 17:30 — Spark mape: +2 nova (54 ukupno, bilo 52)
+
+### Što je napravljeno
+- Binarna analiza NPRo STG2 vs ORI Spark 2018 (82 diff blokova, 3581B razlika)
+- Pronađene 2 nova tunabilna Spark mape koje NPRo modificira:
+  1. `Spark lambda load os` @ 0x023910 (9pt Q15 lambda axis, Y-os za korekcijsku tablicu)
+  2. `Spark lambda korekcija po load-u` @ 0x027036 (9×3 Q15, opada 0.992→0.730 s porastom loada; NPRo postavlja na 1.0)
+- Dodani `_SPARK_LAMBDA_LOAD_AXIS_DEF` i `_SPARK_LAMBDA_LOAD_CORR_DEF` u map_finder.py
+- Dodane scan metode u `_scan_spark_aux()`
+- Svi testovi prolaze: Spark 52→54 mapa
+
+### Za 1630 ACE
+- Binarna analiza 300hp vs 130hp: razlike su SKALIRANJE (faktor 1.2-1.4×), ne nove mape
+- 0x02B380 = 36×u16 lookup tablica (skalira po snazi, nije nova tunabilna mapa)
+- 0x012C80 = 96B embedded konstanti + 0xDEADBEEF marker (različito po verziji/snazi)
+
+## 2026-03-19 17:10 — DTC Sidebar poboljšanja
+
+### Što je napravljeno
+- `DtcSidebarPanel` u `ui/main_window.py` poboljšan:
+  - `setMaximumWidth(220)` — sidebar ograničen na 220px
+  - Parent kategorija node prikazuje count: `P — Powertrain  (47)`
+  - Subgrupa node prikazuje count: `P0xxx — Standardni (OEM/SAE)  (38)`
+  - Leaf node prikazuje P-kod + skraćeni naziv (max 22 znaka + "…"): `P0106  MAP Sensor Out of…`
+  - ToolTip na leaf nodevima: puni naziv DTC-a
+  - `QTreeWidget` stiliziran tamnom temom (#1a1a1d bg, #9cdcfe selected, #C8C8D0 tekst)
+  - `setUniformRowHeights(True)` za performansu
+  - Horizontalni scrollbar sakriven (sidebar je uski)
+  - Splitter inicijalna širina smanjena: 270→220px (`main_split.setSizes([220, 950, 270])`)
+- Import test: `python -c "from ui.main_window import DtcSidebarPanel; print('OK')"` → OK
+- Fajlovi: `ui/main_window.py`
+
+## 2026-03-19 16:35 — CAN Logger tab — finalizacija i testiranje
+
+### Što je napravljeno
+- Sve komponente CAN Logger taba verificirane i integrirane
+- `python -c "from ui.can_logger_widget import CanLoggerWidget"` → OK (bez importerror)
+- `python test/test_core.py` → svi testovi prošli (54 mapa, EEPROM, checksum, write safety)
+- Fajlovi: `core/can_logger.py`, `core/can_decoder.py`, `ui/can_logger_widget.py`, `ui/main_window.py`, `ui/can_network_widget.py`, `_docs/CANBUS_NOTES.md`
+
+---
+
+## 2026-03-19 16:10 — NOVO: ui/can_logger_widget.py
+
+### Što je napravljeno
+- Napisan `ui/can_logger_widget.py` — novi UI widget za live CAN logging
+- `_GaugeTile(QFrame)`: kartica za jedan parametar (label + 28px bold vrijednost + unit), warn boja (#EF5350) za RPM>7000, ECT>95, EOT>120
+- `CanLoggerWidget(QWidget)`: glavni widget s header barom + horizontal splitter (58/42)
+  - Header: IXXAT kanal combo, Spoji/Odspoji toggle, Snimi/Stop toggle, Otvori log, status label, REC timer
+  - Lijevo: 10 _GaugeTile karti u 3×4 gridu (RPM, ECT, EOT, MAP, TPS, MAT, EGT, Brzina, Gorivo, Sati)
+  - Desno: QTableWidget s 4 kolone (Vr/ID/Hex/Decoded), max 2000 redova (trim 500), auto-scroll, stats bar
+- Logika: connect/disconnect, start/stop recording (QTimer za HH:MM:SS), LogFile.save/load, _update_tiles po CAN ID-u
+- Boje redova: 0x0108/0x0110/0x012C/0x013C=#cccccc, 0x0134/0x0154=#9cdcfe, 0x0148=#4ec9b0, ostali=#666666
+- Stil: identičan can_network_widget.py (#252526 header, #1a1a1d tile, Consolas font)
+- `clear_session()` public API za reset pri učitavanju novog .bin
+
+### Ključni fajlovi
+- NOVO: `ui/can_logger_widget.py`
+
+---
+
+## 2026-03-19 15:30 — core/can_decoder.py — novi sdtpro CAN ID-ovi
+
+### Što je napravljeno
+- Dodane 4 nove konstante: `CAN_EOT_MUX=0x0316`, `CAN_BROADCAST=0x0342`, `CAN_SPARK_EGT=0x0103`, `CAN_SPARK_THB=0x0104`
+- Nova metoda `decode_eot_316()`: EOT iz 0x0316, formula `data[3]*0.943-17.2 °C`
+- Nova metoda `decode_mux_342()`: MUX broadcast 0x0342 — ECT (0xDE), MAP (0xAA), MAT (0xC1); vraća dict s prisutnim ključevima
+- Dispatcher `decode()` proširen s `CAN_EOT_MUX` i `CAN_BROADCAST` blokovima
+- Module docstring ažuriran — nova sekcija "sdtpro / field-verified IDs" s formulama
+- Sve formule iz sdtpro hardware_simulator.py (field-verified, 250 kbps, engine running)
+
+### Ključni fajlovi
+- IZMJENA: `core/can_decoder.py`
+
+---
+
+## 2026-03-19 14:00 — Novi fajl: core/can_logger.py (CAN logger backend)
+
+### Što je napravljeno
+- Napisan `core/can_logger.py` — novi modul, 0 izmjena postojećih fajlova
+- `CanLoggerThread(QThread)`: live CAN acquisitcion putem IXXAT USB adaptera (python-can)
+  - Signali: `message_received(float, int, bytes)` i `connection_status(bool, str)`
+  - Graceful handling: `import can` greška → signal; IXXAT greška → signal
+  - `connect_bus()`, `disconnect_bus()`, `stop()`, `run()` metode
+  - `run()` pada gracefully na bus grešku, uvijek poziva `disconnect_bus()` u `finally`
+- `LogFile`: statičke metode `load()` i `save()` za SDCANlogger-kompatibilni format
+  - `load()`: parsira `timestamp;0xID;HEXDATA`, preskače `#` komentare, pad na 8B
+  - `save()`: piše isti format + opcionalni `# START_TIME_WALL_CLOCK:` header
+- Svi importi apsolutni (PyQt6.QtCore, threading, time)
+
+### Ključni fajlovi
+- NOVO: `core/can_logger.py`
+
+---
+
 ## 2026-03-19 — 7-DEO binarna analiza: NPRo diff, SC/NA, godišnja evolucija, +2 nove mape
 
 ### Sto je napravljeno
@@ -2967,3 +3276,33 @@ sdtpro = Sea-Doo Tool Pro, 3-dijelni hardware/SW projekt iz Desktop/old_pro/sdtp
 **⚠️ Kritična greška: ACAN_ESP32_Settings settings(500*1000)** — Sea-Doo CAN je 250kbps! ESP32 nikad nije primao podatke.
 
 **⚠️ 0x342 MUX nepodudaranje:** IXXAT logovi pokazuju byte[0]=0x21 i byte[1]=0xDE uvijek. Firmware provjerava byte[0] za 0xAA/0xDE/0xC1. Mux byte je možda byte[1] ili ove vrijednosti nisu prisutne u snimljenim sesijama. Treba verifikacija s radnim ESP32 @ 250kbps.
+
+---
+
+## 2026-03-19 — CAN Logger tab implementiran
+
+### Što je napravljeno
+Dodan novi "CAN Logger" tab u ME17Suite koji integrira znanje iz dva stara projekta:
+- SDCANlogger (IXXAT sniffer, Python-can, sniffanje BUDS2 sesija)
+- sdtpro (ESP32+Flutter live logger, decode formule iz hardware_simulator.py)
+
+### Novi fajlovi
+- `core/can_logger.py` — backend: CanLoggerThread (QThread, python-can IXXAT), LogFile (load/save .txt)
+- `ui/can_logger_widget.py` — PyQt6 widget: live gauge grid (10 parametara) + raw CAN log tablica
+
+### Izmijenjeni fajlovi
+- `core/can_decoder.py` — dodani: CAN_EOT_MUX (0x0316), CAN_BROADCAST (0x0342), CAN_SPARK_EGT (0x0103), decode_eot_316(), decode_mux_342()
+- `ui/can_network_widget.py` — dodani novi IDs u CAN_ID_INFO (0x0103, 0x0104, 0x0316, 0x0342)
+- `ui/main_window.py` — dodan import + tab instanca
+
+### Decode formule (iz sdtpro/hardware_simulator.py)
+- 0x0316: EOT = data[3]*0.943 - 17.2 °C
+- 0x0342 mux 0xDE: ECT = 56.9 - 0.0002455*(d[2]<<8|d[3]) °C
+- 0x0342 mux 0xAA: MAP = (d[2]<<8|d[3])*0.41265 + 360.63 hPa
+- 0x0342 mux 0xC1: MAT = 92.353 - 0.00113485*(d[4]<<8|d[5]) °C
+
+### Napomene
+- CAN bus: 250 kbps, IXXAT USB adapter
+- 0x0342 s byte[0]=0x21 = bench/dijagnostički mod (BUDS2), ne engine-running mode
+- Formule za 0x0342 potvrđene iz hardware_simulator.py, ali ne iz live snimke s pokrenutim motorom
+- UI ne zahtijeva hardver — može otvoriti i analizirati postojeće .txt log fajlove

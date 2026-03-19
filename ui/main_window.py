@@ -40,12 +40,14 @@ from core.map_finder import MapFinder, FoundMap, MapDef
 from core.map_editor import MapEditor, EditResult
 from core.checksum import ChecksumEngine
 from core.dtc import DtcEngine, DTC_REGISTRY, DtcStatus
+from core.dtc_descriptions import DTC_INFO
 from core.safety_validator import SafetyValidator, Level as SvLevel
 from core.map_differ import MapDiffer
 from ui.calculator_widget import CalculatorWidget
 from ui.diff_viewer import MapDiffWidget
 from ui.eeprom_widget import EepromWidget
 from ui.can_network_widget import CanNetworkWidget
+from ui.can_logger_widget import CanLoggerWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -594,7 +596,13 @@ class MapLibraryPanel(QWidget):
             fm2 = cmp_by_name.get(fm.defn.name)
             is_diff = fm2 is not None and fm.data != fm2.data
 
-            name_txt = f"  {'● ' if is_diff else ''}{fm.defn.name}"
+            # Strip engine-specific prefiks iz display naziva
+            display_name = fm.defn.name
+            for pfx in ("Spark — ", "Spark ", "GTI — ", "GTI "):
+                if display_name.startswith(pfx):
+                    display_name = display_name[len(pfx):]
+                    break
+            name_txt = f"  {'● ' if is_diff else ''}{display_name}"
             ch.setText(0, name_txt)
             ch.setFont(0, QFont("Segoe UI", 12))
             # Category color badge icon (12×12 filled circle)
@@ -643,6 +651,7 @@ class DtcSidebarPanel(QWidget):
         super().__init__(parent)
         self._dtc_eng = None
         self._all_items: list[tuple[int, QTreeWidgetItem]] = []
+        self.setMaximumWidth(220)
 
         lo = QVBoxLayout(self); lo.setContentsMargins(0, 0, 0, 0); lo.setSpacing(0)
 
@@ -655,17 +664,36 @@ class DtcSidebarPanel(QWidget):
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("  Filtriraj DTC...")
-        self._search.setFixedHeight(30)
+        self._search.setFixedHeight(28)
         self._search.setStyleSheet(
             "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
-            "border-radius:0; padding:4px 10px; color:#C8C8D0; font-size:12px;"
+            "border-radius:0; padding:3px 8px; color:#C8C8D0; font-size:11px;"
         )
         self._search.textChanged.connect(self._filter)
         lo.addWidget(self._search)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setIndentation(14)
+        self.tree.setIndentation(12)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tree.setStyleSheet(
+            "QTreeWidget {"
+            "  background:#1a1a1d; border:none; color:#C8C8D0; font-size:11px;"
+            "  outline:none;"
+            "}"
+            "QTreeWidget::item { padding:1px 2px; }"
+            "QTreeWidget::item:selected {"
+            "  background:#2a2a3a; color:#9cdcfe;"
+            "}"
+            "QTreeWidget::item:hover {"
+            "  background:#222230;"
+            "}"
+            "QTreeWidget::branch:has-children:!has-siblings:closed,"
+            "QTreeWidget::branch:closed:has-children:has-siblings {"
+            "  border-image:none; image:none;"
+            "}"
+        )
         self.tree.itemClicked.connect(self._click)
         lo.addWidget(self.tree, 1)
 
@@ -685,14 +713,18 @@ class DtcSidebarPanel(QWidget):
 
         for cat_idx, (cat_label, lo_c, hi_c, cat_color) in enumerate(self._CAT_GROUPS):
             # Provjeri ima li kodova u ovoj kategoriji
-            has_any = any(k[0] == cat_idx for k in buckets)
-            if not has_any:
+            cat_total = sum(len(buckets.get((cat_idx, sd), [])) for sd in range(4))
+            if cat_total == 0:
                 continue
 
-            cat_item = QTreeWidgetItem(self.tree, [cat_label])
-            cat_item.setFont(0, QFont("Segoe UI", 10, QFont.Weight.Bold))
+            # Parent node s count: "P — Powertrain (47)"
+            base_label = cat_label.split(" — ")[0]   # "P"
+            desc_label = cat_label.split(" — ", 1)[1] if " — " in cat_label else cat_label
+            labeled = f"{base_label} — {desc_label}  ({cat_total})"
+            cat_item = QTreeWidgetItem(self.tree, [labeled])
+            cat_item.setFont(0, QFont("Segoe UI", 9, QFont.Weight.Bold))
             cat_item.setForeground(0, QBrush(QColor(cat_color)))
-            cat_item.setSizeHint(0, QSize(0, 26))
+            cat_item.setSizeHint(0, QSize(0, 22))
             cat_item.setExpanded(True)
 
             for sub_digit in range(4):
@@ -700,21 +732,25 @@ class DtcSidebarPanel(QWidget):
                 if not entries:
                     continue
 
-                # Subgrupa npr. "P0 — Standardni (OEM/SAE)"
+                # Subgrupa npr. "P0xxx — Standardni (OEM/SAE) (38)"
                 cat_char = "PCBU"[cat_idx]
-                sub_label = f"  {cat_char}{sub_digit}xxx {self._SUB_LABELS.get(sub_digit, '')}"
+                sub_desc = self._SUB_LABELS.get(sub_digit, '')
+                sub_label = f"{cat_char}{sub_digit}xxx {sub_desc}  ({len(entries)})"
                 sub_item = QTreeWidgetItem(cat_item, [sub_label])
-                sub_item.setFont(0, QFont("Segoe UI", 9))
-                sub_item.setForeground(0, QBrush(QColor("#505060")))
-                sub_item.setSizeHint(0, QSize(0, 22))
+                sub_item.setFont(0, QFont("Segoe UI", 8))
+                sub_item.setForeground(0, QBrush(QColor("#6868A0")))
+                sub_item.setSizeHint(0, QSize(0, 19))
                 sub_item.setExpanded(True)
 
                 for code, defn in entries:
-                    ch = QTreeWidgetItem(sub_item, [f"    {defn.p_code}"])
-                    ch.setFont(0, QFont("Consolas", 11))
-                    ch.setSizeHint(0, QSize(0, 20))
+                    # Skraćeni naziv: max 22 znaka
+                    short_name = defn.name[:22] + "…" if len(defn.name) > 22 else defn.name
+                    ch = QTreeWidgetItem(sub_item, [f"  {defn.p_code}  {short_name}"])
+                    ch.setFont(0, QFont("Consolas", 10))
+                    ch.setSizeHint(0, QSize(0, 18))
                     ch.setForeground(0, QBrush(QColor(self._COLOR_NONE)))
                     ch.setData(0, Qt.ItemDataRole.UserRole, code)
+                    ch.setToolTip(0, f"{defn.p_code} — {defn.name}")
                     self._all_items.append((code, ch))
 
     def set_engine(self, dtc_eng):
@@ -2055,14 +2091,50 @@ class DtcPanel(QWidget):
         sep.setStyleSheet("background:#2A2A32; max-height:1px;")
         right_lo.addWidget(sep)
 
-        # Notes + upozorenje
+        # Opis greške
+        desc_hdr = QLabel("OPIS")
+        desc_hdr.setStyleSheet(
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1px; margin-top:6px;"
+        )
+        right_lo.addWidget(desc_hdr)
+
+        self._desc_lbl = QLabel("")
+        self._desc_lbl.setStyleSheet("color:#C8C8D0; font-size:12px; padding:2px 0 6px 0;")
+        self._desc_lbl.setWordWrap(True)
+        right_lo.addWidget(self._desc_lbl)
+
+        # Mogući uzroci
+        causes_hdr = QLabel("MOGUĆI UZROCI")
+        causes_hdr.setStyleSheet(
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1px; margin-top:2px;"
+        )
+        right_lo.addWidget(causes_hdr)
+
+        self._causes_list = QListWidget()
+        self._causes_list.setMaximumHeight(160)
+        self._causes_list.setStyleSheet(
+            "QListWidget { background:#111113; border:1px solid #2A2A32; border-radius:4px; "
+            "color:#C8C8D0; font-size:12px; padding:4px; }"
+            "QListWidget::item { padding:3px 6px; border-radius:2px; }"
+            "QListWidget::item:hover { background:#1E1E28; }"
+        )
+        self._causes_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        right_lo.addWidget(self._causes_list)
+
+        # Tehnički detalji (adrese)
+        tech_hdr = QLabel("TEHNIČKI DETALJI")
+        tech_hdr.setStyleSheet(
+            "color:#808090; font-size:10px; font-weight:bold; letter-spacing:1px; margin-top:6px;"
+        )
+        right_lo.addWidget(tech_hdr)
+
         self._notes_lbl = QLabel("")
-        self._notes_lbl.setStyleSheet("color:#505060; font-size:12px;")
+        self._notes_lbl.setStyleSheet("color:#505060; font-size:11px; font-family:Consolas;")
         self._notes_lbl.setWordWrap(True)
         right_lo.addWidget(self._notes_lbl)
 
         warn_lbl = QLabel("⚠  Isključivanje DTC-a deaktivira zaštitu motora!")
-        warn_lbl.setStyleSheet("color:#FFB74D; font-size:12px; font-weight:bold;")
+        warn_lbl.setStyleSheet("color:#FFB74D; font-size:12px; font-weight:bold; margin-top:4px;")
         right_lo.addWidget(warn_lbl)
 
         right_lo.addStretch()
@@ -2142,6 +2214,18 @@ class DtcPanel(QWidget):
 
         # Obavijesti sidebar o promjeni statusa
         self.dtc_status_changed.emit(self._cur_code, status.is_off)
+
+        # Opis i uzroci iz DTC_INFO
+        info = DTC_INFO.get(defn.code)
+        if info:
+            desc, causes = info
+            self._desc_lbl.setText(desc)
+            self._causes_list.clear()
+            for i, cause in enumerate(causes, 1):
+                self._causes_list.addItem(f"{i}.  {cause}")
+        else:
+            self._desc_lbl.setText("Opis nije dostupan za ovaj kod.")
+            self._causes_list.clear()
 
         self._notes_lbl.setText(defn.notes)
         self._set_buttons_enabled(True)
@@ -2366,6 +2450,9 @@ class MainWindow(QMainWindow):
         self.can_widget = CanNetworkWidget()
         self._can_tab = self.tabs.addTab(self.can_widget, "CAN Network")
 
+        self.can_logger_widget = CanLoggerWidget()
+        self._can_logger_tab = self.tabs.addTab(self.can_logger_widget, "CAN Logger")
+
         # Vizualno naglasavanje kljucnih tabova
         _tb = self.tabs.tabBar()
         _tb.setTabTextColor(0, QColor("#9cdcfe"))               # Map Editor — plava
@@ -2394,7 +2481,7 @@ class MainWindow(QMainWindow):
         self.props.undo_to_cmd_requested.connect(self._undo_to_cmd)
         main_split.addWidget(self.props)
 
-        main_split.setSizes([270, 900, 270])
+        main_split.setSizes([220, 950, 270])
         main_split.setStretchFactor(0, 0)
         main_split.setStretchFactor(1, 1)
         main_split.setStretchFactor(2, 0)

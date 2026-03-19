@@ -193,3 +193,40 @@ The GUI includes a **CAN Network** tab (teal) that displays:
 - Timing information (period in ms per ID)
 
 Source: `ui/can_network_widget.py`, `core/can_decoder.py`
+
+---
+
+## CAN Logger (Implementirano 2026-03-19)
+
+### Arhitektura
+- **Hardware**: IXXAT USB CAN adapter, 250 kbps
+- **Softver**: python-can library (potvrđena instalacija), `core/can_logger.py`
+- **UI**: `ui/can_logger_widget.py` — tab u ME17Suite
+
+### Log format (kompatibilan s SDCANlogger projektom)
+```
+# START_TIME_WALL_CLOCK: 2025-07-27 15:43:37.367694
+3845.540628;0x7E8;05622106AB100000
+3845.541595;0x342;21DED6A47800202F
+```
+Timestamp = float (sekunde od starta sesije), ID = hex string, data = hex bez razmaka
+
+### Decode formule (sdtpro/hardware_simulator.py izvor)
+| CAN ID | Parametar | Formula | Status |
+|--------|-----------|---------|--------|
+| 0x0316 | EOT °C | data[3]*0.943-17.2 | sdtpro, nije potvrđeno live |
+| 0x0342 mux 0xDE | ECT °C | 56.9-0.0002455*(d[2]<<8&#124;d[3]) | sdtpro |
+| 0x0342 mux 0xAA | MAP hPa | (d[2]<<8&#124;d[3])*0.41265+360.63 | sdtpro |
+| 0x0342 mux 0xC1 | MAT °C | 92.353-0.00113485*(d[4]<<8&#124;d[5]) | sdtpro |
+
+### IXXAT log analiza (27.07.2025, bench sesija)
+Uhvaćeni IDs: 0x102, 0x103, 0x110, 0x122, 0x300, 0x308, 0x316, 0x320, 0x342, 0x516, 0x4CD + UDS 0x7E0/0x7E8
+- 0x7E0/0x7E8 = BUDS2 UDS dijagnostika (ReadDataByIdentifier 0x22)
+- 0x342 s byte[0]=0x21 = bench mode (MPEM ili BUDS2 broadcast, ne ECU engine data)
+- 0x110 = CAN_TEMP (coolant/IAT) — potvrđeno mapiranje
+
+### sdtpro projekt (referenca)
+- `old_pro/sdtpro/firmw/src/main.cpp` = ESP32 Arduino, WiFi AP "SeaDoo_Tool_AP", WebSocket /ws
+- `old_pro/sdtpro/sdtapp/` = Flutter mobile app (dashboard sa DataTiles)
+- Kritična greška u sdtpro: CAN @ 500kbps umjesto 250kbps (nikad radio)
+- POD sustav: Pico čita AT24C EEPROM chip (pod ID), javlja ESP32 koji pod je spojen

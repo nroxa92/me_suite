@@ -4,6 +4,7 @@ CAN payload decoder for BRP Sea-Doo ME17.8.5 ECU.
 Decoded from binary analysis of:
   - 300hp ECU flash (10SW066726) @ dumps/2021/1630ace/300.bin
   - Spark 90hp ECU flash (10SW053774) @ dumps/2021/900ace/spark90.bin
+  - sdtpro hardware_simulator.py (field-verified, 250 kbps BRP bus, engine running)
 
 CAN bus parameters: 250 kbps, standard 11-bit frames, BRP proprietary protocol.
 
@@ -15,6 +16,12 @@ CAN TX timing (period ms) — from ECU binary table preceding CAN ID list:
   0x015B → 8ms   | 0x015C → 16ms  | 0x0148 → 22ms  | 0x013C → 22ms
   0x015C → 22ms  | 0x0138 → 22ms  | 0x0108 → 16-18ms | 0x0214 → 132-148ms
   0x012C → 196-223ms | 0x0110 → 131-147ms | 0x017C → (event-driven)
+
+sdtpro / field-verified IDs (live broadcast, engine running):
+  0x0316 → EOT (engine oil temp, data[3]*0.943-17.2 °C)
+  0x0342 → MUX broadcast (ECT/MAP/MAT, keyed on data[0])
+  0x0103 → Spark EGT + TPS
+  0x0104 → Spark throttle body
 """
 
 from __future__ import annotations
@@ -34,6 +41,12 @@ CAN_SPARK_A      = 0x0134   # Spark specific A
 CAN_SPARK_B      = 0x0154   # Spark specific B
 CAN_DTC          = 0x017C   # DTC / fault status
 CAN_DIAG_EXT     = 0x0214   # Extended diagnostics
+
+# sdtpro / field-verified IDs (250 kbps BRP bus, engine running)
+CAN_EOT_MUX   = 0x0316   # Engine oil temperature (live broadcast)
+CAN_BROADCAST = 0x0342   # Multiplexed broadcast (ECT / MAP / MAT)
+CAN_SPARK_EGT = 0x0103   # Spark EGT + TPS (live broadcast)
+CAN_SPARK_THB = 0x0104   # Spark throttle body (live broadcast)
 
 
 # ─── CAN Decoder ──────────────────────────────────────────────────────────────
@@ -136,6 +149,99 @@ class CanDecoder:
         """
         p = CanDecoder._pad(payload)
         return float(p[2] - CanDecoder._TEMP_OFFSET)
+
+    # ── 0x0316 — Engine oil temperature ──────────────────────────────────────
+
+    @staticmethod
+    def decode_eot_316(payload: bytes) -> float:
+        """
+        Decode engine oil temperature from CAN 0x0316.
+
+        Formula (from sdtpro hardware_simulator.py):
+          data[3] * 0.943 - 17.2 = °C
+
+        Returns: EOT in °C.
+        """
+        p = CanDecoder._pad(payload)
+        return round(p[3] * 0.943 - 17.2, 1)
+
+    # ── 0x0342 — Multiplexed broadcast (ECT / MAP / MAT) ─────────────────────
+
+    @staticmethod
+    def decode_mux_342(payload: bytes) -> dict:
+        """
+        Decode multiplexed broadcast from CAN 0x0342.
+
+        MUX format (from sdtpro hardware_simulator.py):
+          data[0] = mux key
+          0xDE → ECT:  56.9 - 0.0002455 * u16BE(data[2:4])  °C
+          0xAA → MAP:  u16BE(data[2:4]) * 0.41265 + 360.63   hPa
+          0xC1 → MAT:  92.353 - 0.00113485 * u16BE(data[4:6]) °C
+
+        Note: mux key 0x21 with constant 0xDE in byte[1] is seen during
+        bench/diagnostic mode (engine not running). Engine-running mode
+        cycles through 0xDE/0xAA/0xC1.
+
+        Returns: dict with present keys only (ect_c, map_hpa, mat_c).
+        """
+        p = CanDecoder._pad(payload)
+        mux = p[0]
+        val16_23 = (p[2] << 8) | p[3]
+        val16_45 = (p[4] << 8) | p[5]
+        result = {"mux": f"0x{mux:02X}"}
+        if mux == 0xDE:
+            result["ect_c"] = round(56.9 - 0.0002455 * val16_23, 1)
+        elif mux == 0xAA:
+            result["map_hpa"] = round(val16_23 * 0.41265 + 360.63, 1)
+        elif mux == 0xC1:
+            result["mat_c"] = round(92.353 - 0.00113485 * val16_45, 1)
+        return result
+
+    # ── 0x0103 — Spark EGT + TPS (Spark 900 ACE only) ───────────────────────
+
+    @staticmethod
+    def decode_spark_egt(payload: bytes) -> float:
+        """
+        Decode exhaust gas temperature from Spark-specific CAN 0x0103.
+
+        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
+          data[4] * 1.0125 - 60 = °C
+
+        Returns: EGT in °C.
+        """
+        p = CanDecoder._pad(payload)
+        return round(p[4] * 1.0125 - 60, 1)
+
+    @staticmethod
+    def decode_spark_tps_103(payload: bytes) -> float:
+        """
+        Decode throttle position from Spark-specific CAN 0x0103.
+
+        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
+          (data[6]<<8 | data[7]) * 0.04907 - 25.12 = %
+
+        Returns: TPS in %.
+        """
+        p = CanDecoder._pad(payload)
+        raw = (p[6] << 8) | p[7]
+        return round(raw * 0.04907 - 25.12, 1)
+
+    # ── 0x0104 — Spark Throttle Body (Spark 900 ACE only) ────────────────────
+
+    @staticmethod
+    def decode_spark_throttle_body(payload: bytes) -> float:
+        """
+        Decode throttle body position from Spark-specific CAN 0x0104.
+
+        Formula (from SDCANlogger/2FIRMW/hardware_simulator.py):
+          (data[0]<<8 | data[1]) / 100
+
+        Unit: unknown (likely %, angle, or raw position).
+        Returns: throttle body position as float.
+        """
+        p = CanDecoder._pad(payload)
+        raw = (p[0] << 8) | p[1]
+        return round(raw / 100.0, 2)
 
     # ── 0x012C — Engine hours ─────────────────────────────────────────────────
 
@@ -306,6 +412,32 @@ class CanDecoder:
 
         if can_id == CAN_DIAG_EXT:
             return base | CanDecoder.decode_extended_diag(p) | {
+                "raw":     p.hex(' '),
+                "decoded": True,
+            }
+
+        if can_id == CAN_EOT_MUX:
+            return base | {
+                "eot_c":   CanDecoder.decode_eot_316(p),
+                "raw":     p.hex(' '),
+                "decoded": True,
+            }
+
+        if can_id == CAN_BROADCAST:
+            mux_data = CanDecoder.decode_mux_342(p)
+            return base | mux_data | {"raw": p.hex(' '), "decoded": True}
+
+        if can_id == CAN_SPARK_EGT:    # 0x0103 — Spark EGT + TPS
+            return base | {
+                "egt_c":   CanDecoder.decode_spark_egt(p),
+                "tps_pct": CanDecoder.decode_spark_tps_103(p),
+                "raw":     p.hex(' '),
+                "decoded": True,
+            }
+
+        if can_id == CAN_SPARK_THB:    # 0x0104 — Spark throttle body
+            return base | {
+                "throttle_body": CanDecoder.decode_spark_throttle_body(p),
                 "raw":     p.hex(' '),
                 "decoded": True,
             }

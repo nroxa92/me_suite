@@ -4,6 +4,16 @@ History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
 ---
+**[2026-03-19 22:45 — Binarna analiza osi za 8 mapa]**
+👤 You are doing binary analysis of ECU flash files to find axis definitions (X and Y axes) for 8 maps: Injection, Lambda prot, Deadtime, Decel RPM ramp, Idle RPM, Lambda eff u8, KFWIRKBA, Accel enrichment.
+🤖 Sve osi pronadjene — detaljan izvjestaj dolje. Kljucni nalaz: deadtime mapa stvarno pocinje na 0x0258AA (ne 0x025900), inject osi su dijeljene (RPM na 0x024F46, Load na 0x02AE30), KFWIRKBA Y-os nije inline vec dijeljena.
+
+---
+**[2026-03-19 23:30 — KFWIRKBA ispravka (nastavak sesije)]**
+👤 [kontekst nastavka prethodne sesije — KFWIRKBA Y-os ostala nepoznata]
+🤖 KFWIRKBA je 14×10 u8 (ne 7×10 u16 Q15). Count bytes 0x0E/0x0A na 0x0259C2. Y-os: 14 lambda u8/100 na 0x0259C4; X-os: 10 lambda u8/100 na 0x0259D2; mapa na 0x0259DC, dtype u8 /128=1.0.
+
+---
 **[2026-03-19 — 7-DEO binarna analiza]**
 👤 7-dijelna binarna analiza: DEO1=NPRo diff (sve promijenjene regije CODE); DEO2=SC vs NA razlike; DEO3=300hp vs 230hp SC; DEO4=130hp vs 170hp identičnost; DEO5=godišnja evolucija 2019/2020/2021; DEO6=identifikacija nepoznatih blokova; DEO7=mape s neidentificiranim osima. Implementirati u map_finder.py + ažurirati docs.
 🤖 DEO1: ORI19 vs STG2 = 4482B/83 bloka (ispravna usporedba — isti SW 10SW040039). DEO4: 130hp==170hp, 0 razlika. DEO5: 2019→2020: 1838B, 2020→2021: 2891B. DEO6: +2 nove mape implementirane — Lambda Eff U8 @ 0x0275FD (4×16×16 u8, confidence 70%) + Lambda Thresh @ 0x02B378 (1×79 Q15, confidence 75%). Map count: 300hp=54, svi testovi prolaze.
@@ -695,5 +705,83 @@ Claude: Identificirane sve 7 neidentificiranih mapa: #10/12/14=Aux A apsolutna t
 **[2026-03-19]**
 👤 sdtpro istraži — to je trebao biti hardware
 🤖 sdtpro = Sea-Doo Tool Pro, 3 dijela: ESP32 (CAN+WiFi+WebSocket, Arduino/PlatformIO), Pico (POD ID reader via AT24C EEPROM), Flutter app (live dashboard, DataTiles za RPM/ECT/EOT/speed/throttle/MAP/MAT/EGT/iBR/voltage). Kritična greška: CAN na 500kbps umjesto 250kbps — zbog toga nikad nije radio. Jedna linija ispravka. 0x342 MUX dekodiranje treba verifikaciju jer IXXAT logovi pokazuju drugačiji pattern.
+
+---
+
+---
+**[2026-03-19]**
+👤 Dodaj 4 sdtpro/field-verified CAN ID-a u CAN_ID_INFO dict u can_network_widget.py (0x0103, 0x0104, 0x0316, 0x0342).
+🤖 Dodana 4 nova entryja u CAN_ID_INFO u ui/can_network_widget.py — iza postojećih GTI entryja, s komentarom "sdtpro / field-verified IDs".
+
+---
+
+---
+**[2026-03-19 14:00]**
+👤 Napiši novi fajl `core/can_logger.py` — CanLoggerThread(QThread) za IXXAT live akviziciju + LogFile za SDCANlogger-kompatibilni load/save format.
+🤖 Napisan `core/can_logger.py`: CanLoggerThread s message_received/connection_status signalima, graceful IXXAT/python-can error handling, LogFile.load() i LogFile.save() za timestamp;0xID;HEXDATA format.
+
+---
+---
+**[2026-03-19 15:30]**
+👤 Ažuriraj core/can_decoder.py — dodaj nove CAN ID-ove i decode formule iz sdtpro projekta (0x0316 EOT, 0x0342 MUX broadcast ECT/MAP/MAT, 0x0103 Spark EGT, 0x0104 Spark THB).
+🤖 Dodane 4 konstante, 2 decode metode (decode_eot_316, decode_mux_342), dispatcher proširen s CAN_EOT_MUX i CAN_BROADCAST blokovima, module docstring ažuriran.
+
+---
+
+---
+**[2026-03-19]**
+👤 Ažuriraj dokumentaciju — work_log.md (unos za CAN Logger tab) i _docs/CANBUS_NOTES.md (nova sekcija CAN Logger s arhitekturom, log formatom, decode formulama, IXXAT log analizom i sdtpro referencom).
+🤖 Dodani unosi u work_log.md i _docs/CANBUS_NOTES.md — nova sekcija "CAN Logger (Implementirano 2026-03-19)" s kompletnom dokumentacijom implementacije.
+
+---
+---
+**[2026-03-19 16:10]**
+👤 Napiši novi fajl `ui/can_logger_widget.py` — PyQt6 widget za live CAN logging s _GaugeTile karticama, raw log tablicom, IXXAT connect/disconnect, snimanje+spremi, otvori log fajl.
+🤖 Napisan `ui/can_logger_widget.py` (~320 linija) — header bar (IXXAT combo, Spoji/Snimi toggle, Otvori log, status), lijevo 10 _GaugeTile karti (RPM/ECT/EOT/MAP/TPS/MAT/EGT/Brzina/Gorivo/Sati), desno QTableWidget raw log (max 2000 redova, auto-trim), CanLoggerThread + LogFile integracija, clear_session() API.
+
+---
+---
+**[2026-03-19 16:35]**
+👤 [nastavak sesije — verifikacija CAN Logger taba]
+🤖 Sve 6 agenata završilo; import test OK; svi testovi prošli (54 mapa, EEPROM, checksum). CAN Logger tab spreman za produkciju.
+
+---
+---
+**[2026-03-19 17:10]**
+👤 Poboljšati DTC tab — QTreeWidget s hijerarhijom, count u parent nodevima, width 220px, tamna tema.
+🤖 DtcSidebarPanel poboljšan: count u kategorijama i subgrupama, skraćeni naziv u leaf nodevima, tooltip s punim imenom, tamni stil stabla, sidebar ograničen na 220px. Import test OK.
+
+---
+---
+**[2026-03-19 17:30]**
+👤 ajmo.opet na trazenje mapa i can adresa da budemo kompletni, podrska za spark i 1.6...
+🤖 Binarna analiza NPRo STG2 vs ORI otkrila 2 nova Spark mape (0x023910 lambda load os + 0x027036 lambda korekcija po load-u); Spark 52→54 mapa. 1630 ACE: nema novih mapa, razlike 130hp/300hp = skaliranje. CAN agent u tijeku.
+
+---
+**[2026-03-19 17:32]**
+👤 primjetio sam par ui grafickih pizdarija... kada ucitamo spark mapu ispred naziva imamo spark... daj da nam nazivi mapa budu isti kroz sve fileove, dtc tab, side panel nema kategorizaciju i presiroki je, mozemo napraviti kategorizaciju onako kako smo pricali p,u,c,b 0,1,2 pa plusice...
+🤖 DTC UI agent lansiran: QTreeWidget P/U/C/B kategorije s expandable P0/P1/P2 subgrupama, side panel max 220px. Map name normalizacija čeka CAN agent.
+
+---
+**[2026-03-19 19:00]**
+👤 [nastavak sesije — CAN decode dispatch + UI]
+🤖 Dovršeno: CAN dispatch za 0x0103/0x0104 u can_decoder.py, can_logger_widget.py ažuriran (EGT/TPS tile), map name normalizacija u MapLibraryPanel (strip "Spark — " prefiks iz display naziva).
+
+---
+**[2026-03-19 19:30]**
+👤 sto imamo ne definirano u mapama i tablicama? jeamo sredili sve nazive mapa, adresa, tablica ,x osi, y osi... mozsmo dodati u dtc opise i possible causes u srednji prozor nakon sto kliknemo na neki dtc?
+🤖 Stanje mapa: 59 MapDef-ova, 18 2D mapa bez osi (adrese neistražene), 2 TODO markera, 1 unit prazan — sve ostalo uredno. Dodano: DTC_INFO dict (core/dtc_descriptions.py) s opisom + uzrocima za svih 111 kodova; DtcPanel proširen s opisom, listom uzroka i tehničkim detaljima.
+
+---
+---
+**[2026-03-19 — Binarna analiza osi za 10 Spark 900 ACE mapa]**
+👤 [nastavak sesije — agent analiza `spark90.bin` za 10 mapa, pronalazak X/Y osi, adresa, dtype, skale]
+🤖 8/10 mapa potvrđeno: Injection(1), Deadtime(3), Torque(6), Lambda Trim(7)+Trim2(9), Therm Enrich(8, dimenzije ispravljene na 8×12), Lambda Load Corr(10, ispravljeno na 12×3). Mape 2 (Lambda Protection) i 4 (Idle RPM) imaju pogrešne adrese — obje su unutar injection tablice. Mapa 5 (Lambda Target) djelomično potvrđena. Ključni nalazi: therm enrich /10240, ignition u Spark = u16LE /256°, STG2 potvrđuje lambda target i ignition advance promjene.
+
+---
+---
+**[2026-03-19 16:30]**
+👤 ajmo jos mape zavrsavati
+🤖 Pronasao i implementirao osi za Lambda Trim 1 (Y-load 30pt @ 0x024E60, X-speed 20pt @ 0x024E9C), Lambda Trim 2 (Y-load 30pt @ 0x025378, X-speed @ 0x0253B4) i Deadtime (X-napon [8.0-15.0V] @ 0x028794, Y-trajanje [0.4-12ms] @ 0x028784 u8-pari). Potvrdjeni lazi pozitivi: Lambda Prot (0x0222C0) i Idle RPM (0x0224A0) su unutar injection tablice. 9/9 testovi prolaze.
 
 ---
