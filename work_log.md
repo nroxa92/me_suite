@@ -1,5 +1,134 @@
 # ME17Suite — Work Log
 
+## 2026-03-20 — ui/main_window.py — Integracija MapHeatWidget + MapEditorWidget + CanLivePanel
+
+### Što je napravljeno
+1. **Vizualizacija tab**: Dodan `MapHeatWidget` kao novi tab "Vizualizacija" (ljubičasti tekst). Automatski se ažurira pri svakom `_on_map_selected()` kliku u tree-u.
+2. **CAN Live tab**: Dodan `CanLivePanel` kao tab "CAN Live" (teal tekst) s dashboard prikazom, tablicama CAN IDs, log stripom.
+3. **Heat→Editor sinkronizacija**: Klik na ćeliju u heat mapi poziva `_on_heat_cell_clicked(row,col)` koji sinkronizira selekciju u Map Editor tablici. `MapTableView.select_cell()` metoda dodana.
+4. **Importi**: Dodani `CanLivePanel`, `MapHeatWidget`, `MapMiniPreview`, `MapEditorWidget` na vrhu main_window.py.
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — dodani tabovi, integracija heat widgeta, select_cell metoda
+
+### Testovi
+- `py_compile` → OK za sve 4 nove UI datoteke
+- Import test → OK (121 DTC kodova, svi importi prošli)
+
+## 2026-03-20 18:10 — ui/main_window.py — General UI Polish (5 poboljšanja)
+
+### Što je napravljeno
+1. **Status bar poboljšanje**: Dodan lijevi label "SW: 10SW066726 | 300hp SC 2021 | 56 mapa" (HTML, u boji SW varijante); sredina QProgressBar (vidljiv za vrijeme scana); desno checksum badge "Checksum: OK" zeleno / "UPOZORENJE" crveno. Novi metode: `_update_sb_left()`, `_update_sb_checksum()`.
+2. **DTC sidebar — boja i prefiks**: `refresh_status()` i `refresh_one()` sada koriste `_apply_dtc_item_style()` koji postavlja: ● prefix + zeleno (#4CAF50) za aktivne DTC, ✕ prefix + crveno (#EF5350) za OFF, sivo za neučitan. Tooltip prikazuje punu adresu (code_addr, mirror_addr, enable_addr) i enable byte vrijednosti.
+3. **Map table dirty ćelije**: `refresh_cell()` sada označava editiranu ćeliju tamno žutom pozadinom (#2a2200) i žutim tekstom (#FFD600). Dirty flag pohranjen u UserRole+1.
+4. **ECU Info panel**: Dodan veliki SW ID naslov (18px bold Consolas), SW opis, "● Nespremljene promjene" narančasto, + polja "Mape" i "Ucitan" (timestamp) u info gridu. Checksum sada pokazuje "OK" (zeleno) ili "UPOZORENJE" (crveno).
+5. **Toolbar ikone i tooltips**: Gumbi dobili emoji ikone (📂 Load ECU, 💾 Spremi, ⊞ Compare). Dodani novi gumbi: "🔴 DTC OFF All" s potvrdom i "🔧 CS Fix". Svi gumbi imaju descriptivne tooltipe. `_toolbar_dtc_all_off()` nova metoda.
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — 5 područja unaprijeđena, ~150 novih linija
+
+### Sintaksa
+- `py_compile.compile('ui/main_window.py')` → OK
+
+## 2026-03-20 17:30 — ui/map_editor_widget.py — profesionalni inline map editor
+
+### Što je napravljeno
+- Kreiran novi fajl `ui/map_editor_widget.py` (~430 linija, PyQt6)
+- `UndoStack`: deque-based undo/redo, max 20 koraka, push/undo/redo/clear, can_undo/can_redo/undo_count
+- `MapEditorWidget(QWidget)`: dark theme (#111113), signali `map_applied` i `map_changed`
+  - Tablica: dvostruki klik = inline edit, Enter=potvrdi/Esc=odustani, bulk edit, Paste TSV (Excel)
+  - Dirty ćelije: pozadina #3A2800, narančasti tekst #FF8C00
+  - Error ćelije: pozadina #3A0000, crveni tekst, tooltip "Van raspona: X–Y unit"
+  - X-os (RPM) kao header kolona, Y-os (Load%) kao header redci — bold font
+  - Toolbar: Undo(N), Redo, Reset row, Reset all, dirty label "+N promjena", Apply gumb
+  - Validacija raw raspona — zaokruži na najbliži valid raw (snapping)
+  - `set_found_map(fm, editor)`, `apply_changes()`, `reset_all()`, `has_changes()`
+  - Apply poziva `MapEditor.write_map()` s display vrijednostima
+- Test potvrđen: `from ui.map_editor_widget import MapEditorWidget, UndoStack` → OK
+
+### Fajlovi promijenjeni
+- `ui/map_editor_widget.py` — NOVO
+
+## 2026-03-20 15:15 — ui/can_live_widget.py — CAN live decode UI widget
+
+### Što je napravljeno
+- Kreiran novi fajl `ui/can_live_widget.py` (~380 linija, PyQt6)
+- `CanWorker(QThread)`: background thread, python-can `bus.recv()` petlja, IXAAT monitor=True, signali `message_received` i `error_occurred`
+- `CanLiveWidget`: dashboard (6 tile-ova: RPM 48pt, coolant, hours, DTC count, engine state, riding mode) + CAN ID tablica (7 kolona, refresh 2s, boja po CS/RC statusu) + log strip (max 500 linija, monospace hex+decode)
+- `CanLivePanel`: container s toolbar-om (bitrate 500/250kbps, kanal 0/1, Start/Stop, msg/s counter)
+- Graceful fallback: python-can ImportError → btn disabled + poruka; IXAAT nedostupan → error signal → stop
+- Import test: `python -c "from ui.can_live_widget import CanLivePanel; print('OK')"` — OK
+
+### Fajlovi promijenjeni
+- `ui/can_live_widget.py` — novi fajl
+
+## 2026-03-20 14:30 — ui/map_visualizer.py — MapHeatWidget, MapDeltaWidget, MapMiniPreview
+
+### Što je napravljeno
+- Kreiran novi fajl `ui/map_visualizer.py` (PyQt6, ~430 linija)
+- `MapHeatWidget`: 2D heat mapa s JET paletom, hover tooltip, click signal, selekcija ćelije, color bar, X/Y-os headeri iz `AxisDef`
+- `MapDeltaWidget`: usporedba dvije mape (delta = B−A), zelena/crvena/sivo, tooltip s A/B/Δ vrijednostima, legenda
+- `MapMiniPreview`: 100×60px preview bez teksta za tree/listu
+- Import test: `python -c "from ui.map_visualizer import ..."` — OK
+
+### Fajlovi
+- `ui/map_visualizer.py` — novo, kreirano
+
+## 2026-03-19 — CLAUDE.md sveobuhvatno ažuriranje iz work_log + chat_log
+
+### Što je napravljeno
+- CLAUDE.md ažuriran s kritičnim nalazima iz svih prethodnih sesija
+- Dodane/ispravljene tehničke sekcije prema logovima
+
+### Ključne ispravke i dodaci
+- Rev limiter: ispravljeno — 0x02B72A/0x02B73E su IGN DATA (u8), stvarni rev limiter @ 0x028E96; dodane RPM vrijednosti po varijanti
+- Injection: pojašnjeno da je 0x02436C injector linearization curve (NE 2D fuel mapa); 1503/GTI90 koriste 0x022066
+- SC bypass opcodes po snazi: 300hp=2626, 230hp=1f1f, 170/130hp=1e1e
+- KFWIRKBA ispravak: 14×10 u8 (ne 7×10 u16 Q15), osi u8/100
+- Deadtime ispravka: 0x0258AA (ne 0x025900)
+- CAN TX tablica ispravka: 0x03DF0C (2019+) / 0x03DF1E (2018); 0x0433BC je period tablica
+- GTI90 DTC @ 0x0217EE; Spark DTC drugačija arhitektura
+- Broj mapa ispravljen: 300hp=56 (ne 54!), Spark=52, GTI90=60
+- SW specifičnosti za 10SW023910 (2018): IGN_BASE @0x02B72C, rev limiter @0x028E94
+- inj_main identičan za sve snage; NPRo diff: BOOT=140B, CODE=7087B, CAL=169912B
+- KFPED analiza: SC koristi MAP kPa kao X-os, NA koristi pedal°
+- 0x02B380 i 0x012C80 označeni kao non-tunabilni (read-only)
+- P0231 stvarna adresa: 0x0217BC (idx=94); U16Ax grupacije za DTC
+- SAT TX IDs i 0x4CD keepalive 1Hz dokumentirani
+- EEPROM audit nalazi uneseni
+
+### Fajlovi promijenjeni
+- `CLAUDE.md` — sveobuhvatno ažuriranje
+
+---
+
+## 2026-03-20 02:00 — Cross-SW audit: kritične ispravke
+
+### KRITIČNE ISPRAVKE (potvrđene 4 paralelna agenta × 25 dump fajlova)
+
+| Što | Staro | Novo |
+|-----|-------|------|
+| SW string offset | 0x0008 | **0x001A** (engine.py je bio ispravan, CLAUDE.md nije) |
+| CAN TX tablica | 0x0433BC | **0x03DF0C** (2019+) / **0x03DF1E** (2018) |
+| 0x0433BC sadržaj | CAN IDs | Period tablica (LE16 ms vrijednosti) |
+| 0x0408 CAN ID | Samo GTS | **Svi SW** |
+| Spark ignition | 0x02B730 | **0x026A50** |
+| inj_main | razlikuje se po snazi | **identičan za 130/170/230/300hp** |
+| Mape 1630 ref | 54 | **56** |
+| DTC registry | 111 P-kodova | **121** (+ 10 U16Ax) |
+
+### Fajlovi promijenjeni
+- `core/can_decoder.py` — CAN TX adresa, cluster bus konstanti
+- `cluster/_materijali/can_protocol_knowledge.md` — CAN TX adresa + 0x0408 ispravka
+- `memory/MEMORY.md` — sve ispravke
+- `.gitignore` — prošireno (CSV svugdje, .claude/)
+
+### Audit rezultati (novi fajlovi u _materijali/)
+- `dtc_cross_sw_audit.md`, `maps_cross_sw_audit.md`
+- `spark_gti90_audit.md`, `tec1503_audit.md`, `can_cross_sw_audit.md`
+
+---
+
 ## 2026-03-19 13:45 — DTC cross-SW audit za 1630 ACE
 
 ### Što je napravljeno
@@ -4358,3 +4487,60 @@ Fajl: `C:/Users/SeaDoo/Desktop/cluster/_materijali/dtc_pdf_complete.md`
 ### Fajlovi
 -  — novo, kreirano
 -  — novo, kreirano
+
+## 2026-03-20 20:30 — Pronalaženje prave 2D fuel mape za 1630 ACE
+
+### Što je napravljeno
+Sveobuhvatna binarna analiza sva 3 godišta (2018/2019/2021) i svih snaga (300/230/170/130hp) za 1630 ACE.
+
+### Ključni nalazi
+
+**PRAVA 2D FUEL MAPA PRONAĐENA: `0x022066`**
+
+1. **Adresa potvrđena**: `0x022066` — ista u svim 1630 ACE SW varijantama (2018/2019/2021)
+2. **Format**: 12×16 u16 LE Q15 (vrijednost / 32767.0)
+3. **X-os (RPM)** @ `0x022046`: 16 točaka, raw/4 = RPM → 1400..8200 RPM
+   - raw: `5600, 7000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000, 24000, 26000, 28000, 30000, 32000, 32800`
+4. **Y-os (load)** @ `0x02202E`: 12 točaka, Q14 normalized → 6.5%..54.7%
+   - raw: `1067, 1280, 1707, 2133, 2560, 2987, 3413, 4267, 5333, 6400, 7680, 8960`
+5. **Razlikuje se po snagama** (svi 12×16 redovi su drugačiji):
+   - 300hp max = 0.944 Q15, 230hp max = 0.785, 170/130hp max = 0.524
+   - 130hp == 170hp (identični) — POTVRĐENO (ali inj_main u CLAUDE.md se odnosi na 0x02436C linearization!)
+6. **Nema mirrora** na +0x518 (za razliku od torque/lambda mapa)
+7. **Identična u 2018, 2019, 2021** za isti SW/snagu — NEMA tuning razlike između godišta
+8. **Dijeli format s GTI 1503** — isti header @ 0x022010-0x02202C, samo osi i data se razlikuju
+9. **Header struktura** @ 0x022010:
+   - 0x02202A: `12` = nRows, 0x02202C: `16` = nCols (dimenzije mape!)
+   - 0x02202E-0x022044: Y-os (12 točaka load)
+   - 0x022046-0x022064: X-os (16 točaka RPM)
+   - 0x022066: data start
+10. **0x02436C NIJE fuel mapa** — potvrđeno linearization curve (1D, svaki red ponavlja isti Q15 broj 12×), identična za SVE snage (300/230/170/130hp)
+
+### Ispravak CLAUDE.md
+- `inj_main identičan za 130/170/230/300hp` → NETOČNO za 0x022066! To vrijedi SAMO za 0x02436C (linearization)
+- 0x022066 se razlikuje po snagama → ovo je prava fuel mapa koja determiniše snagu
+
+### Fajlovi promijenjeni
+- `work_log.md` — ovaj unos
+
+## 2026-03-20 — core/map_finder.py — 2D fuel mapa pronađena za sve ME17.8.5 non-Spark varijante
+
+### Otkriće
+Prava 2D fuel injection mapa za Rotax ACE 1630 je na **0x022066** — ISTA adresa kao GTI 1503!
+Format: **12×16 LE u16 Q15** (12 load točaka × 16 RPM točaka).
+Header @ 0x02202A/0x02202C potvrđuje nR=12 nC=16 za SVE non-Spark ME17.8.5 binarnih (14 SW varijanti).
+
+### Vrijednosti po snagama
+- 300hp SC: max Q15=0.944 (2018/2019/2021 identični)
+- 230hp SC: max=0.785 | 130/170hp NA: max=0.524 | GTI 1503 130/155hp: max=0.440
+- GTI 1503 230hp SC: max=0.952 | GTI90: max=0.572
+
+### Ispravke
+- Stara pretpostavka "GTI 16×12" bila NETOČNA — svi su 12×16 LE u16 Q15
+- 0x02436C ostaje injector linearization (1D) — NE prava 2D fuel mapa
+
+### Promjene koda
+- map_finder.py: ACE1630_INJ_ADDR=0x022066, _ACE1630_INJ_DEF (12×16 Q15), _scan_ace1630_injection()
+- Map count: 57 (300hp), 64 (130/170hp), 63 (GTI 1503)
+
+## 2026-03-20 — README.md kompletno prepisano (svi motori podržani, točni podaci)

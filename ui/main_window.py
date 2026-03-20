@@ -48,6 +48,9 @@ from ui.diff_viewer import MapDiffWidget
 from ui.eeprom_widget import EepromWidget
 from ui.can_network_widget import CanNetworkWidget
 from ui.can_logger_widget import CanLoggerWidget
+from ui.can_live_widget import CanLivePanel
+from ui.map_visualizer import MapHeatWidget, MapMiniPreview
+from ui.map_editor_widget import MapEditorWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -765,17 +768,49 @@ class DtcSidebarPanel(QWidget):
         for code, ch in self._all_items:
             if self._dtc_eng:
                 status = self._dtc_eng.get_status(code)
-                color = self._COLOR_OFF if (status and status.is_off) else self._COLOR_ACTIVE
+                self._apply_dtc_item_style(code, ch, status)
             else:
-                color = self._COLOR_NONE
-            ch.setForeground(0, QBrush(QColor(color)))
+                ch.setForeground(0, QBrush(QColor(self._COLOR_NONE)))
 
     def refresh_one(self, code: int, is_off: bool):
-        color = self._COLOR_OFF if is_off else self._COLOR_ACTIVE
         for c, ch in self._all_items:
             if c == code:
-                ch.setForeground(0, QBrush(QColor(color)))
+                status = self._dtc_eng.get_status(code) if self._dtc_eng else None
+                self._apply_dtc_item_style(code, ch, status)
                 break
+
+    def _apply_dtc_item_style(self, code: int, ch: QTreeWidgetItem, status):
+        """Primijeni boju, prefiks i tooltip na DTC stavku."""
+        defn = DTC_REGISTRY.get(code)
+        if status and status.is_off:
+            color = self._COLOR_OFF
+            prefix = "✕ "
+        elif status:
+            color = self._COLOR_ACTIVE
+            prefix = "● "
+        else:
+            color = self._COLOR_NONE
+            prefix = "  "
+
+        if defn:
+            short_name = defn.name[:22] + "…" if len(defn.name) > 22 else defn.name
+            ch.setText(0, f"  {prefix}{defn.p_code}  {short_name}")
+            # Tooltip: puna adresa + enable byte
+            tip_lines = [
+                f"{defn.p_code} — {defn.name}",
+                f"Code addr:   0x{defn.code_addr:06X}",
+                f"Mirror addr: 0x{defn.mirror_addr:06X}",
+            ]
+            if defn.enable_addr:
+                en_val = ""
+                if status and status.enable_values:
+                    en_val = "  →  " + ", ".join(f"0x{b:02X}" for b in status.enable_values)
+                tip_lines.append(f"Enable addr: 0x{defn.enable_addr:06X}{en_val}")
+            if status:
+                tip_lines.append(f"Status: {status.status_str}")
+            ch.setToolTip(0, "\n".join(tip_lines))
+
+        ch.setForeground(0, QBrush(QColor(color)))
 
     def _filter(self, txt: str):
         searching = bool(txt)
@@ -1381,10 +1416,11 @@ class MapTableView(QWidget):
         item = self.table.item(row, col)
         if not item: return
         item.setText(txt); item.setData(Qt.ItemDataRole.UserRole, new_raw)
-        mn = min(self._fm.data); mx = max(self._fm.data)
-        bg, fg = _cell_colors(new_raw, mn, mx, self._fm.defn.category)
-        item.setBackground(QBrush(bg))
-        item.setForeground(QBrush(fg))
+        # Dirty ćelija — žuti border (custom font stil + boja pozadine)
+        item.setBackground(QBrush(QColor("#2a2200")))   # tamno žuta pozadina
+        item.setForeground(QBrush(QColor("#FFD600")))   # žuti tekst
+        # Označi ćeliju kao dirty u UserRole+1
+        item.setData(Qt.ItemDataRole.UserRole + 1, True)
 
     def clear(self):
         self._fm = None; self._fm2 = None
@@ -1398,6 +1434,13 @@ class MapTableView(QWidget):
             b.hide()
         self._zoom_slider.setValue(100)
         self._bulk_bar.hide()
+
+    def select_cell(self, row: int, col: int):
+        """Programatski selektiraj ćeliju u tablici (iz heat map klika)."""
+        if not self._fm: return
+        if 0 <= row < self.table.rowCount() and 0 <= col < self.table.columnCount():
+            self.table.setCurrentCell(row, col)
+            self.table.scrollToItem(self.table.item(row, col))
 
     # ── Selekcija — bulk toolbar ───────────────────────────────────────────────
 
@@ -1687,10 +1730,35 @@ class PropertiesPanel(QWidget):
         ecu_w = QWidget()
         ecu_lo = QVBoxLayout(ecu_w); ecu_lo.setContentsMargins(8,8,8,8); ecu_lo.setSpacing(6)
 
+        # SW ID — veliki, bold
+        self._ecu_swid_lbl = QLabel("—")
+        self._ecu_swid_lbl.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
+        self._ecu_swid_lbl.setStyleSheet("color:#4FC3F7; font-size:18px; font-weight:bold; padding:4px 0;")
+        ecu_lo.addWidget(self._ecu_swid_lbl)
+
+        # SW opis
+        self._ecu_swdesc_lbl = QLabel("—")
+        self._ecu_swdesc_lbl.setStyleSheet("color:#C8C8D0; font-size:13px; padding:0 0 4px 0;")
+        self._ecu_swdesc_lbl.setWordWrap(True)
+        ecu_lo.addWidget(self._ecu_swdesc_lbl)
+
+        # Dirty flag
+        self._ecu_dirty_lbl = QLabel("")
+        self._ecu_dirty_lbl.setStyleSheet(
+            "color:#FF9800; font-size:12px; font-weight:bold; padding:2px 0;"
+        )
+        self._ecu_dirty_lbl.setWordWrap(True)
+        self._ecu_dirty_lbl.hide()
+        ecu_lo.addWidget(self._ecu_dirty_lbl)
+
+        sep_ecu = QFrame(); sep_ecu.setFrameShape(QFrame.Shape.HLine)
+        sep_ecu.setStyleSheet("background:#2A2A32; max-height:1px; margin:4px 0;")
+        ecu_lo.addWidget(sep_ecu)
+
         ecu_g = QGroupBox("ECU INFORMATION")
         eg = QGridLayout(ecu_g); eg.setSpacing(3)
         self._ecu: dict[str, QLabel] = {}
-        for i, k in enumerate(["Model","SW ID","MCU","Velicina","Checksum","Platform"]):
+        for i, k in enumerate(["Model","SW ID","MCU","Velicina","Checksum","Platform","Mape","Ucitan"]):
             kl = QLabel(k+":"); kl.setStyleSheet("color:#808090; font-size:12px;")
             vl = QLabel("—")
             vl.setFont(QFont("Consolas", 11))
@@ -1788,20 +1856,37 @@ class PropertiesPanel(QWidget):
 
     # ── Public update metode ──────────────────────────────────────────────────
 
-    def show_ecu(self, eng: ME17Engine):
+    def show_ecu(self, eng: ME17Engine, n_maps: int | None = None):
         info = eng.info
         cs   = ChecksumEngine(eng).verify()
+
+        # Veliki SW ID naslov
+        self._ecu_swid_lbl.setText(info.sw_id or "—")
+        # SW opis
+        self._ecu_swdesc_lbl.setText(info.sw_desc or "—")
+
+        # Dirty flag
+        if hasattr(eng, "dirty") and eng.dirty:
+            self._ecu_dirty_lbl.setText("● Nespremljene promjene")
+            self._ecu_dirty_lbl.show()
+        else:
+            self._ecu_dirty_lbl.hide()
+
         self._ecu["Model"].setText("ME17.8.5")
         self._ecu["SW ID"].setText(info.sw_id)
         self._ecu["SW ID"].setStyleSheet("color:#4FC3F7; font-size:11px; font-weight:bold;")
         self._ecu["MCU"].setText("TC1762 LE" if info.mcu_confirmed else "NEPOTVRDJEN")
-        self._ecu["Velicina"].setText(f"{info.file_size // 1024} KB")
+        self._ecu["Velicina"].setText(f"{info.file_size // 1024} KB  ({info.file_size:,} B)")
         self._ecu["Platform"].setText("VM_CB.04.80.00" if info.platform_confirmed else "—")
         ok = cs.get("sw_id", {}).get("status") == "OK"
-        self._ecu["Checksum"].setText("SW OK" if ok else "PENDING")
+        cs_txt = "OK" if ok else "UPOZORENJE"
+        self._ecu["Checksum"].setText(cs_txt)
         self._ecu["Checksum"].setStyleSheet(
-            f"color:{'#4CAF50' if ok else '#FFB74D'}; font-size:11px; font-weight:bold;"
+            f"color:{'#4CAF50' if ok else '#EF5350'}; font-size:11px; font-weight:bold;"
         )
+        if n_maps is not None:
+            self._ecu["Mape"].setText(str(n_maps))
+        self._ecu["Ucitan"].setText(datetime.now().strftime("%H:%M:%S"))
 
     def show_map_stats(self, fm: FoundMap):
         self._fm = fm
@@ -2526,19 +2611,19 @@ class MainWindow(QMainWindow):
         tb = QToolBar(); tb.setMovable(False)
         self.addToolBar(tb)
 
-        self.btn_file = _btn("+ FILE", "primary")
-        self.btn_file.setToolTip("Učitaj ECU .bin  (Ctrl+1)")
+        self.btn_file = _btn("📂 Load ECU", "primary")
+        self.btn_file.setToolTip("Učitaj ECU binarni fajl  (Ctrl+1)")
         self.btn_file.clicked.connect(self._load1)
         self._act_file = tb.addWidget(self.btn_file)
 
         self.btn_swap = _btn("↔ Swap")
-        self.btn_swap.setToolTip("Zamijeni aktivni fajl  (Ctrl+1)")
+        self.btn_swap.setToolTip("Zamijeni aktivni ECU fajl  (Ctrl+1)")
         self.btn_swap.clicked.connect(self._load1)
         self._act_swap = tb.addWidget(self.btn_swap)
         self._act_swap.setVisible(False)
 
-        self.btn_compare = _btn("+ Compare")
-        self.btn_compare.setToolTip("Dodaj fajl za usporedbu  (Ctrl+2)")
+        self.btn_compare = _btn("⊞ Compare")
+        self.btn_compare.setToolTip("Usporedi dva ECU fajla  (Ctrl+2)")
         self.btn_compare.clicked.connect(self._load2)
         self._act_compare = tb.addWidget(self.btn_compare)
         self._act_compare.setVisible(False)
@@ -2551,13 +2636,29 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self.btn_save = _btn("Spremi")
+        self.btn_save = _btn("💾 Spremi")
+        self.btn_save.setToolTip("Spremi promjene u ECU binarni fajl  (Ctrl+S)")
         self.btn_save.clicked.connect(self._save)
         self.btn_save.setEnabled(False); tb.addWidget(self.btn_save)
 
         tb.addSeparator()
 
+        self.btn_dtc_all_off = _btn("🔴 DTC OFF All")
+        self.btn_dtc_all_off.setToolTip("Isključi sve DTC kodove — deaktivira monitoring svih grešaka")
+        self.btn_dtc_all_off.clicked.connect(self._toolbar_dtc_all_off)
+        self.btn_dtc_all_off.setEnabled(False)
+        tb.addWidget(self.btn_dtc_all_off)
+
+        self.btn_cs_fix = _btn("🔧 CS Fix")
+        self.btn_cs_fix.setToolTip("Popravi checksum (samo BOOT region — rijetko potrebno)")
+        self.btn_cs_fix.clicked.connect(self._checksum_analysis)
+        self.btn_cs_fix.setEnabled(False)
+        tb.addWidget(self.btn_cs_fix)
+
+        tb.addSeparator()
+
         self.btn_diff = _btn("Diff")
+        self.btn_diff.setToolTip("Prikaži razlike između dva ECU fajla (po regionima)")
         self.btn_diff.clicked.connect(self._show_diff)
         self.btn_diff.setEnabled(False); tb.addWidget(self.btn_diff)
 
@@ -2569,10 +2670,12 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
 
         self.btn_undo = _btn("↩ Undo")
+        self.btn_undo.setToolTip("Poništi zadnju promjenu  (Ctrl+Z)")
         self.btn_undo.clicked.connect(self._undo_action)
         self.btn_undo.setEnabled(False); tb.addWidget(self.btn_undo)
 
         self.btn_redo = _btn("↪ Redo")
+        self.btn_redo.setToolTip("Ponovi poništenu promjenu  (Ctrl+Y)")
         self.btn_redo.clicked.connect(self._redo_action)
         self.btn_redo.setEnabled(False); tb.addWidget(self.btn_redo)
 
@@ -2652,6 +2755,17 @@ class MainWindow(QMainWindow):
         self.can_logger_widget = CanLoggerWidget()
         self._can_logger_tab = self.tabs.addTab(self.can_logger_widget, "CAN Logger")
 
+        # CAN Live — live decode s dashboardom
+        self.can_live_panel = CanLivePanel()
+        self._can_live_tab = self.tabs.addTab(self.can_live_panel, "CAN Live")
+
+        # Vizualizacija — heat mapa odabrane mape
+        self.heat_widget = MapHeatWidget()
+        self.heat_widget.cell_clicked.connect(
+            lambda r, c, v: self._on_heat_cell_clicked(r, c)
+        )
+        self._viz_tab = self.tabs.addTab(self.heat_widget, "Vizualizacija")
+
         # Map Grid — read-only pregled mapa s listom i tablicom
         self.map_grid_tab = MapGridTab()
         self._map_grid_tab_idx = self.tabs.addTab(self.map_grid_tab, "Mape")
@@ -2661,6 +2775,8 @@ class MainWindow(QMainWindow):
         _tb.setTabTextColor(0, QColor("#9cdcfe"))               # Map Editor — plava
         _tb.setTabTextColor(self._dtc_tab, QColor("#f48771"))   # DTC Off — narandzasta
         _tb.setTabTextColor(self._can_tab, QColor("#4ec9b0"))   # CAN Network — teal
+        _tb.setTabTextColor(self._can_live_tab, QColor("#4ec9b0"))  # CAN Live — teal
+        _tb.setTabTextColor(self._viz_tab, QColor("#c586c0"))   # Vizualizacija — ljubicasta
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
         center_vsplit.addWidget(self.tabs)
@@ -2692,6 +2808,36 @@ class MainWindow(QMainWindow):
         # Status bar — with gauge labels
         self.status = QStatusBar(); self.setStatusBar(self.status)
         self.status.showMessage("ME17Suite — Ucitaj .bin fajl  (Ctrl+1)")
+
+        # ── Status bar: lijevo = SW info label ────────────────────────────────
+        self._sb_left_lbl = QLabel("")
+        self._sb_left_lbl.setStyleSheet(
+            "font-family:Consolas; font-size:11px; color:#C8C8D0; padding:0 8px;"
+        )
+        self._sb_left_lbl.hide()
+        self.status.addWidget(self._sb_left_lbl)
+
+        # ── Status bar: sredina = loading progress bar ─────────────────────────
+        self._sb_progress = QProgressBar()
+        self._sb_progress.setRange(0, 0)
+        self._sb_progress.setMaximumWidth(120)
+        self._sb_progress.setMaximumHeight(10)
+        self._sb_progress.setTextVisible(False)
+        self._sb_progress.setStyleSheet(
+            "QProgressBar { background:#141418; border:1px solid #2A2A32; border-radius:3px; }"
+            "QProgressBar::chunk { background:#4FC3F7; border-radius:3px; }"
+        )
+        self._sb_progress.hide()
+        self.status.addWidget(self._sb_progress)
+
+        # ── Status bar: desno = checksum badge ────────────────────────────────
+        self._sb_cs_lbl = QLabel("")
+        self._sb_cs_lbl.setStyleSheet(
+            "font-family:Consolas; font-size:10px; font-weight:bold; "
+            "background:#1a3a2a; color:#4CAF50; border-radius:8px; padding:1px 8px; margin:0 4px;"
+        )
+        self._sb_cs_lbl.hide()
+        self.status.addPermanentWidget(self._sb_cs_lbl)
 
         # Permanent gauge labels (right side of status bar)
         self._sb_sw_lbl = QLabel("")
@@ -2727,6 +2873,51 @@ class MainWindow(QMainWindow):
         self._scan_msg_base = "Skeniranje"
 
     # ── Accent bar + status gauge helpers ─────────────────────────────────────
+
+    def _update_sb_left(self, sw_id: str = "", sw_desc: str = "", n_maps: int | None = None):
+        """Ažuriraj lijevi status bar label: 'SW: 10SW066726 | 300hp SC 2021 | 56 mapa'."""
+        parts = []
+        if sw_id:
+            parts.append(f"SW: {sw_id}")
+        if sw_desc:
+            parts.append(sw_desc)
+        if n_maps is not None:
+            parts.append(f"{n_maps} mapa")
+        if parts:
+            color = _sw_badge_color(sw_id)
+            sep = f'<span style="color:#2A2A32;">  |  </span>'
+            html_parts = []
+            for i, p in enumerate(parts):
+                if i == 0 and sw_id:
+                    html_parts.append(f'<span style="color:{color};font-weight:bold;">{p}</span>')
+                elif i == len(parts) - 1 and n_maps is not None:
+                    html_parts.append(f'<span style="color:#808090;">{p}</span>')
+                else:
+                    html_parts.append(f'<span style="color:#C8C8D0;">{p}</span>')
+            self._sb_left_lbl.setText(sep.join(html_parts))
+            self._sb_left_lbl.setTextFormat(Qt.TextFormat.RichText)
+            self._sb_left_lbl.show()
+        else:
+            self._sb_left_lbl.hide()
+
+    def _update_sb_checksum(self, ok: bool | None = None):
+        """Ažuriraj checksum badge u status baru (desno)."""
+        if ok is None:
+            self._sb_cs_lbl.hide()
+            return
+        if ok:
+            self._sb_cs_lbl.setText("  Checksum: OK  ")
+            self._sb_cs_lbl.setStyleSheet(
+                "font-family:Consolas; font-size:10px; font-weight:bold; "
+                "background:#1a3a2a; color:#4CAF50; border-radius:8px; padding:1px 8px; margin:0 4px;"
+            )
+        else:
+            self._sb_cs_lbl.setText("  Checksum: UPOZORENJE  ")
+            self._sb_cs_lbl.setStyleSheet(
+                "font-family:Consolas; font-size:10px; font-weight:bold; "
+                "background:#3a1a00; color:#EF5350; border-radius:8px; padding:1px 8px; margin:0 4px;"
+            )
+        self._sb_cs_lbl.show()
 
     def _update_accent_bar(self, sw_id: str):
         """Update the 2px accent bar color based on SW variant."""
@@ -2886,11 +3077,21 @@ class MainWindow(QMainWindow):
             self._act_compare.setVisible(True)
             self._act_ref.setVisible(True)
             self.btn_save.setEnabled(True)
+            self.btn_dtc_all_off.setEnabled(True)
+            self.btn_cs_fix.setEnabled(True)
             # Auto-postavi SW variant filter u Map Library
             self.map_lib.auto_set_sw_filter(info.sw_id)
             # Update accent bar and SW badge
             self._update_accent_bar(info.sw_id)
             self._update_sb_sw(info.sw_id)
+            self._update_sb_left(info.sw_id, info.sw_desc)
+            # Checksum badge
+            try:
+                cs_res = ChecksumEngine(eng).verify()
+                cs_ok = cs_res.get("sw_id", {}).get("status") == "OK"
+                self._update_sb_checksum(cs_ok)
+            except Exception:
+                self._update_sb_checksum(None)
             self.props.show_ecu(eng)
             self.log_strip.log(f"Ucitan: {name}", "ok")
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
@@ -2996,6 +3197,7 @@ class MainWindow(QMainWindow):
     def scan_maps(self):
         if not self.eng1: return
         self.progress.show()
+        self._sb_progress.show()
         self._scan_msg_base = "Skeniranje"
         self._scan_dots = 0
         self._scan_timer.start(400)
@@ -3009,6 +3211,7 @@ class MainWindow(QMainWindow):
         self.maps1 = maps
         self._scan_timer.stop()
         self.progress.hide()
+        self._sb_progress.hide()
         self.map_lib.populate(maps)
         self.map_grid_tab.set_maps(maps)
         self.log_strip.log(f"Pronadjeno {len(maps)} mapa.", "ok")
@@ -3016,6 +3219,8 @@ class MainWindow(QMainWindow):
         # Update maps count badge in status bar
         if self.eng1:
             self._update_sb_sw(self.eng1.info.sw_id, len(maps))
+            self._update_sb_left(self.eng1.info.sw_id, self.eng1.info.sw_desc, len(maps))
+            self.props.show_ecu(self.eng1, len(maps))
 
     def _done2(self, maps):
         self.maps2 = maps
@@ -3053,6 +3258,8 @@ class MainWindow(QMainWindow):
         compare = fm_ref or fm2
 
         self.map_view.show_map(fm, compare)
+        # Heat mapa — ažuriraj vizualizaciju
+        self.heat_widget.set_map(fm)
         # Ažuriraj label za REF vs Fajl 2
         if compare:
             src = "REF" if fm_ref else "Fajl 2"
@@ -3068,6 +3275,14 @@ class MainWindow(QMainWindow):
         self._update_sb_region(fm.address)
 
     # ── Cell click ────────────────────────────────────────────────────────────
+
+    def _on_heat_cell_clicked(self, row: int, col: int):
+        """Klik na ćeliju u heat map vizualizaciji — sinkronizira s Map Editor."""
+        if not self._cur: return
+        self._on_cell_click(row, col, self._cur)
+        # Prebaci na Map Editor i selektiraj ćeliju
+        self.tabs.setCurrentIndex(0)
+        self.map_view.select_cell(row, col)
 
     def _on_cell_click(self, row: int, col: int, fm: FoundMap):
         # Pronađi referentnu mapu za delta prikaz
@@ -3309,6 +3524,37 @@ class MainWindow(QMainWindow):
     def _show_map_diff_dialog(self):
         """Toolbar button handler — delegates to _show_map_diff (opens Map Diff tab)."""
         self._show_map_diff()
+
+    # ── Toolbar DTC All OFF ────────────────────────────────────────────────────
+
+    def _toolbar_dtc_all_off(self):
+        """Toolbar gumb: isključi sve DTC kodove s potvrdom."""
+        if not self.dtc_eng:
+            self.status.showMessage("Nema učitanog ECU fajla."); return
+        reply = QMessageBox.question(
+            self, "DTC OFF All",
+            "Isključiti sve DTC kodove?\n\n"
+            "Ovo deaktivira monitoring svih grešaka uključujući zaštitu motora\n"
+            "(misfire detekcija, oil pressure, itd.).\n\n"
+            "Koristiti samo za track/race svrhe.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        result = self.dtc_eng.dtc_off_all()
+        changed = result.get("changed", 0)
+        total = result.get("total", 0)
+        self.log_strip.log(f"DTC OFF All: {changed}/{total} isključeno.", "warn")
+        self.status.showMessage(f"DTC OFF All: {changed}/{total} kodova isključeno.")
+        self.dtc_sidebar.refresh_status()
+        # Ažuriraj checksum badge
+        try:
+            cs_res = ChecksumEngine(self.eng1).verify()
+            cs_ok = cs_res.get("sw_id", {}).get("status") == "OK"
+            self._update_sb_checksum(cs_ok)
+        except Exception:
+            pass
 
     # ── Checksum analiza ──────────────────────────────────────────────────────
 

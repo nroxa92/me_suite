@@ -2625,6 +2625,46 @@ _GTI_LOAD_AXIS_16 = AxisDef(count=16, byte_order="LE", dtype="u16",
 GTI_INJ_MAIN          = 0x022066
 GTI_INJ_MIRROR_OFFSET = 0x518  # TODO: mirror offset za GTI nije potvrđen s 0 razlika
 
+# ─── ACE 1630 — 2D Fuel Injection Map ────────────────────────────────────────
+# POTVRĐENO 2026-03-20: adresa ISTA kao GTI ali dimenzija drugačija (12×16 vs 16×12)
+# Sve 1630 ACE varijante: 300hp/230hp/130hp/170hp — SVE imaju ovu mapu
+# X-os RPM @ 0x022046 (16pt LE u16, raw/4 = RPM, 1400–8200 RPM)
+# Y-os load @ 0x02202E (12pt LE u16, Q14, 6.5%–54.7% rel. punjenje)
+# Header: 0x02202A = nRows(12), 0x02202C = nCols(16)
+# Razlike po snagama: 300hp max Q15=0.944, 230hp=0.785, 130/170hp=0.524
+# NEMA mirrora (za razliku od torque/lambda)
+ACE1630_INJ_ADDR = 0x022066
+
+_ACE1630_INJ_DEF = MapDef(
+    name          = "ACE 1630 — ubrizgavanje 2D [Q15]",
+    description   = (
+        "Prava 2D fuel injection mapa za Rotax ACE 1630 (svi modeli 300/230/170/130hp). "
+        "Format: 12 redova (load) × 16 stupaca (RPM). LE u16 Q15 (raw/32767 = rel. masa goriva). "
+        "Razlikuje se po snagama: 300hp max≈0.944, 230hp≈0.785, 130/170hp≈0.524. "
+        "130hp == 170hp (identični). NEMA mirror kopije. "
+        "Adresa ista kao GTI 1503 (0x022066) ali dimenzija 12×16 (GTI=16×12)."
+    ),
+    category      = "injection",
+    rows=12, cols=16,
+    byte_order    = "LE", dtype = "u16",
+    scale         = 1.0 / 32767.0,
+    offset_val    = 0.0,
+    unit          = "Q15",
+    axis_x        = None,   # dinamički — čita se iz 0x022046 pri skeniranju
+    axis_y        = None,   # dinamički — čita se iz 0x02202E pri skeniranju
+    raw_min       = 1000,
+    raw_max       = 65535,
+    mirror_offset = 0,
+    notes         = (
+        f"@ 0x{ACE1630_INJ_ADDR:06X} (12×16 u16 LE Q15, 384B). "
+        "RPM X-os @ 0x022046 (16pt LE u16, raw/4=RPM). "
+        "Load Y-os @ 0x02202E (12pt LE u16, Q14). "
+        "POTVRĐENO 2026-03-20 na svim 1630 ACE varijantama (2018/2019/2021). "
+        "Identično 2018=2019=2021 za isti model. "
+        "0x02436C ostaje linearization curve (NE fuel mapa)."
+    ),
+)
+
 _GTI_INJ_DEF = MapDef(
     name          = "GTI — ubrizgavanje (direktno) [raw]",
     description   = (
@@ -2952,10 +2992,17 @@ class MapFinder:
             self._scan_kfped(progress_cb)
             self._scan_mat(progress_cb)
 
+            # ── ACE 1630 2D fuel mapa — svi modeli (SC i NA, nije Spark) ──────
+            if not is_gti_na:
+                # 300hp/230hp/170hp/130hp SC/NA — svi imaju istu adresu 0x022066
+                self._scan_ace1630_injection(progress_cb)
+
             # ── GTI / NA motor specifično ──────────────────────────────────
             if is_gti_na:
                 if progress_cb: progress_cb(f"GTI/NA motor SW detektiran ({self._sw()}) — dodajem GTI mape...")
-                self._scan_gti_injection(progress_cb)
+                # POTVRĐENO 2026-03-20: header @ 0x02202A = nR=12 nC=16 za SVE non-Spark varijante
+                # GTI 1503/GTI90/ACE1630 NA — svi 12×16 Q15 format, isti skener
+                self._scan_ace1630_injection(progress_cb)
                 self._scan_gti_ignition_extra(progress_cb)
 
         return self.results
@@ -4599,6 +4646,78 @@ class MapFinder:
             data    = vals,
         ))
         if cb: cb(f"  GTI injection @ 0x{addr:06X}  16×12  raw=[{min(vals)}-{max(vals)}]")
+
+    def _scan_ace1630_injection(self, cb=None):
+        """ACE 1630 2D fuel injection mapa @ 0x022066 — 12×16, LE u16 Q15.
+        Potvrđeno 2026-03-20 na svim 1630 ACE varijantama (300/230/170/130hp).
+        Adresa ista kao GTI 1503 ali dimenzija 12×16 (GTI=16×12).
+        """
+        if cb: cb("ACE 1630: tražim 2D fuel injection mapu @ 0x022066...")
+        raw_data = self.eng.get_bytes()
+        addr = ACE1630_INJ_ADDR
+        ROWS, COLS = 12, 16
+        n = ROWS * COLS  # 192
+
+        if addr + n * 2 > len(raw_data):
+            if cb: cb(f"  ACE1630 injection: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(raw_data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        # Validacija: vrijednosti u Q15 rasponu za fuel mapu (1000-32000 raw)
+        in_range = sum(1 for v in vals if 1000 <= v <= 35000)
+        if in_range < n * 0.75:
+            if cb: cb(f"  ACE1630 injection @ 0x{addr:06X}: Q15 validacija pala ({in_range}/{n}) — preskacam")
+            return
+
+        # Variacija po retku — treba biti monotono smanjivanje po RPM osi
+        row_vars = [max(vals[r*COLS:(r+1)*COLS]) - min(vals[r*COLS:(r+1)*COLS])
+                    for r in range(ROWS)]
+        varied = sum(1 for v in row_vars if v > 200)
+        if varied < 4:
+            if cb: cb(f"  ACE1630 injection @ 0x{addr:06X}: premalo varijacije (flat?) — preskacam")
+            return
+
+        # Čitaj osi dinamički iz binarnog fajla
+        # X-os RPM @ 0x022046 (16pt LE u16, raw/4 = RPM)
+        rpm_vals = [int.from_bytes(raw_data[0x022046+i*2:0x022046+i*2+2],'little')//4
+                    for i in range(COLS)]
+        # Y-os load @ 0x02202E (12pt LE u16, Q14)
+        load_vals = [int.from_bytes(raw_data[0x02202E+i*2:0x02202E+i*2+2],'little')
+                     for i in range(ROWS)]
+
+        x_axis = AxisDef(count=COLS, byte_order="LE", dtype="u16",
+                         scale=1.0, unit="RPM", values=rpm_vals)
+        y_axis = AxisDef(count=ROWS, byte_order="LE", dtype="u16",
+                         scale=1.0/16384.0, unit="load [%]", values=load_vals)
+
+        defn = MapDef(
+            name          = _ACE1630_INJ_DEF.name,
+            description   = _ACE1630_INJ_DEF.description,
+            category      = _ACE1630_INJ_DEF.category,
+            rows=ROWS, cols=COLS,
+            byte_order    = _ACE1630_INJ_DEF.byte_order,
+            dtype         = _ACE1630_INJ_DEF.dtype,
+            scale         = _ACE1630_INJ_DEF.scale,
+            offset_val    = _ACE1630_INJ_DEF.offset_val,
+            unit          = _ACE1630_INJ_DEF.unit,
+            axis_x        = x_axis,
+            axis_y        = y_axis,
+            raw_min       = _ACE1630_INJ_DEF.raw_min,
+            raw_max       = _ACE1630_INJ_DEF.raw_max,
+            mirror_offset = 0,
+            notes         = _ACE1630_INJ_DEF.notes,
+        )
+
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  ACE1630 fuel injection @ 0x{addr:06X}  12×16  Q15  "
+                  f"min={min(vals)/32767:.3f}  max={max(vals)/32767:.3f}  "
+                  f"RPM={rpm_vals[0]}-{rpm_vals[-1]}")
 
     def _scan_gti_ignition_extra(self, cb=None):
         """GTI ignition serija @ 0x028310 — 8 mapa, širi raspon (16-70 raw = do 52.5°)."""

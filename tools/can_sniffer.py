@@ -126,8 +126,9 @@ def run_sniffer(bitrate: int, channel: int, output: str | None, duration: float 
             try:
                 msg = bus.recv(timeout=0.1)
             except Exception as e:
-                if "overrun" in str(e).lower():
-                    print(f"  [WARN] Buffer overrun — preskacam ({e})")
+                estr = str(e).lower()
+                if "overrun" in estr or "warning limit" in estr or "error warning" in estr:
+                    print(f"  [WARN] CAN adapter upozorenje — nastavljam ({e})")
                     continue
                 raise
             if msg is None:

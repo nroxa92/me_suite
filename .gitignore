@@ -44,3 +44,6 @@ env/
 .DS_Store
 Thumbs.db
 *.csv
+tools/sniff_cdid.csv
+tools/sniff_live.csv
+tools/sniff_livedata.csv
