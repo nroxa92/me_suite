@@ -1,5 +1,26 @@
 # ME17Suite — Work Log
 
+## 2026-03-21 16:30 — Poboljšani nazivi i dependency opisi u map_finder.py
+
+### Zadatak: map_finder.py — poboljšani nazivi i dependency blokovi
+**Fajl:** `core/map_finder.py`
+
+**Promjene:**
+- `_IGN_NAMES` lista (19 naziva): zamijenjeni generički nazivi ("Osnovna 1-8") s opisnima koji govore KADA je mapa aktivna (#00 = "Normalni rad [baza A]", #05 = "Hladan motor / zagrijavanje", #07 = "Decel / overrun", #16-17 = "NPRo extended [sport]", #18 = "Fallback / sigurnosna")
+- `_make_ign_def` description logika: svaka grana (knock/extended/partial/aux_a/aux_b/aux_sc/base) sada uključuje `OVISI O:` / `UTJECE NA:` blok na kraju description stringa
+- Dependency blokovi dodani u description svake od ovih MapDef definicija (samo stringovi, logika nepromijenjena):
+  - `_INJ_DEF` — linearization; `_ACE1630_INJ_DEF` — 2D fuel; `_GTI_INJ_DEF` — GTI fuel
+  - `_LAMBDA_DEF`, `_LAMBDA_ADAPT_DEF`, `_LAMBDA_TRIM_DEF`, `_LAMBDA_BIAS_DEF`
+  - `_LAMBDA_PROT_DEF`, `_LAMBDA_EFF_DEF`, `_OVERTEMP_LAMBDA_DEF`, `_NEUTRAL_CORR_DEF`
+  - `_TORQUE_DEF`, `_TORQUE_OPT_DEF`
+  - `_SC_DEF`, `_SC_BOOST_FACTOR_DEF`, `_SC_CORR_DEF`
+  - `_TEMP_FUEL_DEF`, `_THERM_ENRICH_DEF`, `_ACCEL_ENRICH_DEF`
+  - `_KFPED_DEF`, `_IGN_CORR_DEF`, `_DEADTIME_DEF`
+  - `_DFCO_DEF`, `_DECEL_RPM_CUT_DEF`, `_START_INJ_DEF`
+  - `_LAMBDA_EFF_U8_DEF`, `_LAMBDA_THRESH_DEF`
+
+**Provjera:** `python -c "from core.map_finder import MapFinder"` → OK
+
 ## 2026-03-21 — 2017 gen skeneri + 2016 lambda adapt (sesija)
 
 ### Zadatak 1: 2017 gen (10SW012999) — implementirani -0x2AA offset skeneri
@@ -5867,3 +5888,29 @@ Sva 4 agenta završena:
 - Dominantni CODE offset: **+0x2AA** (boost/overtemp/neutral/second-0xFFFF sve na istom); DFCO +0x294
 - 10SW004675 == 10SW004672 bit-for-bit za SVE pronađene mape
 - 2016 gen fuel mapa @ 0x022066 = garbage (potvrđeno — header nevaljan)
+
+## 2026-03-21 — Nastavak sesije: preostali OVISI O/UTJECE NA blokovi
+
+**Fajl:** `core/map_finder.py`
+
+**Dodano 16 blokova (nastavak prethodne sesije):**
+- `_SPARK_LAMBDA_DEF` — open-loop lambda cilj (4 kopije); OVISI O: lambda senzor NE postoji (open-loop)
+- `_scan_2016_1503_ign_corr_2d` — 2D ign korekcija (2016 1503)
+- `_scan_2016_1503_mat_corr` — MAT korekcija goriva (2016 1503)
+- `_scan_2016_1503_accel` — accel enrichment (2016 1503)
+- `_scan_2016_1503_cold_start` — cold start injection (2016 1503)
+- `_scan_2016_1503_kfped` — drive-by-wire (2016 1503)
+- `_scan_2016_1503_overtemp_lambda` — overtemp lambda (2016 1503)
+- `_scan_2016_1503_neutral_corr` — neutral korekcija (2016 1503)
+- `_scan_2016_1503_lambda_bias` — lambda bias (2016 1503)
+- `_scan_2016_ace_sc_corr` — SC korekcija (2016 ACE)
+- `_scan_2016_ace_boost` — SC boost faktor (2016 ACE)
+- `_scan_2016_ace_overtemp_lambda` — overtemp lambda (2016 ACE)
+- `_scan_2016_ace_neutral_corr` — neutral korekcija (2016 ACE)
+- `_scan_2016_ace_dfco` — DFCO ramp (2016 ACE)
+- `_scan_2016_ace_fuel` — 2D fuel mapa Q14 (2016 ACE)
+- `_scan_2016_ace_torque` — torque ogranicenje (2016 ACE)
+
+**Ukupno u ovoj sesiji (oba dijela):** 59 MapDef description stringova dobilo OVISI O/UTJECE NA blokove
+
+**Provjera:** `python -c "from core.map_finder import MapFinder; print('OK')"` → OK

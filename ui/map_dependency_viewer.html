@@ -2,732 +2,602 @@
 <html lang="hr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ME17.8.5 — ECU Map Dependency Viewer</title>
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<title>ME17Suite — Mapa veza (Map Dependency Viewer)</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #111113;
+    --surface: #1C1C1F;
+    --surface2: #141418;
+    --border: #2A2A32;
+    --accent: #4FC3F7;
+    --accent-light: #1A2F4A;
+    --text: #C8C8D0;
+    --text2: #808090;
+    --mono: 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 
-  body {
-    background: #111113;
-    color: #C8C8D0;
-    font-family: 'Segoe UI', 'Consolas', monospace;
-    overflow: hidden;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
+  .toolbar {
+    height: 38px; background: var(--surface); border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
   }
+  .toolbar h1 { font-size: 13px; color: var(--accent); font-weight: bold; letter-spacing: 1px; margin-right: 12px; }
+  .tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .tb-btn {
+    padding: 4px 10px; background: none; border: 1px solid var(--border);
+    color: var(--text2); cursor: pointer; border-radius: 3px; font-size: 11px; font-family: var(--mono);
+    transition: all 0.1s;
+  }
+  .tb-btn:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+  .tb-btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+  .tb-info { margin-left: auto; font-size: 11px; color: var(--text2); }
 
-  #header {
-    background: #1A1A1F;
-    border-bottom: 1px solid #2A2A35;
-    padding: 10px 18px;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-shrink: 0;
-  }
-  #header h1 {
-    font-size: 15px;
-    font-weight: 600;
-    color: #4FC3F7;
-    letter-spacing: 0.04em;
-  }
-  #header .subtitle {
-    font-size: 11px;
-    color: #666;
-  }
-  #header .controls {
-    margin-left: auto;
-    display: flex;
-    gap: 8px;
-  }
-  #header button {
-    background: #222228;
-    border: 1px solid #333;
-    color: #C8C8D0;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  #header button:hover { background: #2E2E38; }
-  #header button.active { background: #1E3A4A; border-color: #4FC3F7; color: #4FC3F7; }
+  .main { display: flex; flex: 1; overflow: hidden; }
+  svg { flex: 1; cursor: grab; }
+  svg:active { cursor: grabbing; }
 
-  #main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
+  .sidebar {
+    width: 300px; flex-shrink: 0; background: var(--surface2); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
   }
+  .sidebar-header {
+    padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--text2); letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .sidebar-content { padding: 14px; overflow-y: auto; flex: 1; }
+  .node-name { font-size: 14px; color: var(--accent); font-weight: bold; margin-bottom: 4px; }
+  .node-addr { font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+  .node-desc { font-size: 12px; color: var(--text); line-height: 1.6; margin-bottom: 12px; white-space: pre-line; }
+  .dep-section { margin-top: 10px; }
+  .dep-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .dep-list { display: flex; flex-direction: column; gap: 4px; }
+  .dep-item {
+    padding: 4px 8px; border-radius: 3px; font-size: 11px; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.1s;
+  }
+  .dep-item:hover { opacity: 0.8; }
+  .dep-in { background: rgba(79,195,247,0.1); border-color: rgba(79,195,247,0.3); color: #4FC3F7; }
+  .dep-out { background: rgba(255,183,77,0.1); border-color: rgba(255,183,77,0.3); color: #FFB74D; }
+  .placeholder { color: var(--text2); font-size: 12px; line-height: 1.6; }
 
-  #graph-container {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
+  /* legend */
+  .legend {
+    padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0;
+    display: flex; flex-wrap: wrap; gap: 6px;
   }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text2); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-  svg#graph {
-    width: 100%;
-    height: 100%;
-    cursor: grab;
-  }
-  svg#graph:active { cursor: grabbing; }
-
-  .link {
-    stroke: #3A3A48;
-    stroke-opacity: 0.6;
-    fill: none;
-    stroke-width: 1.5px;
-    transition: stroke 0.15s, stroke-opacity 0.15s;
-  }
-  .link.highlighted {
-    stroke: #4FC3F7;
-    stroke-opacity: 1;
-    stroke-width: 2.5px;
-  }
-  .link.dimmed {
-    stroke-opacity: 0.08;
-  }
-
-  .link-label {
-    font-size: 9px;
-    fill: #555;
-    pointer-events: none;
-    transition: fill 0.15s, opacity 0.15s;
-  }
-  .link-label.highlighted { fill: #4FC3F7; opacity: 1; }
-  .link-label.dimmed { opacity: 0.05; }
-
-  .node circle {
-    stroke-width: 2px;
-    cursor: pointer;
-    transition: r 0.15s, stroke-opacity 0.15s, opacity 0.15s;
-  }
-  .node circle.dimmed { opacity: 0.18; }
-  .node text {
-    font-size: 10px;
-    fill: #C8C8D0;
-    pointer-events: none;
-    paint-order: stroke;
-    stroke: #111113;
-    stroke-width: 3px;
-    stroke-linejoin: round;
-    transition: opacity 0.15s;
-  }
-  .node text.dimmed { opacity: 0.1; }
-
-  #info-panel {
-    width: 280px;
-    background: #16161C;
-    border-left: 1px solid #2A2A35;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  #info-panel .panel-header {
-    background: #1A1A22;
-    padding: 12px 16px;
-    border-bottom: 1px solid #2A2A35;
-    font-size: 11px;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  #info-content {
-    padding: 16px;
-    flex: 1;
-    overflow-y: auto;
-  }
-  #info-content .placeholder {
-    color: #444;
-    font-size: 12px;
-    text-align: center;
-    margin-top: 40px;
-    line-height: 1.6;
-  }
-  #info-content .node-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #E8E8F0;
-    margin-bottom: 4px;
-  }
-  #info-content .node-group-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    letter-spacing: 0.05em;
-  }
-  #info-content .node-desc {
-    font-size: 12px;
-    color: #A0A0B0;
-    line-height: 1.6;
-    margin-bottom: 16px;
-  }
-  #info-content .conn-section {
-    margin-bottom: 12px;
-  }
-  #info-content .conn-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #555;
-    margin-bottom: 6px;
-  }
-  #info-content .conn-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 5px 8px;
-    border-radius: 4px;
-    background: #1E1E28;
-    margin-bottom: 3px;
-    font-size: 11px;
-    color: #C8C8D0;
-  }
-  #info-content .conn-item .arrow {
-    color: #4FC3F7;
-    font-size: 12px;
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-  #info-content .conn-item .conn-label {
-    font-size: 9px;
-    color: #555;
-    display: block;
-    margin-top: 2px;
-  }
-  #info-content .conn-item .conn-name {
-    flex: 1;
-  }
-
-  #legend {
-    border-top: 1px solid #2A2A35;
-    padding: 12px 16px;
-    background: #14141A;
-  }
-  #legend .legend-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #555;
-    margin-bottom: 8px;
-  }
-  #legend .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 5px;
-    font-size: 11px;
-    color: #A0A0B0;
-  }
-  #legend .legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  #tooltip {
-    position: absolute;
-    background: #1E1E28;
-    border: 1px solid #333;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-size: 11px;
-    color: #C8C8D0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.1s;
-    max-width: 200px;
-    z-index: 100;
-  }
-
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: #111; }
-  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .node text { pointer-events: none; }
+  .link { fill: none; stroke-opacity: 0.5; }
+  .link.highlighted { stroke-opacity: 1; stroke-width: 2.5; }
+  .link.dimmed { stroke-opacity: 0.08; }
+  .node circle { transition: r 0.2s; }
+  .node.selected circle { stroke-width: 3px; stroke: #fff; }
+  .node.dimmed { opacity: 0.2; }
+  .arrow { fill: #555; }
 </style>
 </head>
 <body>
 
-<div id="header">
-  <h1>ME17.8.5 — ECU Map Dependency Viewer</h1>
-  <span class="subtitle">Bosch ME17.8.5 / Rotax ACE 1630 / Infineon TC1762</span>
-  <div class="controls">
-    <button id="btn-reset">Reset view</button>
-    <button id="btn-labels" class="active">Labels</button>
-    <button id="btn-edge-labels">Edge labels</button>
-    <button id="btn-freeze">Freeze layout</button>
+<div class="toolbar">
+  <h1>ME17Suite — Mapa veza</h1>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="resetView()">Reset prikaz</button>
+  <button class="tb-btn active" id="btnLabels" onclick="toggleLabels()">Oznake</button>
+  <button class="tb-btn" id="btnEdgeLabels" onclick="toggleEdgeLabels()">Veze tekst</button>
+  <button class="tb-btn" id="btnFreeze" onclick="toggleFreeze()">Zaustavi</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="selectGroup('all')">Sve</button>
+  <button class="tb-btn" onclick="selectGroup('GORIVO')" style="color:#64B5F6">Gorivo</button>
+  <button class="tb-btn" onclick="selectGroup('PALJENJE')" style="color:#FF8A65">Paljenje</button>
+  <button class="tb-btn" onclick="selectGroup('LAMBDA')" style="color:#81C784">Lambda</button>
+  <button class="tb-btn" onclick="selectGroup('MOMENT')" style="color:#CE93D8">Moment</button>
+  <button class="tb-btn" onclick="selectGroup('SC-BOOST')" style="color:#FFD54F">SC/Boost</button>
+  <div class="tb-info">Klik = detalji &nbsp;|&nbsp; Drag = pomak &nbsp;|&nbsp; Scroll = zoom</div>
+</div>
+
+<div class="main">
+  <svg id="graph"></svg>
+  <div class="sidebar">
+    <div class="sidebar-header">Detalji mape</div>
+    <div class="sidebar-content" id="sidebarContent">
+      <div class="placeholder">
+        Klikni na mapu za prikaz detalja, veza i ovisnosti.
+        <br><br>
+        <b style="color:var(--accent)">Plava strelica</b> = ulaz (OVISI O)<br>
+        <b style="color:#FFB74D">Narančasta strelica</b> = izlaz (UTJEČE NA)
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
   </div>
 </div>
 
-<div id="main">
-  <div id="graph-container">
-    <svg id="graph"></svg>
-    <div id="tooltip"></div>
-  </div>
-  <div id="info-panel">
-    <div class="panel-header">Detalji mape</div>
-    <div id="info-content">
-      <div class="placeholder">Klikni na node za detalje<br><br>Hover = highlight veza<br>Drag = pomakni node<br>Scroll = zoom</div>
-    </div>
-    <div id="legend">
-      <div class="legend-title">Grupe mapa</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#4CAF50"></div>Gorivo</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#FF9800"></div>Paljenje</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#4FC3F7"></div>Lambda/AFR</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#9C27B0"></div>Moment</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#F44336"></div>SC/Boost</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#607D8B"></div>Ostalo</div>
-    </div>
-  </div>
-</div>
-
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
-const GROUP_COLORS = {
-  "GORIVO":   "#4CAF50",
-  "PALJENJE": "#FF9800",
-  "LAMBDA":   "#4FC3F7",
-  "MOMENT":   "#9C27B0",
-  "SC_BOOST": "#F44336",
-  "OSTALO":   "#607D8B"
+// ── DATA ────────────────────────────────────────────────────────────────────
+
+const GROUPS = {
+  "GORIVO":   { color: "#1565C0", light: "#42A5F5" },
+  "PALJENJE": { color: "#BF360C", light: "#FF8A65" },
+  "LAMBDA":   { color: "#1B5E20", light: "#81C784" },
+  "MOMENT":   { color: "#4A148C", light: "#CE93D8" },
+  "SC-BOOST": { color: "#E65100", light: "#FFD54F" },
+  "OSTALO":   { color: "#263238", light: "#90A4AE" },
 };
 
-const NODES = [
+const nodes = [
   // GORIVO
-  { id: "fuel_2d",           label: "fuel_2d",           group: "GORIVO",
-    desc: "Glavna 2D mapa goriva (12x16). RPM x load -> duty cycle. Svaki kW tune krece od ovdje." },
-  { id: "inj_linearization", label: "inj_linear.",        group: "GORIVO",
-    desc: "1D krivulja linearizacije injektora. Q15 duty breakpoints. Identicno za sve snage 1630 ACE." },
-  { id: "temp_fuel",         label: "temp_fuel",          group: "GORIVO",
-    desc: "Temperaturna korekcija goriva (1x156 Q14). Bogaci/osiromašuje smjesu ovisno o temperaturi motora." },
-  { id: "accel_enrichment",  label: "accel_enrich",       group: "GORIVO",
-    desc: "Enrichment pri naglom otvaranju gasa (5x5 Q14). Kompenzira puninju i transport goriva." },
-  { id: "deadtime",          label: "deadtime",           group: "GORIVO",
-    desc: "Injector deadtime tablica (10x14 u16 LE). Kompenzira kašnjenje otvaranja injektora — read-only kalibracija." },
-  { id: "start_injection",   label: "start_inj",          group: "GORIVO",
-    desc: "Pocetna injekcija pri startu (1x6 u16 LE). Bogacenje za cold start." },
+  { id: "fuel_2d",       label: "2D Fuel\n(Gorivo)", group: "GORIVO",   addr: "0x022066",
+    desc: "Glavna 2D karta goriva (12×16, Q15)\nRPM × Load → relativna količina goriva\nOsnova za doziranje injektora.",
+    depends: "Lambda Main (feedback), SC Corr (boost faktor), Temp Fuel, Therm. enrichment",
+    affects:  "Izravno doziranje goriva → AFR → emisije, snaga" },
+
+  { id: "inj_lin",       label: "Inj. Lin.\n(Deadtime+LIN)", group: "GORIVO", addr: "0x02436C",
+    desc: "Injector linearization (1D, 16×Q15)\nKompenzira nelinearnost injektora pri niskim pulsewidths.\nIsti za sve snage (130–300hp).",
+    depends: "2D Fuel Map (bazni PW), Deadtime (offset)",
+    affects:  "Korekcija stvarnog PW → preciznost goriva na niskim opterećenjima" },
+
+  { id: "temp_fuel",     label: "Temp. Fuel\nCorr.", group: "GORIVO",   addr: "0x025E50",
+    desc: "Korekcija goriva prema temperaturi (1×156, Q14)\nHladni motor → više goriva\nVruć motor → redukcija.",
+    depends: "CTS senzor (temperatura rashladne tekućine)",
+    affects:  "2D Fuel Map (množični faktor)" },
+
+  { id: "therm_enrich",  label: "Therm.\nEnrich.", group: "GORIVO",     addr: "0x02AA42",
+    desc: "Toplinsko obogaćivanje (8×7, /64=%)\nDodatno gorivo pri zagrijavanju 80–150°C\nKratkotrajna korekcija u tranzijentima.",
+    depends: "CTS (80–150°C), engine load",
+    affects:  "2D Fuel Map (kratkotrajna korekcija)" },
+
+  { id: "accel_enrich",  label: "Accel.\nEnrich.", group: "GORIVO",     addr: "0x028059",
+    desc: "Ubrzavačko obogaćivanje (5×5, Q14)\nDodaje gorivo pri naglom gasu\n1B global + 5 sub-tablica.",
+    depends: "dMAP/dt (brzina promjene tlaka usisa), RPM",
+    affects:  "2D Fuel Map (impulsna korekcija)" },
+
+  { id: "start_inj",     label: "Start\nInj.", group: "GORIVO",         addr: "0x025CDC",
+    desc: "Injekcija pri pokretanju (1×6, Q14)\n6-točkasta krivulja za cold/warm start\nOdređuje PW pri cranking-u.",
+    depends: "CTS (temperatura pri pokretanju)",
+    affects:  "Gorivo za start — neovisno od 2D fuel mape" },
+
+  { id: "deadtime",      label: "Deadtime\n(INJ)", group: "GORIVO",     addr: "0x0258AA",
+    desc: "Mrtvo vrijeme injektora (10×14, Q14)\nKompenzira kašnjenje otvaranja/zatvaranja\nX=trajanje, Y=temperatura.",
+    depends: "Napon baterije, CTS",
+    affects:  "Inj. Linearization (offset PW)" },
 
   // PALJENJE
-  { id: "ign_base",          label: "ign_base",           group: "PALJENJE",
-    desc: "19 ignition mapa (12x12 u8). Osnova paljenja — #00-#07 po uvjetima rada. Skala 0.75 deg/bit." },
-  { id: "ign_knock",         label: "ign_knock",          group: "PALJENJE",
-    desc: "Knock trim mape #08-#09. Retardiraju paljenje kada knock senzor detektira detonaciju." },
-  { id: "ign_aux",           label: "ign_aux",            group: "PALJENJE",
-    desc: "Auxiliary ignition mape #10-#15 (A/B/SC uvjeti). SC motor koristi drugacije mape od NA." },
-  { id: "ign_extended",      label: "ign_extended",       group: "PALJENJE",
-    desc: "Extended NPRo ignition mape #16-#17. Agresivniji timing za NPRo Stage 2 tune." },
-  { id: "ign_correction_2d", label: "ign_corr_2d",        group: "PALJENJE",
-    desc: "KFZW2 — paljenje za moment (8x8 u8). Retardira ign kada torque intervencija to zahtijeva. DID 0x2142." },
+  { id: "ign_base",      label: "IGN Base\n#00–#07", group: "PALJENJE", addr: "0x02B730",
+    desc: "Osnovna paljenja karta (12×12, u8×0.75°)\n8 mapa za različite uvjete:\n#00 normalni rad A\n#01 normalni rad B\n#02 visoko opterećenje/boost A\n#03 visoko opterećenje/boost B\n#04 niskooktatni gorivo\n#05 hladan motor/zagrijavanje\n#06 eko/štednja\n#07 decel/overrun (fuel cut)",
+    depends: "RPM osa (0x024F46), Load osa",
+    affects:  "Kutni predtakt paljenja → snaga, detonacija, temperatura" },
+
+  { id: "ign_knock",     label: "IGN Knock\n#08–#09", group: "PALJENJE",addr: "0x02B7C0",
+    desc: "Knock trim karte (12×12, u8×0.75°)\n#08 i #09 — korekcija pri detonaciji\nSmanjuje predtakt kad knock senzor detektira.",
+    depends: "IGN Base (#00-#07), Knock Params (0x0256F8)",
+    affects:  "IGN Base (oduzima kutove pri knock-u)" },
+
+  { id: "ign_aux",       label: "IGN Aux\n#10–#15", group: "PALJENJE",  addr: "0x02B8F0",
+    desc: "Pomoćne/SC paljenja karte (12×12, u8×0.75°)\n#10-#11 aux A (alternativni uvjeti)\n#12-#13 aux B\n#14-#15 aux SC (supercharged specific)\nAktivira SC ECU logika prema tlaku usisnika.",
+    depends: "MAP senzor (boost tlak), SC bypass stanje",
+    affects:  "Odabir aktivne IGN karte → preuzima od Base pri SC uvjetima" },
+
+  { id: "ign_ext",       label: "IGN Ext.\n#16–#17", group: "PALJENJE", addr: "0x02BC50",
+    desc: "NPRo extended karte (12×12, u8×0.75°)\n#16-#17 sport/performance mod\nAgresivniji predtakt — NPRo aktivira.",
+    depends: "NPRo tune (0x012C80 region), riding mode",
+    affects:  "Agresivniji kutovi → +3–5 ° vs base pri WOT" },
+
+  { id: "ign_fallback",  label: "IGN Fall-\nback #18", group: "PALJENJE",addr: "0x02BCE0",
+    desc: "Sigurnosna / fallback karta (12×12, u8×0.75°)\nAktivira se pri senzorskim greškama\nKonzervativni kutovi za zaštitu motora.",
+    depends: "DTC status (senzorske greške), limp home mode",
+    affects:  "Zamjenjuje sve ostale IGN karte pri kvaru" },
+
+  { id: "ign_corr",      label: "IGN Corr.\n2D", group: "PALJENJE",     addr: "0x022374",
+    desc: "2D korekcija paljenja (8×8, u8)\nDodatna korekcija over RPM/load\nKFZW2 — Desired Ignition After Torque Intervention.",
+    depends: "IGN Base, Torque demand (FWM)",
+    affects:  "Finalna korekcija kuta paljenja" },
+
+  { id: "knock_params",  label: "Knock\nParams", group: "PALJENJE",     addr: "0x0256F8",
+    desc: "Knock parametri (52×u16, 104B)\nPragovi detekcije, filteri, prozori\nAdaptivni retard algoritam.",
+    depends: "Knock senzor signal",
+    affects:  "IGN Knock (#08-#09) — triggera retard" },
 
   // LAMBDA
-  { id: "lambda_main",       label: "lambda_main",        group: "LAMBDA",
-    desc: "Target AFR mapa (12x18 Q15). Closed-loop lambda kontrola koristi ovo kao setpoint." },
-  { id: "lambda_trim",       label: "lambda_trim",        group: "LAMBDA",
-    desc: "Kratkotrajna lambda korekcija. Brza reakcija na lambda senzor. Raspon 0.955-1.044." },
-  { id: "lambda_adapt",      label: "lambda_adapt",       group: "LAMBDA",
-    desc: "Dugotrajna lambda adaptacija (12x18). Uci se u voznji i korigira fuel_2d dugorocno." },
-  { id: "lambda_bias",       label: "lambda_bias",        group: "LAMBDA",
-    desc: "Lambda bias 1D krivulja (1x141 Q15). Osnovna AFR kalibracija po RPM." },
-  { id: "lambda_eff",        label: "lambda_eff",         group: "LAMBDA",
-    desc: "KFWIRKBA efikasnost mapa (41x18 Q15). GTI90 aktivan (0.51-0.71), SC bypass (flat)." },
-  { id: "lambda_eff_sub",    label: "lambda_eff_sub",     group: "LAMBDA",
-    desc: "KFWIRKBA sub-tablica (14x10 u8 /128). Y/X-osi su lambda vrijednosti. Ulazi u lambda_eff." },
-  { id: "lambda_protection", label: "lambda_prot",        group: "LAMBDA",
-    desc: "Lambda zaštitni pragovi (1x79 Q15). NPRo STG2 = sve 0xFFFF (bypass). DID 0x2107/0x2158." },
-  { id: "overtemp_lambda",   label: "overtemp_lambda",    group: "LAMBDA",
-    desc: "Overtemp richening krivulja (1x63 Q15). Bogaci smjesu pri pregrijavanju motora. 0xFFFF = SC bypass." },
+  { id: "lambda_main",   label: "Lambda\nMain", group: "LAMBDA",        addr: "0x0266F0",
+    desc: "Glavna lambda karta (12×18, Q15)\nCiljna AFR po RPM×Load\nSC: aktivna (0.85–1.05), GTI90: pasivna (flat 0.984).",
+    depends: "Lambda Adapt (učenje), Lambda Trim (korekcija), Lambda Bias (1D offset)",
+    affects:  "2D Fuel Map (feedback korektivni faktor), emisije" },
+
+  { id: "lambda_adapt",  label: "Lambda\nAdapt", group: "LAMBDA",       addr: "0x0268A0",
+    desc: "Lambda adaptacijska baza (12×18, Q15)\nDugotrajna samoobuka ECU-a\n85% confidence — adaptira prema stvarnoj O2.",
+    depends: "O2 senzor (wideband), Lambda Main (referenca)",
+    affects:  "Lambda Main (multiplicativni faktor)" },
+
+  { id: "lambda_trim",   label: "Lambda\nTrim", group: "LAMBDA",        addr: "0x026DB8",
+    desc: "Lambda trim karta (12×18, Q15)\nKratkotrajna korekcija (closed-loop)\nRange 0.955–1.044.",
+    depends: "O2 senzor (feedback)",
+    affects:  "Lambda Main (additivna korekcija)" },
+
+  { id: "lambda_bias",   label: "Lambda\nBias", group: "LAMBDA",        addr: "0x0265D6",
+    desc: "Lambda bias krivulja (1×141, Q15)\n1D offset po RPM osi\nKorekcija sistematske greške O2 senzora.",
+    depends: "RPM",
+    affects:  "Lambda Main (bazni offset)" },
+
+  { id: "lambda_prot",   label: "Lambda\nZaštita", group: "LAMBDA",     addr: "0x02B378",
+    desc: "Lambda zaštita — pragovi (1×79, Q15)\nGornji pragovi lambda vrijednosti\nNPRo STG2 = sve 0xFFFF (bypass).\n95% confidence.",
+    depends: "Lambda Main (trenutna vrijednost)",
+    affects:  "Zaštita motora — ograničava gorivo ako lambda previsoka" },
+
+  { id: "lambda_eff",    label: "Lambda\nEff (KFWIRKBA)", group: "LAMBDA", addr: "0x02AE5E",
+    desc: "Lambda učinkovitost (41×18, Q15)\nKFWIRKBA — efikasnost izgaranja po lambda\nGTI90 aktivan (0.51–0.71), SC bypass (flat).",
+    depends: "Lambda Main (trenutna lambda)",
+    affects:  "Torque demand (moment kao f(lambda))" },
+
+  { id: "overtemp_lam",  label: "Overtemp\nLambda", group: "LAMBDA",    addr: "0x025ADA",
+    desc: "Overtemp lambda krivulja (1×63, Q15)\nObogaćivanje pri prekomjernoj temperaturi\n0xFFFF = SC bypass (bez korekcije).",
+    depends: "ECT / EOT temperatura",
+    affects:  "Lambda Main (temperaturna zaštita — bogata smjesa)" },
+
+  { id: "neutral_corr",  label: "Neutral\nCorr.", group: "LAMBDA",      addr: "0x025B58",
+    desc: "Neutral correction (1×63, Q14)\nKorekcija u neutralu / praznom hodu\nSmanjuje gorivo bez opterećenja.",
+    depends: "Gear/neutral signal",
+    affects:  "2D Fuel Map (multiplikator u neutralu)" },
 
   // MOMENT
-  { id: "torque_main",       label: "torque_main",        group: "MOMENT",
-    desc: "Moment mapa 16x16 BE Q8. Fizicki limit momenta po RPM x load. Mirror na +0x518." },
-  { id: "torque_physical",   label: "torque_phys",        group: "MOMENT",
-    desc: "Fizicka krivulja momenta 30pt u16LE (/100=Nm). SC max=340Nm, NA max=332Nm." },
-  { id: "fwm",               label: "FWM",                group: "MOMENT",
-    desc: "Vozacev zahtjev momenta (FWM). SC=75-98% (limiting), NA=100-116%. DID 0x213B -> ovdje -> 0x2103." },
-  { id: "kfwirkba_transient", label: "kfwirkba_trans",   group: "MOMENT",
-    desc: "KFWIRKBA tranzijentni (16x16 u8, 4 uvjeta, stride 290B). NPRo mijenja C0/C1 — agresivniji throttle." },
+  { id: "torque_main",   label: "Torque\nMain", group: "MOMENT",        addr: "0x02A0D8",
+    desc: "Główna karta momenta (16×16, BE Q8)\nMaksimalni moment po RPM×Load\nMirror +0x518.",
+    depends: "FWM (vozačev zahtjev), Lambda Eff (korekcija)",
+    affects:  "Upravljanje motorom — ograničava snagu prema zahtjevu" },
 
-  // SC/BOOST
-  { id: "sc_correction",    label: "sc_correction",      group: "SC_BOOST",
-    desc: "SC korekcija load-a (9x7 Q14). NA = flat 16384 = 1.0. SC = aktivni lookup." },
-  { id: "sc_boost_factor",  label: "sc_boost_factor",    group: "SC_BOOST",
-    desc: "SC boost multiplikator (1x40 Q14). 1630 ACE = +22% (1.224). 4TEC 1503 = +41.2%. NA = flat 1.0." },
-  { id: "sc_bypass",        label: "sc_bypass",          group: "SC_BOOST",
-    desc: "SC bypass opcode — 3 kopije. 300hp=0x2626, 130hp=0x1E1E. Kljuc za prepoznavanje snage." },
-  { id: "kfped",            label: "KFPED",              group: "SC_BOOST",
-    desc: "Drive-by-wire pedal mapa (10x20 u8). SC = MAP kPa gauge, NA = pedal deg [0..70]." },
+  { id: "torque_phys",   label: "Torque\nPhys. Curve", group: "MOMENT", addr: "0x029FD4",
+    desc: "Fizička krivulja momenta (30pt, u16LE/100=Nm)\nStvarna krivulja motora\nSC max=340 Nm, NA max=332 Nm.",
+    depends: "Motor fizika (izmjereno na bench-u)",
+    affects:  "Torque Main (referentna krivulja) — skalira Q8 vrijednosti" },
+
+  { id: "fwm",           label: "FWM\n(Vozačev zahtjev)", group: "MOMENT", addr: "0x02A7F0",
+    desc: "FWM — Fahrer Wunsch Moment (16×16, BE Q8)\nVozačev zahtjev momenta\nSC 300hp=75–98% (limiting), NA 130hp=100–116% (boost).\n95% confidence.",
+    depends: "KFPED (pedal), KFWIRKBA tranzijent",
+    affects:  "Torque Main (ulazni zahtjev)" },
+
+  { id: "kfwirkba_tr",   label: "KFWIRKBA\nTranzijent", group: "MOMENT", addr: "0x0275FD",
+    desc: "KFWIRKBA tranzijentni (16×16 u8/128, 4 kopije)\nThrottle response mapping\nNPRo mijenja C0/C1 → agresivniji odaziv.\n80% confidence.",
+    depends: "Throttle position, RPM, Load",
+    affects:  "FWM (tranzijentni odaziv gasnog pedala)" },
+
+  // SC-BOOST
+  { id: "kfped",         label: "KFPED\n(Pedal)", group: "SC-BOOST",    addr: "0x029528",
+    desc: "Drive-by-wire throttle mapa (10×20, u8)\nPedal° → zahtjev motoru\nSC X-os = MAP kPa gauge (boost/vakuum)\nNA X-os = pedal° [0..70]\nMirror +0x108.",
+    depends: "APP senzor (pedal kut), MAP senzor (boost tlak)",
+    affects:  "FWM (vozačev zahtjev moment)" },
+
+  { id: "sc_bypass",     label: "SC\nBypass", group: "SC-BOOST",        addr: "0x020534",
+    desc: "SC bypass opcodes (3 kopije @ 0x020534/0x0205A8/0x029993)\nNPRo mijenja samo 0x0205A8 i 0x029993\n300hp=0x2626, 230hp=0x1F1F, 170/130hp=0x1E1E\nGTI90=0x1C1B.",
+    depends: "SW varijanta (kompajlirano)",
+    affects:  "SC Correction, SC Boost Factor (enable/disable SC)" },
+
+  { id: "sc_boost",      label: "SC Boost\nFaktor", group: "SC-BOOST",  addr: "0x025DF8",
+    desc: "SC boost faktor (1×40, Q14)\n1630 ACE: 1.224 (+22%)\n4-TEC 1503: 1.412 (+41.2%) za sve varijante\nFlat krivulja (konstanta po cijelom RPM).",
+    depends: "SC Bypass (mora biti aktivan)",
+    affects:  "2D Fuel Map (množni faktor za SC gorivo)" },
+
+  { id: "sc_corr",       label: "SC Corr.\n(MAP)", group: "SC-BOOST",   addr: "0x02220E",
+    desc: "SC correction karta (9×7, Q14)\nKorekcija prema MAP tlaku (boost)\nNA = flat 16384 (1.0), SC aktivna.",
+    depends: "MAP senzor (boost kPa), SC Bypass stanje",
+    affects:  "2D Fuel Map (boost korekcija — multiplicativna)" },
 
   // OSTALO
-  { id: "neutral_corr",      label: "neutral_corr",      group: "OSTALO",
-    desc: "Neutral korekcija (1x63 Q14). Utjece na gorivo u neutralnom polozaju mjenjaca." },
-  { id: "thermal_enrichment",label: "thermal_enrich",    group: "OSTALO",
-    desc: "Thermal enrichment (8x7 u16 /64=%). CTS 80-150 degC. Bogacenje za topli motor." },
-  { id: "eff_correction",    label: "eff_correction",    group: "OSTALO",
-    desc: "Eff correction KFWIRKBA sub (14x10 u8 /128=1.0). Ulaz u lambda_eff_sub." },
-  { id: "dfco",              label: "DFCO",              group: "OSTALO",
-    desc: "DFCO RPM ramp — decel fuel cutoff pragovi po load-u (16x11 LE). 90% conf." },
-  { id: "knock_params",      label: "knock_params",      group: "OSTALO",
-    desc: "52 knock parametra (104B). Threshold, window, gain — direktno ulaze u ign_knock." },
-  { id: "rev_limiter",       label: "rev_limiter",       group: "OSTALO",
-    desc: "Rev limiter period encoding. 300hp=8158rpm, 130hp=7892rpm. Citati kao LE u16 ticks." },
+  { id: "rev_limit",     label: "Rev\nLimiter", group: "OSTALO",        addr: "0x028E96",
+    desc: "Rev limiter (u16 LE, period-encoded)\nFormula: RPM = 40MHz×60/(ticks×58)\n300hp SC/230hp SC = 5072t = 8158 RPM\n130/170hp NA = 5243t = 7892 RPM\nSpark = 5120t = 8082 RPM.",
+    depends: "RPM senzor (CKP)",
+    affects:  "DFCO (fuel cut pri limitu), Engine protection" },
+
+  { id: "dfco",          label: "DFCO\n(Fuel Cut)", group: "OSTALO",    addr: "0x028C30",
+    desc: "Deceleration Fuel Cut Off (16×11, u16 LE)\nKid goriva pri decelu\nRPM ramp krivulja za postupno vraćanje.\n90% confidence.",
+    depends: "Rev Limiter, RPM, TPS (throttle je zatvoren)",
+    affects:  "2D Fuel Map (override — potpuno gasi gorivo)" },
+
+  { id: "rpm_axis",      label: "RPM\nOse", group: "OSTALO",            addr: "0x024F46",
+    desc: "RPM ose za sve mape (u16 BE)\n3 kopije: 0x024F46, 0x025010, 0x0250DC\n16 točaka, 512–8448 rpm.",
+    depends: "Dizajn motora",
+    affects:  "IGN Base, 2D Fuel Map, Lambda Main, Torque — sve RPM-indeksirane mape" },
 ];
 
-const EDGES = [
-  { source: "sc_boost_factor",   target: "fuel_2d",           label: "SC multiplikacija goriva" },
-  { source: "sc_boost_factor",   target: "torque_main",        label: "SC torque scaling" },
-  { source: "sc_correction",     target: "fuel_2d",            label: "SC load korekcija" },
-  { source: "sc_bypass",         target: "sc_correction",      label: "bypass flag" },
-  { source: "sc_bypass",         target: "sc_boost_factor",    label: "bypass flag" },
-  { source: "kfped",             target: "fwm",                label: "pedal -> zahtjev" },
-  { source: "fwm",               target: "torque_main",        label: "vozacev zahtjev" },
-  { source: "torque_main",       target: "ign_correction_2d",  label: "torque intervention -> ign" },
-  { source: "torque_physical",   target: "torque_main",        label: "fizicki limit" },
-  { source: "lambda_main",       target: "fuel_2d",            label: "AFR target -> inj korekcija" },
-  { source: "lambda_adapt",      target: "lambda_main",        label: "dugotrajna korekcija" },
-  { source: "lambda_trim",       target: "lambda_main",        label: "kratkotrajna korekcija" },
-  { source: "lambda_bias",       target: "lambda_main",        label: "osnovna AFR kalibr." },
-  { source: "lambda_protection", target: "lambda_main",        label: "zastitni prag" },
-  { source: "lambda_eff",        target: "lambda_adapt",       label: "efikasnost kompenzacija" },
-  { source: "lambda_eff_sub",    target: "lambda_eff",         label: "sub lookup" },
-  { source: "overtemp_lambda",   target: "lambda_main",        label: "overtemp rich-ening" },
-  { source: "ign_base",          target: "ign_knock",          label: "base + knock trim" },
-  { source: "ign_knock",         target: "knock_params",       label: "knock detection" },
-  { source: "ign_base",          target: "ign_aux",            label: "base + aux" },
-  { source: "ign_aux",           target: "ign_extended",       label: "NPRo extended" },
-  { source: "ign_correction_2d", target: "ign_base",           label: "moment-based retard" },
-  { source: "fuel_2d",           target: "inj_linearization",  label: "duty cycle -> lineariz." },
-  { source: "inj_linearization", target: "deadtime",           label: "lineariz. + deadtime" },
-  { source: "temp_fuel",         target: "fuel_2d",            label: "temp korekcija" },
-  { source: "thermal_enrichment",target: "temp_fuel",          label: "CTS enrichment" },
-  { source: "accel_enrichment",  target: "fuel_2d",            label: "WOT enrichment" },
-  { source: "start_injection",   target: "fuel_2d",            label: "start enrich." },
-  { source: "dfco",              target: "fuel_2d",            label: "decel cutoff" },
-  { source: "rev_limiter",       target: "dfco",               label: "RPM limit -> DFCO" },
-  { source: "eff_correction",    target: "lambda_eff_sub",     label: "efficiency input" },
-  { source: "kfwirkba_transient",target: "fwm",                label: "transient throttle" },
-  { source: "neutral_corr",      target: "fuel_2d",            label: "neutral korekcija" },
+const links = [
+  // Gorivo chain
+  { source: "temp_fuel",    target: "fuel_2d",       label: "temp mult" },
+  { source: "therm_enrich", target: "fuel_2d",       label: "enrichment" },
+  { source: "accel_enrich", target: "fuel_2d",       label: "accel pulse" },
+  { source: "lambda_main",  target: "fuel_2d",       label: "lambda feedback" },
+  { source: "sc_corr",      target: "fuel_2d",       label: "boost corr" },
+  { source: "sc_boost",     target: "fuel_2d",       label: "boost factor" },
+  { source: "neutral_corr", target: "fuel_2d",       label: "neutral mult" },
+  { source: "overtemp_lam", target: "lambda_main",   label: "temp protect" },
+  { source: "dfco",         target: "fuel_2d",       label: "fuel cut override" },
+  { source: "fuel_2d",      target: "inj_lin",       label: "base PW" },
+  { source: "deadtime",     target: "inj_lin",       label: "PW offset" },
+
+  // Lambda chain
+  { source: "lambda_adapt", target: "lambda_main",   label: "long-term adapt" },
+  { source: "lambda_trim",  target: "lambda_main",   label: "short-term trim" },
+  { source: "lambda_bias",  target: "lambda_main",   label: "1D offset" },
+  { source: "lambda_main",  target: "lambda_prot",   label: "trenutna vrijednost" },
+  { source: "lambda_eff",   target: "torque_main",   label: "eff correction" },
+  { source: "lambda_main",  target: "lambda_eff",    label: "lambda input" },
+
+  // Ignition chain
+  { source: "knock_params", target: "ign_knock",     label: "detect → retard" },
+  { source: "ign_knock",    target: "ign_base",      label: "knock retard" },
+  { source: "ign_base",     target: "ign_corr",      label: "base angle" },
+  { source: "fwm",          target: "ign_corr",      label: "torque demand" },
+  { source: "rpm_axis",     target: "ign_base",      label: "RPM os" },
+
+  // Torque / FWM chain
+  { source: "kfped",        target: "fwm",           label: "pedal → demand" },
+  { source: "kfwirkba_tr",  target: "fwm",           label: "transient resp." },
+  { source: "fwm",          target: "torque_main",   label: "driver demand" },
+  { source: "torque_phys",  target: "torque_main",   label: "phys reference" },
+
+  // SC-Boost chain
+  { source: "sc_bypass",    target: "sc_boost",      label: "enable SC" },
+  { source: "sc_bypass",    target: "sc_corr",       label: "enable SC" },
+
+  // Rev / DFCO
+  { source: "rev_limit",    target: "dfco",          label: "rpm cut trigger" },
+  { source: "rpm_axis",     target: "fuel_2d",       label: "RPM os" },
 ];
 
-// --- State ---
+// ── RENDER ───────────────────────────────────────────────────────────────────
+
 let showLabels = true;
 let showEdgeLabels = false;
 let frozen = false;
-let selectedNode = null;
+let simulation;
+let selectedNodeId = null;
 
-// Build adjacency maps
-const outEdges = {};
-const inEdges = {};
-NODES.forEach(n => { outEdges[n.id] = []; inEdges[n.id] = []; });
-EDGES.forEach(e => {
-  outEdges[e.source].push(e);
-  inEdges[e.target].push(e);
-});
-
-// --- D3 Setup ---
 const svg = d3.select("#graph");
-const container = document.getElementById("graph-container");
-
-let width = container.clientWidth;
-let height = container.clientHeight;
-
-const g = svg.append("g").attr("class", "root");
+const width = () => svg.node().clientWidth;
+const height = () => svg.node().clientHeight;
 
 // Zoom
-const zoom = d3.zoom()
-  .scaleExtent([0.15, 4])
-  .on("zoom", (event) => {
-    g.attr("transform", event.transform);
-  });
+const zoom = d3.zoom().scaleExtent([0.2, 4]).on("zoom", (event) => {
+  g.attr("transform", event.transform);
+});
 svg.call(zoom);
+
+const g = svg.append("g");
 
 // Arrow markers
 const defs = svg.append("defs");
+["link-arrow", "link-arrow-hl"].forEach((id, i) => {
+  defs.append("marker").attr("id", id)
+    .attr("viewBox", "0 -5 10 10").attr("refX", 28).attr("refY", 0)
+    .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
+    .append("path").attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", i === 0 ? "#555" : "#4FC3F7");
+});
 
-function makeMarker(id, color) {
-  defs.append("marker")
-    .attr("id", id)
-    .attr("viewBox", "0 -4 10 8")
-    .attr("refX", 18)
-    .attr("refY", 0)
-    .attr("markerWidth", 7)
-    .attr("markerHeight", 7)
-    .attr("orient", "auto")
-    .append("path")
-    .attr("d", "M0,-4L10,0L0,4")
-    .attr("fill", color);
-}
-
-makeMarker("arrow-default", "#3A3A48");
-makeMarker("arrow-highlight", "#4FC3F7");
-makeMarker("arrow-dimmed", "#222");
-
-// Force simulation
-const simulation = d3.forceSimulation(NODES)
-  .force("link", d3.forceLink(EDGES).id(d => d.id).distance(130).strength(0.6))
-  .force("charge", d3.forceManyBody().strength(-420))
-  .force("center", d3.forceCenter(width / 2, height / 2))
-  .force("collision", d3.forceCollide(36))
-  .force("x", d3.forceX(width / 2).strength(0.04))
-  .force("y", d3.forceY(height / 2).strength(0.04));
-
-// Draw links
-const linkGroup = g.append("g").attr("class", "links");
-const link = linkGroup.selectAll("path")
-  .data(EDGES)
-  .join("path")
+// Links
+const linkSel = g.append("g").attr("class", "links")
+  .selectAll("line").data(links).join("line")
   .attr("class", "link")
-  .attr("marker-end", "url(#arrow-default)");
+  .attr("stroke", "#333")
+  .attr("stroke-width", 1.5)
+  .attr("marker-end", "url(#link-arrow)");
 
 // Edge labels
-const edgeLabelGroup = g.append("g").attr("class", "edge-labels");
-const edgeLabel = edgeLabelGroup.selectAll("text")
-  .data(EDGES)
-  .join("text")
-  .attr("class", "link-label")
+const edgeLabelSel = g.append("g").attr("class", "edge-labels")
+  .selectAll("text").data(links).join("text")
+  .attr("text-anchor", "middle")
+  .attr("font-size", "9px")
+  .attr("fill", "#505060")
+  .attr("font-family", "Consolas")
   .text(d => d.label)
   .style("display", "none");
 
-// Draw nodes
-const nodeGroup = g.append("g").attr("class", "nodes");
-const node = nodeGroup.selectAll("g")
-  .data(NODES)
-  .join("g")
+// Nodes
+const nodeGroup = g.append("g").attr("class", "nodes")
+  .selectAll("g").data(nodes).join("g")
   .attr("class", "node")
   .call(d3.drag()
-    .on("start", (event, d) => {
-      if (!frozen && !event.active) simulation.alphaTarget(0.3).restart();
-      d.fx = d.x; d.fy = d.y;
-    })
-    .on("drag", (event, d) => {
-      d.fx = event.x; d.fy = event.y;
-    })
-    .on("end", (event, d) => {
-      if (!frozen && !event.active) simulation.alphaTarget(0);
-      if (!frozen) { d.fx = null; d.fy = null; }
-    })
-  );
+    .on("start", dragstarted)
+    .on("drag", dragged)
+    .on("end", dragended))
+  .on("click", nodeClicked);
 
-node.append("circle")
-  .attr("r", 16)
-  .attr("fill", d => GROUP_COLORS[d.group] + "22")
-  .attr("stroke", d => GROUP_COLORS[d.group])
-  .attr("stroke-opacity", 0.85);
+nodeGroup.append("circle")
+  .attr("r", 28)
+  .attr("fill", d => GROUPS[d.group].color)
+  .attr("stroke", d => GROUPS[d.group].light)
+  .attr("stroke-width", 1.5);
 
-node.append("text")
+nodeGroup.append("text")
   .attr("text-anchor", "middle")
-  .attr("dy", "0.32em")
-  .text(d => d.label);
-
-// Tooltip
-const tooltip = document.getElementById("tooltip");
-
-node
-  .on("mouseenter", function(event, d) {
-    // Show tooltip
-    tooltip.textContent = d.id;
-    tooltip.style.opacity = "1";
-
-    // Highlight connected
-    const connectedIds = new Set([d.id]);
-    EDGES.forEach(e => {
-      if (e.source.id === d.id || e.target.id === d.id) {
-        connectedIds.add(e.source.id || e.source);
-        connectedIds.add(e.target.id || e.target);
-      }
+  .attr("dominant-baseline", "middle")
+  .attr("font-size", "9.5px")
+  .attr("fill", "#E0E0E0")
+  .attr("font-family", "Consolas")
+  .each(function(d) {
+    const lines = d.label.split("\n");
+    const el = d3.select(this);
+    lines.forEach((line, i) => {
+      el.append("tspan")
+        .attr("x", 0)
+        .attr("dy", i === 0 ? -(lines.length - 1) * 7 : 14)
+        .text(line);
     });
-
-    node.selectAll("circle").classed("dimmed", n => !connectedIds.has(n.id));
-    node.selectAll("text").classed("dimmed", n => !connectedIds.has(n.id));
-
-    link.classed("highlighted", e =>
-      (e.source.id === d.id || e.target.id === d.id)
-    ).classed("dimmed", e =>
-      !(e.source.id === d.id || e.target.id === d.id)
-    ).attr("marker-end", e =>
-      (e.source.id === d.id || e.target.id === d.id) ? "url(#arrow-highlight)" : "url(#arrow-dimmed)"
-    );
-
-    edgeLabel.classed("highlighted", e =>
-      (e.source.id === d.id || e.target.id === d.id)
-    ).classed("dimmed", e =>
-      !(e.source.id === d.id || e.target.id === d.id)
-    );
-  })
-  .on("mousemove", function(event) {
-    const rect = container.getBoundingClientRect();
-    tooltip.style.left = (event.clientX - rect.left + 14) + "px";
-    tooltip.style.top  = (event.clientY - rect.top  - 10) + "px";
-  })
-  .on("mouseleave", function() {
-    tooltip.style.opacity = "0";
-    node.selectAll("circle").classed("dimmed", false);
-    node.selectAll("text").classed("dimmed", false);
-    link.classed("highlighted", false).classed("dimmed", false)
-        .attr("marker-end", "url(#arrow-default)");
-    edgeLabel.classed("highlighted", false).classed("dimmed", false);
-  })
-  .on("click", function(event, d) {
-    event.stopPropagation();
-    selectedNode = d;
-    renderInfoPanel(d);
   });
 
-// Click background — deselect
-svg.on("click", function() {
-  selectedNode = null;
-  document.getElementById("info-content").innerHTML =
-    '<div class="placeholder">Klikni na node za detalje<br><br>Hover = highlight veza<br>Drag = pomakni node<br>Scroll = zoom</div>';
-});
+// Simulation
+simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d => d.id).distance(120).strength(0.6))
+  .force("charge", d3.forceManyBody().strength(-400))
+  .force("center", d3.forceCenter(0, 0))
+  .force("collide", d3.forceCollide(42))
+  .on("tick", ticked);
 
-function renderInfoPanel(d) {
-  const color = GROUP_COLORS[d.group];
-  const groupName = {
-    GORIVO: "Gorivo", PALJENJE: "Paljenje", LAMBDA: "Lambda/AFR",
-    MOMENT: "Moment", SC_BOOST: "SC/Boost", OSTALO: "Ostalo"
-  }[d.group] || d.group;
+function ticked() {
+  linkSel
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x)
+    .attr("y2", d => d.target.y);
 
-  const outs = outEdges[d.id] || [];
-  const ins  = inEdges[d.id]  || [];
+  edgeLabelSel
+    .attr("x", d => (d.source.x + d.target.x) / 2)
+    .attr("y", d => (d.source.y + d.target.y) / 2);
 
-  let html = `<div class="node-name">${d.id}</div>`;
-  html += `<span class="node-group-badge" style="background:${color}33;color:${color};border:1px solid ${color}55;">${groupName}</span>`;
-  html += `<div class="node-desc">${d.desc}</div>`;
-
-  if (ins.length > 0) {
-    html += `<div class="conn-section">`;
-    html += `<div class="conn-title">Ulazi (${ins.length})</div>`;
-    ins.forEach(e => {
-      const srcId = typeof e.source === "object" ? e.source.id : e.source;
-      const srcNode = NODES.find(n => n.id === srcId);
-      const srcColor = srcNode ? GROUP_COLORS[srcNode.group] : "#888";
-      html += `<div class="conn-item">
-        <span class="arrow" style="color:${srcColor}">&#8594;</span>
-        <div class="conn-name">
-          <span style="color:${srcColor}">${srcId}</span>
-          <span class="conn-label">${e.label}</span>
-        </div>
-      </div>`;
-    });
-    html += `</div>`;
-  }
-
-  if (outs.length > 0) {
-    html += `<div class="conn-section">`;
-    html += `<div class="conn-title">Izlazi (${outs.length})</div>`;
-    outs.forEach(e => {
-      const tgtId = typeof e.target === "object" ? e.target.id : e.target;
-      const tgtNode = NODES.find(n => n.id === tgtId);
-      const tgtColor = tgtNode ? GROUP_COLORS[tgtNode.group] : "#888";
-      html += `<div class="conn-item">
-        <span class="arrow" style="color:#4FC3F7">&#8594;</span>
-        <div class="conn-name">
-          <span style="color:${tgtColor}">${tgtId}</span>
-          <span class="conn-label">${e.label}</span>
-        </div>
-      </div>`;
-    });
-    html += `</div>`;
-  }
-
-  if (ins.length === 0 && outs.length === 0) {
-    html += `<div style="color:#555;font-size:12px;">Nema direktnih veza</div>`;
-  }
-
-  document.getElementById("info-content").innerHTML = html;
+  nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
 }
 
-// Curved paths for links
-function linkPath(d) {
-  const sx = d.source.x, sy = d.source.y;
-  const tx = d.target.x, ty = d.target.y;
-  const dx = tx - sx, dy = ty - sy;
-  const dr = Math.sqrt(dx*dx + dy*dy);
-  // slight curve
-  const mx = (sx + tx) / 2 - dy * 0.18;
-  const my = (sy + ty) / 2 + dx * 0.18;
-  return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
-}
+// Initial transform
+setTimeout(() => {
+  svg.call(zoom.transform, d3.zoomIdentity.translate(width() / 2, height() / 2).scale(0.75));
+}, 100);
 
-// Simulation tick
-simulation.on("tick", () => {
-  link.attr("d", linkPath);
+// ── INTERACTION ───────────────────────────────────────────────────────────────
 
-  edgeLabel
-    .attr("x", d => {
-      const sx = d.source.x, tx = d.target.x;
-      const sy = d.source.y, ty = d.target.y;
-      const dy = ty - sy, dx = tx - sx;
-      return (sx + tx) / 2 - dy * 0.18;
+function nodeClicked(event, d) {
+  event.stopPropagation();
+  if (selectedNodeId === d.id) {
+    clearSelection();
+    return;
+  }
+  selectedNodeId = d.id;
+
+  // connected node ids
+  const connectedIds = new Set([d.id]);
+  links.forEach(l => {
+    if ((l.source.id || l.source) === d.id) connectedIds.add(l.target.id || l.target);
+    if ((l.target.id || l.target) === d.id) connectedIds.add(l.source.id || l.source);
+  });
+
+  nodeGroup.classed("dimmed", n => !connectedIds.has(n.id));
+  nodeGroup.classed("selected", n => n.id === d.id);
+
+  linkSel
+    .classed("highlighted", l => (l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id)
+    .classed("dimmed", l => (l.source.id || l.source) !== d.id && (l.target.id || l.target) !== d.id)
+    .attr("stroke", l => {
+      if ((l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id) return "#4FC3F7";
+      return "#333";
     })
-    .attr("y", d => {
-      const sx = d.source.x, tx = d.target.x;
-      const sy = d.source.y, ty = d.target.y;
-      const dx = tx - sx, dy = ty - sy;
-      return (sy + ty) / 2 + dx * 0.18 - 4;
+    .attr("marker-end", l => {
+      if ((l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id) return "url(#link-arrow-hl)";
+      return "url(#link-arrow)";
     });
 
-  node.attr("transform", d => `translate(${d.x},${d.y})`);
-});
+  // Sidebar
+  const inputs = links.filter(l => (l.target.id || l.target) === d.id).map(l => l.source.id || l.source);
+  const outputs = links.filter(l => (l.source.id || l.source) === d.id).map(l => l.target.id || l.target);
 
-// Resize
-const resizeObserver = new ResizeObserver(() => {
-  width = container.clientWidth;
-  height = container.clientHeight;
-  simulation.force("center", d3.forceCenter(width / 2, height / 2));
-  simulation.force("x", d3.forceX(width / 2).strength(0.04));
-  simulation.force("y", d3.forceY(height / 2).strength(0.04));
-});
-resizeObserver.observe(container);
+  const nodeLookup = Object.fromEntries(nodes.map(n => [n.id, n]));
 
-// Controls
-document.getElementById("btn-reset").addEventListener("click", () => {
-  svg.transition().duration(600).call(
-    zoom.transform, d3.zoomIdentity.translate(0, 0).scale(1)
-  );
-});
+  let html = `
+    <div class="node-name">${d.label.replace("\n", " ")}</div>
+    <div class="node-addr">${d.addr} &nbsp;|&nbsp; ${d.group}</div>
+    <div class="node-desc">${d.desc}</div>`;
 
-document.getElementById("btn-labels").addEventListener("click", function() {
+  if (inputs.length) {
+    html += `<div class="dep-section"><div class="dep-label">Ovisi o (ulazi)</div><div class="dep-list">`;
+    inputs.forEach(id => {
+      const n = nodeLookup[id];
+      if (n) html += `<div class="dep-item dep-in" onclick="clickNode('${id}')">${n.label.replace("\n", " ")}</div>`;
+    });
+    html += `</div></div>`;
+  }
+  if (outputs.length) {
+    html += `<div class="dep-section"><div class="dep-label">Utječe na (izlazi)</div><div class="dep-list">`;
+    outputs.forEach(id => {
+      const n = nodeLookup[id];
+      if (n) html += `<div class="dep-item dep-out" onclick="clickNode('${id}')">${n.label.replace("\n", " ")}</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  document.getElementById("sidebarContent").innerHTML = html;
+}
+
+function clickNode(id) {
+  const d = nodes.find(n => n.id === id);
+  if (d) {
+    // Animate to node
+    const tx = width() / 2 - d.x * 0.9;
+    const ty = height() / 2 - d.y * 0.9;
+    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(0.9));
+    nodeClicked({ stopPropagation: () => {} }, d);
+  }
+}
+
+svg.on("click", clearSelection);
+
+function clearSelection() {
+  selectedNodeId = null;
+  nodeGroup.classed("dimmed", false).classed("selected", false);
+  linkSel.classed("highlighted", false).classed("dimmed", false)
+    .attr("stroke", "#333").attr("marker-end", "url(#link-arrow)");
+  document.getElementById("sidebarContent").innerHTML =
+    `<div class="placeholder">Klikni na mapu za prikaz detalja, veza i ovisnosti.<br><br>
+    <b style="color:var(--accent)">Plava strelica</b> = ulaz (OVISI O)<br>
+    <b style="color:#FFB74D">Narančasta strelica</b> = izlaz (UTJEČE NA)</div>`;
+}
+
+function dragstarted(event, d) {
+  if (!frozen && !event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragended(event, d) {
+  if (!frozen && !event.active) simulation.alphaTarget(0);
+  if (!frozen) { d.fx = null; d.fy = null; }
+}
+
+// ── TOOLBAR ACTIONS ───────────────────────────────────────────────────────────
+
+function resetView() {
+  svg.transition().duration(500).call(zoom.transform,
+    d3.zoomIdentity.translate(width() / 2, height() / 2).scale(0.75));
+}
+
+function toggleLabels() {
   showLabels = !showLabels;
-  this.classList.toggle("active", showLabels);
-  node.selectAll("text").style("display", showLabels ? null : "none");
-});
+  nodeGroup.selectAll("text").style("display", showLabels ? null : "none");
+  document.getElementById("btnLabels").classList.toggle("active", showLabels);
+}
 
-document.getElementById("btn-edge-labels").addEventListener("click", function() {
+function toggleEdgeLabels() {
   showEdgeLabels = !showEdgeLabels;
-  this.classList.toggle("active", showEdgeLabels);
-  edgeLabel.style("display", showEdgeLabels ? null : "none");
-});
+  edgeLabelSel.style("display", showEdgeLabels ? null : "none");
+  document.getElementById("btnEdgeLabels").classList.toggle("active", showEdgeLabels);
+}
 
-document.getElementById("btn-freeze").addEventListener("click", function() {
+function toggleFreeze() {
   frozen = !frozen;
-  this.classList.toggle("active", frozen);
+  document.getElementById("btnFreeze").classList.toggle("active", frozen);
   if (frozen) {
     simulation.stop();
-    NODES.forEach(d => { d.fx = d.x; d.fy = d.y; });
+    nodes.forEach(d => { d.fx = d.x; d.fy = d.y; });
   } else {
-    NODES.forEach(d => { d.fx = null; d.fy = null; });
-    simulation.alpha(0.3).restart();
+    nodes.forEach(d => { d.fx = null; d.fy = null; });
+    simulation.alphaTarget(0.1).restart();
+    setTimeout(() => simulation.alphaTarget(0), 2000);
   }
-});
+}
 
-// Initial zoom-to-fit after simulation settles
-setTimeout(() => {
-  const bounds = g.node().getBBox();
-  const cw = container.clientWidth;
-  const ch = container.clientHeight;
-  const scale = Math.min(0.9, 0.9 / Math.max(bounds.width / cw, bounds.height / ch));
-  const tx = (cw - bounds.width * scale) / 2 - bounds.x * scale;
-  const ty = (ch - bounds.height * scale) / 2 - bounds.y * scale;
-  svg.transition().duration(800).call(
-    zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale)
-  );
-}, 2200);
+function selectGroup(grp) {
+  if (grp === "all") { clearSelection(); return; }
+  const inGroup = nodes.filter(n => n.group === grp).map(n => n.id);
+  if (!inGroup.length) return;
+  const d = nodes.find(n => n.group === grp);
+  if (d) nodeClicked({ stopPropagation: () => {} }, d);
+}
+
+// ── LEGEND ───────────────────────────────────────────────────────────────────
+
+const legend = document.getElementById("legend");
+Object.entries(GROUPS).forEach(([name, g]) => {
+  const item = document.createElement("div");
+  item.className = "leg-item";
+  item.innerHTML = `<div class="leg-dot" style="background:${g.light}"></div>${name}`;
+  legend.appendChild(item);
+});
 </script>
 </body>
 </html>

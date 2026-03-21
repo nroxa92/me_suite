@@ -52,3 +52,5 @@ tools/sniff_cdid.csv
 tools/sniff_live.csv
 tools/sniff_livedata.csv
 *.csv
+tools/sniff_cdid.csv
+tools/sniff_live.csv

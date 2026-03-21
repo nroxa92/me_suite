@@ -3,6 +3,11 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-21 16:30]**
+👤 Poboljsaj nazive i opise mapa u core/map_finder.py — _IGN_NAMES s opisnima nazivima, dependency blokovi (OVISI O / UTJECE NA) u description svakog MapDef za 1630 ACE mape.
+🤖 Implementirano: 19 IGN naziva s opisnima kontekstima, dependency blokovi u _make_ign_def (5 grana) + 26 MapDef definicija. Import provjera OK.
+
+---
 **[2026-03-21]**
 👤 rijesi tocke 1 i 2.... (2017 gen 012999 mape + 2016 gen 1503 lambda adapt)
 🤖 2017 gen: 7 novih skenera (-0x2AA offset), 23→28 mapa. 2016 gen lambda_adapt potvrdjeno ne postoji (192/216 razlika 260hp vs 215hp, RPM os @ 0x024F46 presjeca tablicu, obje adrese garbage).
@@ -1353,5 +1358,20 @@ Claude: Ekstrakcija potvrđena. 1037524060 je PRE-10SW multi-image container (3�
 **[2026-03-20 17:30]**
 👤 Istraži DFCO i boost factor u 2016 gen 1630 ACE binarijima (004675/004672 vs 040039 ref). Boost flat run search, SC corr verifikacija, overtemp lambda, neutral corr.
 🤖 Sve 4 mape + DFCO bonus pronađene. Boost@0x025B4E flat 20046 identičan 2018+. SC corr@0x0221FA identičan sadržaj ref. Overtemp@0x025830 i neutral@0x0258AE oba offset +0x2AA. DFCO@0x02899C offset +0x294, identičan sadržaj 2018+. 004675==004672 svuda.
+
+---
+
+---
+**[2026-03-21 sesija — UI polish]**
+👤 CAN van potpuno, 3D ne treba, DTC-all-off tipka ne treba, map dependency viewer HTML+toolbar, tablice kao mockup (JET boje, veće ćelije), zoom ukloniti, sav font +2px, poboljšati nazive mapa i opise (OVISI O / UTJEČE NA).
+🤖 Uklonjen CAN (3 widget fajla obrisana + main_window.py čišćenje), 3D metoda, DTC all off. Kreiran ui/map_dependency_viewer.html (D3.js, 31 node, 33 veza). JET paleta (10 boja), ćelije 72×36, font +2px. PyQt6 setBackground fix (instance-level stylesheet). map_finder.py: 19 opisnih IGN naziva + dependency blokovi u 26+ MapDef opisima.
+
+
+---
+
+---
+**[2026-03-21 — nastavak sesije]**
+👤 [nastavak prethodne sesije] Dodaj OVISI O / UTJECE NA blokove u preostalih 15+ MapDef description stringova u core/map_finder.py.
+🤖 Dodano preostalih 16 OVISI O/UTJECE NA blokova: _SPARK_LAMBDA_DEF + sve 2016 1503 skenere (ign_corr_2d, mat_corr, accel, cold_start, kfped, overtemp_lambda, neutral_corr, lambda_bias) + sve 2016 ACE skenere (sc_corr, boost, overtemp_lambda, neutral_corr, dfco, fuel, torque). Validacija OK.
 
 ---
