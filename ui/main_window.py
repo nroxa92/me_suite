@@ -18,6 +18,7 @@ Layout:
 
 import csv
 import sys
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -885,62 +886,6 @@ class EepromSidebarPanel(QWidget):
             self.entry_selected.emit(key)
 
 
-# ─── CAN Sidebar Panel ────────────────────────────────────────────────────────
-
-class CanSidebarPanel(QWidget):
-    id_selected = pyqtSignal(int)   # emits CAN ID
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._ids: list[tuple[int, str]] = []
-
-        lo = QVBoxLayout(self); lo.setContentsMargins(0, 0, 0, 0); lo.setSpacing(0)
-
-        hdr = QLabel("  CAN ID-ovi")
-        hdr.setStyleSheet(
-            "background:#141418; color:#808090; font-size:10px; font-weight:bold; "
-            "padding:6px 10px; border-bottom:1px solid #2A2A32; letter-spacing:1.5px;"
-        )
-        lo.addWidget(hdr)
-
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("  Filtriraj...")
-        self._search.setFixedHeight(30)
-        self._search.setStyleSheet(
-            "background:#111113; border:none; border-bottom:1px solid #2A2A32; "
-            "border-radius:0; padding:4px 10px; color:#C8C8D0; font-size:12px;"
-        )
-        self._search.textChanged.connect(self._filter)
-        lo.addWidget(self._search)
-
-        self._list = QListWidget()
-        self._list.setFont(QFont("Consolas", 12))
-        self._list.setStyleSheet("background:#1C1C1F; border:none;")
-        self._list.itemClicked.connect(self._click)
-        lo.addWidget(self._list, 1)
-
-    def populate(self, ids: list[tuple[int, str]]):
-        """ids = list of (can_id, description)"""
-        self._ids = ids
-        self._render(ids)
-
-    def _render(self, ids):
-        self._list.clear()
-        for can_id, desc in ids:
-            item = QListWidgetItem(f"  0x{can_id:03X}  {desc}")
-            item.setData(Qt.ItemDataRole.UserRole, can_id)
-            item.setForeground(QBrush(QColor("#4CAF50")))
-            self._list.addItem(item)
-
-    def _filter(self, txt: str):
-        filtered = [(i, d) for i, d in self._ids
-                    if not txt or txt.lower() in f"0x{i:03X}".lower() or txt.lower() in d.lower()]
-        self._render(filtered)
-
-    def _click(self, item: QListWidgetItem):
-        can_id = item.data(Qt.ItemDataRole.UserRole)
-        if can_id is not None:
-            self.id_selected.emit(can_id)
 
 
 # ─── Heatmap paleta (legacy alias — koristi _cell_colors_cat) ─────────────────
@@ -2302,27 +2247,6 @@ class DtcPanel(QWidget):
 
         btn_row.addStretch()
 
-        # Napredne funkcije — dropdown
-        self._btn_advanced = QToolButton()
-        self._btn_advanced.setText("▾ Napredno")
-        self._btn_advanced.setFixedHeight(32)
-        self._btn_advanced.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        adv_menu = QMenu(self._btn_advanced)
-        act_all_off = adv_menu.addAction("Svi DTC OFF")
-        act_all_off.triggered.connect(self._do_all_off)
-        adv_menu.addSeparator()
-        act_dis_all = adv_menu.addAction("Disable All Monitor")
-        act_dis_all.setToolTip(
-            "Nulira cijelu enable tablicu (0x021080–0x0210BD).\n"
-            "Najjača opcija — ECU neće detektirati niti jedan fault.\n"
-            "Koristiti oprezno: neke greške štite motor (misfire, oil pressure)."
-        )
-        act_dis_all.triggered.connect(self._do_disable_all)
-        self._btn_advanced.setMenu(adv_menu)
-        self._btn_all_off = None
-        self._btn_disable_all = None
-        btn_row.addWidget(self._btn_advanced)
-
         right_lo.addLayout(btn_row)
 
         root_lo.addWidget(right_w)
@@ -2390,19 +2314,6 @@ class DtcPanel(QWidget):
         else:
             self.action_done.emit(f"GREŠKA: {msg}")
 
-    def _do_all_off(self):
-        if not self._dtc_eng:
-            return
-        result = self._dtc_eng.dtc_off_all()
-        changed = result.get("changed", 0)
-        total = result.get("total", 0)
-        self.action_done.emit(f"Svi DTC OFF: {changed}/{total} isključeno.")
-        if self._cur_code:
-            status = self._dtc_eng.get_status(self._cur_code)
-            if status:
-                self._refresh_display(status)
-        self.dtc_status_changed.emit(-1, True)  # -1 = sve promijenjene
-
     def _do_on(self):
         if not self._dtc_eng or self._cur_code is None:
             return
@@ -2416,16 +2327,9 @@ class DtcPanel(QWidget):
         else:
             self.action_done.emit(f"GREŠKA: {msg}")
 
-    def _do_disable_all(self):
-        if not self._dtc_eng:
-            return
-        result = self._dtc_eng.disable_all_monitoring()
-        self.action_done.emit(f"Disable All Monitor: {result.get('message', '')}")
-
     def _set_buttons_enabled(self, enabled: bool):
         self._btn_off.setEnabled(enabled)
         self._btn_on.setEnabled(enabled)
-        self._btn_advanced.setEnabled(enabled)
 
 
 # ─── Scan worker ──────────────────────────────────────────────────────────────
@@ -2693,12 +2597,6 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self.btn_dtc_all_off = _btn("🔴 DTC OFF All")
-        self.btn_dtc_all_off.setToolTip("Isključi sve DTC kodove — deaktivira monitoring svih grešaka")
-        self.btn_dtc_all_off.clicked.connect(self._toolbar_dtc_all_off)
-        self.btn_dtc_all_off.setEnabled(False)
-        tb.addWidget(self.btn_dtc_all_off)
-
         self.btn_cs_fix = _btn("🔧 CS Fix")
         self.btn_cs_fix.setToolTip("Popravi checksum (samo BOOT region — rijetko potrebno)")
         self.btn_cs_fix.clicked.connect(self._checksum_analysis)
@@ -2716,6 +2614,11 @@ class MainWindow(QMainWindow):
         self.btn_map_diff.setToolTip("Usporedi mape između Fajla 1 i Fajla 2  (diff_maps)")
         self.btn_map_diff.clicked.connect(self._show_map_diff_dialog)
         self.btn_map_diff.setEnabled(False); tb.addWidget(self.btn_map_diff)
+
+        self.btn_map_deps = _btn("Mapa veza")
+        self.btn_map_deps.setToolTip("Otvori interaktivnu mrežu veza između mapa (D3.js, u browseru)")
+        self.btn_map_deps.clicked.connect(self._open_map_deps)
+        tb.addWidget(self.btn_map_deps)
 
         tb.addSeparator()
 
@@ -3096,9 +2999,6 @@ class MainWindow(QMainWindow):
     def _on_eeprom_entry_selected(self, key: str):
         self.eeprom_widget.show_entry(key)
 
-    def _on_can_id_selected(self, can_id: int):
-        pass  # CAN Network tab uklonjen — sidebar CAN ID selekcija nije aktivna
-
     # ── Load / Save ───────────────────────────────────────────────────────────
 
     def _load1(self):
@@ -3124,7 +3024,6 @@ class MainWindow(QMainWindow):
             self._act_compare.setVisible(True)
             self._act_ref.setVisible(True)
             self.btn_save.setEnabled(True)
-            self.btn_dtc_all_off.setEnabled(True)
             self.btn_cs_fix.setEnabled(True)
             # Auto-postavi SW variant filter u Map Library
             self.map_lib.auto_set_sw_filter(info.sw_id)
@@ -3574,36 +3473,15 @@ class MainWindow(QMainWindow):
         """Toolbar button handler — delegates to _show_map_diff (opens Map Diff tab)."""
         self._show_map_diff()
 
-    # ── Toolbar DTC All OFF ────────────────────────────────────────────────────
+    # ── Mapa veza između mapa ─────────────────────────────────────────────────
 
-    def _toolbar_dtc_all_off(self):
-        """Toolbar gumb: isključi sve DTC kodove s potvrdom."""
-        if not self.dtc_eng:
-            self.status.showMessage("Nema učitanog ECU fajla."); return
-        reply = QMessageBox.question(
-            self, "DTC OFF All",
-            "Isključiti sve DTC kodove?\n\n"
-            "Ovo deaktivira monitoring svih grešaka uključujući zaštitu motora\n"
-            "(misfire detekcija, oil pressure, itd.).\n\n"
-            "Koristiti samo za track/race svrhe.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+    def _open_map_deps(self):
+        """Otvori map_dependency_viewer.html u defaultnom browseru."""
+        html_path = Path(__file__).parent / "map_dependency_viewer.html"
+        if not html_path.exists():
+            self.status.showMessage("map_dependency_viewer.html nije pronađen.")
             return
-        result = self.dtc_eng.dtc_off_all()
-        changed = result.get("changed", 0)
-        total = result.get("total", 0)
-        self.log_strip.log(f"DTC OFF All: {changed}/{total} isključeno.", "warn")
-        self.status.showMessage(f"DTC OFF All: {changed}/{total} kodova isključeno.")
-        self.dtc_sidebar.refresh_status()
-        # Ažuriraj checksum badge
-        try:
-            cs_res = ChecksumEngine(self.eng1).verify()
-            cs_ok = cs_res.get("sw_id", {}).get("status") == "OK"
-            self._update_sb_checksum(cs_ok)
-        except Exception:
-            pass
+        webbrowser.open(html_path.as_uri())
 
     # ── SW Kompatibilnost ─────────────────────────────────────────────────────
 
@@ -3665,8 +3543,8 @@ class MainWindow(QMainWindow):
             "Mape: Ignition (19), Fuel 2D, Lambda (10+),\n"
             "      Torque, SC Bypass, KFPED, DTC Off (121)\n\n"
             "Funkcije: Map edit + Undo/Redo, DTC Off/On,\n"
-            "          EEPROM read/write, CAN live, Diff,\n"
-            "          SW Kompatibilnost, CSV export, 3D plot"
+            "          EEPROM read/write, Diff, SW Kompatibilnost,\n"
+            "          CSV export, Kalkulator"
         )
 
     def keyPressEvent(self, e):

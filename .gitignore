@@ -1,3 +1,7 @@
+# ─── Screenshots (reference only) ───────────────────────────────────────────
+Screenshot*.png
+screenshot*.png
+
 # ─── CAN sniff logovi (CSV) ───────────────────────────────────────────────────
 # Pokriva sve lokacije gdje sniffer može snimiti
 tools/sniff_*.csv
@@ -47,3 +51,4 @@ Thumbs.db
 tools/sniff_cdid.csv
 tools/sniff_live.csv
 tools/sniff_livedata.csv
+*.csv
