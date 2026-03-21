@@ -2522,7 +2522,9 @@ _SPARK_THERM_ENRICH_DEF = MapDef(
         "Slično GTI90 therm enrich @ 0x02AA42. "
         "Adresa: 0x025BAA. Nema mirrora."
         "\n\nOVISI O: CTS temperatura (Spark 900 ACE), sekunde od starta\n"
-        "UTJECE NA: Fuel 2D (toplinska korekcija pri zagrijavanju, additivna enrichment)"
+        "UTJECE NA: Fuel 2D (toplinska korekcija pri zagrijavanju, additivna enrichment)\n"
+        "POVECANJE: Veci faktor → bogatija smjesa pri zagrijavanju Spark 900 ACE motora\n"
+        "SMANJENJE: Manji faktor → manje goriva pri hladnom motoru → moguca nestabilnost pri startu"
     ),
     category    = "fuel",
     rows=8, cols=7,
@@ -2557,7 +2559,9 @@ _SPARK_LAMBDA_TRIM2_DEF = MapDef(
         "30×20 u16 LE Q15. ORI: uglavnom flat 32258 (λ=0.984). "
         "STG2: mijenja 650/600 vrijednosti — aktivan tuning unos. "
         "\n\nOVISI O: Spark lambda cilj (0x025F5C), RPM i load osi (kopija za drugu uvjetnu grupu)\n"
-        "UTJECE NA: Kratkotrajna korekcija AFR u drugom skupu uvjeta (Spark 900 ACE platforma)"
+        "UTJECE NA: Kratkotrajna korekcija AFR u drugom skupu uvjeta (Spark 900 ACE platforma)\n"
+        "POVECANJE: Visi trim factor → lean korekcija AFR cilja u drugom uvjetnom skupu\n"
+        "SMANJENJE: Nizi trim → rich korekcija → bogatija smjesa u tim uvjetima"
         "Osi: load axis copy @ 0x025378, col axis @ 0x0253B4. "
         "Adresa: 0x0253DC."
     ),
@@ -2810,7 +2814,9 @@ _SPARK_KNOCK_RETARD_DEF = MapDef(
         "0.75°/bit, max 9.75° (raw 13). "
         "Dijagonalni pattern: veći retard pri visokom load-u i niskom RPM-u."
         "\n\nOVISI O: Knock parametri (0x02408C), osnovna timing mapa (Spark serija A)\n"
-        "UTJECE NA: Efektivni kut paljenja (oduzima se od osnove pri detekciji detonacije, Spark platforma)"
+        "UTJECE NA: Efektivni kut paljenja (oduzima se od osnove pri detekciji detonacije, Spark platforma)\n"
+        "POVECANJE: Manji max retard → vise snage ali veci rizik ostecenja pri detonaciji (Spark 900 ACE)\n"
+        "SMANJENJE: Veci max retard → agresivnija knock zastita, sigurnije ali manje snage"
     ),
     category      = "ignition",
     rows=8, cols=8,
@@ -3035,7 +3041,9 @@ _ACE1630_INJ_DEF = MapDef(
         "SC korekcija (0x02220E), Temp korekcija goriva (0x025E50), "
         "Accel enrichment (0x028059), Start injection (0x025CDC)\n"
         "UTJECE NA: Trajanje injekcije → direktno na AFR, snagu, emisije; "
-        "Linearizacija injektora slijedi ovu vrijednost"
+        "Linearizacija injektora slijedi ovu vrijednost\n"
+        "POVECANJE: Bogatija smjesa (vise goriva) → hladniji rad, vise snage pri WOT, ali veca potrosnja\n"
+        "SMANJENJE: Siromasanija smjesa → rizik pregrijavanja i postelice klipa, manje snage"
     ),
     category      = "injection",
     rows=12, cols=16,
@@ -3068,7 +3076,9 @@ _GTI_INJ_DEF = MapDef(
         "Nema SC korekcija — NA motor."
         "\n\nOVISI O: Lambda main (AFR setpoint), Temp korekcija goriva (0x025E50), "
         "Accel enrichment (0x028059), Start injection (0x025CDC)\n"
-        "UTJECE NA: Trajanje injekcije → direktno na AFR, snagu, emisije (GTI NA motor)"
+        "UTJECE NA: Trajanje injekcije → direktno na AFR, snagu, emisije (GTI NA motor)\n"
+        "POVECANJE: Bogatija smjesa → hladniji rad, vise snage, ali veca potrosnja (GTI NA motor)\n"
+        "SMANJENJE: Siromasanija smjesa → rizik pregrijavanja, manje snage"
     ),
     category      = "injection",
     rows=16, cols=12,
@@ -3175,7 +3185,9 @@ _LAMBDA_EFF_U8_DEF = MapDef(
         "Confidence 80% (tranzijentni efekt potvrdjen NPRo ponasanjem)."
         "\n\nOVISI O: FWM vozacev zahtjev, throttle rate of change\n"
         "UTJECE NA: Tranzijentni throttle odaziv (agresivnost pri punom gazu); "
-        "4 kopije, stride 290B; NPRo mijenja C0/C1"
+        "4 kopije, stride 290B; NPRo mijenja C0/C1\n"
+        "POVECANJE: Agresivniji faktori (kao NPRo) → brzi throttle odaziv, osjecaj sporosti reduciran\n"
+        "SMANJENJE: Nizi faktori → meksi, linearniji throttle odaziv, manje naglih trzaja"
     ),
     category      = "lambda",
     rows=16, cols=16,
@@ -3236,7 +3248,9 @@ _LAMBDA_THRESH_DEF = MapDef(
         "Confidence 95% (DID bench potvrda + NPRo bypass uzorci)."
         "\n\nOVISI O: Lambda mjerenje (O2 senzor), SC/boost stanje\n"
         "UTJECE NA: Aktivacija lambda protekcionizma (prag ispod kojeg ECU enrichuje gorivo neovisno o lambda petlji); "
-        "NPRo STG2 = 0xFFFF (bypass)"
+        "NPRo STG2 = 0xFFFF (bypass)\n"
+        "POVECANJE: Visi prag → ECU dopusta siromasniju smjesu → rizik pregrijavanja\n"
+        "SMANJENJE: Nizi prag → agresivnija lambda zastita → obogacivanje pri nizoj lambda"
     ),
     category      = "lambda",
     rows=1, cols=79,
@@ -3286,7 +3300,9 @@ _DTC_P1550_ENABLE_DEF = MapDef(
                    "0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno. "
                    "TODO: adresa ovisna o SW verziji — provjeriti za svaki fajl."
                    "\n\nOVISI O: DTC_REGISTRY mapping tablica (0x0239B4)\n"
-                   "UTJECE NA: Aktivacija/deaktivacija dijagnosticke greske P1550 (MAP senzor tlaka punjenja)"),
+                   "UTJECE NA: Aktivacija/deaktivacija dijagnosticke greske P1550 (MAP senzor tlaka punjenja)\n"
+                   "POVECANJE: 0x06 → aktivan nadzor → greska se registrira i ukljucuje limp-home\n"
+                   "SMANJENJE: 0x00 → nadzor iskljucen → greska se ne javlja (DTC OFF efekt)"),
     category    = "dtc",
     rows        = 1,
     cols        = 10,
@@ -3307,7 +3323,9 @@ _DTC_P0523_ENABLE_DEF = MapDef(
                    "0x06=aktivno, 0x05=djelomično, 0x04=upozorenje, 0x00=isključeno. "
                    "TODO: adresa ovisna o SW verziji — provjeriti za svaki fajl."
                    "\n\nOVISI O: DTC_REGISTRY mapping tablica (0x0239B4)\n"
-                   "UTJECE NA: Aktivacija/deaktivacija dijagnosticke greske P0523 (senzor tlaka ulja)"),
+                   "UTJECE NA: Aktivacija/deaktivacija dijagnosticke greske P0523 (senzor tlaka ulja)\n"
+                   "POVECANJE: 0x06 → aktivan nadzor → greska se registrira i ukljucuje limp-home\n"
+                   "SMANJENJE: 0x00 → nadzor iskljucen → greska se ne javlja (DTC OFF efekt)"),
     category    = "dtc",
     rows        = 1,
     cols        = 11,
@@ -3828,7 +3846,9 @@ class MapFinder:
                     description   = (_SC_DEF.description +
                                      " (3. kopija @ 0x029993, moguce alternativni uvjeti/rezim)"
                                      "\n\nOVISI O: SC bypass primary (0x0205A8)\n"
-                                     "UTJECE NA: SC enable/disable (rezervna kopija za ECU internu provjeru)"),
+                                     "UTJECE NA: SC enable/disable (rezervna kopija za ECU internu provjeru)\n"
+                                     "POVECANJE: Visi opcode → veci opening SC ventila (kopija za alternativni uvjet)\n"
+                                     "SMANJENJE: Nizi opcode → manji opening → slabiji boost u alternativnom rezimu"),
                     category      = "misc",
                     rows=7, cols=7,
                     byte_order    = "BE", dtype = "u8",
@@ -5543,7 +5563,9 @@ class MapFinder:
                              "Format identičan 2018+ ACE 1630 ali adresa drukčija (0x0232D0 vs 0x022066). "
                              "12×16 LE u16 Q15: raw/32768 = relativni faktor punjenja."
                              "\n\nOVISI O: SC bypass (0x012C60), temp korekcija goriva, lambda cilj\n"
-                             "UTJECE NA: Trajanje injekcije → AFR, snaga, emisije (4-TEC 1503 2016 gen)"),
+                             "UTJECE NA: Trajanje injekcije → AFR, snaga, emisije (4-TEC 1503 2016 gen)\n"
+                             "POVECANJE: Bogatija smjesa → hladniji rad, vise snage, ali veca potrosnja (2016 1503)\n"
+                             "SMANJENJE: Siromasanija smjesa → rizik pregrijavanja i postelice klipa"),
             category      = "fuel",
             rows=ROWS, cols=COLS,
             byte_order    = "LE", dtype = "u16",
@@ -5814,7 +5836,9 @@ class MapFinder:
                              "LE u16 Q8: raw/256 = relativni faktor (tipično 0.50-0.55 stock). "
                              "215hp row0=0.50, 260hp row0=0.53. Mirror @ 0x027B1C."
                              "\n\nOVISI O: RPM osa, load osa (4-TEC 1503 2016 gen)\n"
-                             "UTJECE NA: Efektivni limit momenta po RPM×load (2016 1503 platforma)"),
+                             "UTJECE NA: Efektivni limit momenta po RPM×load (2016 1503 platforma)\n"
+                             "POVECANJE: Visi moment limit → ECU dopusta vise snage na 4-TEC 1503\n"
+                             "SMANJENJE: Nizi limit → ECU ogranicava snagu (limp-home efekt)"),
             category      = "torque",
             rows=16, cols=16,
             byte_order    = "LE", dtype = "u16",
@@ -5859,7 +5883,9 @@ class MapFinder:
                              "Kompenzira boost faktor ovisno o MAP/ETA. "
                              "Format isti kao 2018+ (Q14), ali adresa razlicita."
                              "\n\nOVISI O: SC bypass (0x012C60), MAP senzor (boost tlak)\n"
-                             "UTJECE NA: Fuel 2D korekcija po boost tlaku (2016 1503 platforma); NA=flat 1.0"),
+                             "UTJECE NA: Fuel 2D korekcija po boost tlaku (2016 1503 platforma); NA=flat 1.0\n"
+                             "POVECANJE: Veci faktor korekcije → bogatija smjesa pri SC radu (2016 1503)\n"
+                             "SMANJENJE: Manji faktor → siromasanija smjesa pod boostom → rizik detonacije"),
             category      = "misc",
             rows=9, cols=7,
             byte_order    = "LE", dtype = "u16",
@@ -5893,7 +5919,9 @@ class MapFinder:
                              "raw/64 = postotak korekcije. "
                              "Aktivna pri niskim CTS temperaturama (enrichment pri hladnom startu)."
                              "\n\nOVISI O: CTS temperatura (2016 1503 platforma)\n"
-                             "UTJECE NA: Toplinska korekcija goriva (enrichment pri zagrijavanju)"),
+                             "UTJECE NA: Toplinska korekcija goriva (enrichment pri zagrijavanju)\n"
+                             "POVECANJE: Vise goriva pri niskima temp → bogatija smjesa zagrijavanja (2016 1503)\n"
+                             "SMANJENJE: Manje goriva → tezi hladni start, nestabilniji ralanti"),
             category      = "injection",
             rows=8, cols=7,
             byte_order    = "LE", dtype = "u16",
@@ -5928,7 +5956,9 @@ class MapFinder:
                              "Trajanje mrtve zone injekcijske mlaznice. "
                              "Osi: X=trajanje, Y=temp. Read-only."
                              "\n\nOVISI O: Napon baterije, temperatura injektora (2016 1503)\n"
-                             "UTJECE NA: Stvarno trajanje otvaranja injektora (korekcija kasnjenja); read-only"),
+                             "UTJECE NA: Stvarno trajanje otvaranja injektora (korekcija kasnjenja); read-only\n"
+                             "POVECANJE: Veci deadtime → bogatija smjesa (NE MIJENJATI — hardverska konstanta 2016 1503)\n"
+                             "SMANJENJE: Manji deadtime → siromasanija smjesa (read-only, ne editirati!)"),
             category      = "injection",
             rows=10, cols=14,
             byte_order    = "LE", dtype = "u16",
@@ -5961,7 +5991,9 @@ class MapFinder:
                              "raw/128 = 1.0 je neutralno. "
                              "Osi: Y=lambda (14pt), X=lambda (10pt)."
                              "\n\nOVISI O: Lambda main (izmjerena vrijednost), Deadtime tablice (2016 1503)\n"
-                             "UTJECE NA: Lambda adapt izracun — korekcija efikasnosti izgaranja (2016 1503)"),
+                             "UTJECE NA: Lambda adapt izracun — korekcija efikasnosti izgaranja (2016 1503)\n"
+                             "POVECANJE: Visi efikasnosni faktor → ECU zahtijeva manje korekcije za isti lambda\n"
+                             "SMANJENJE: Nizi faktor → ECU kompenzira s vise goriva pri bogatim uvjetima"),
             category      = "lambda",
             rows=14, cols=10,
             byte_order    = "LE", dtype = "u8",
@@ -5993,7 +6025,9 @@ class MapFinder:
             description   = ("2D korekcija kuta paljenja — 8×8 u8. "
                              "scale 0.75°/bit. Offset vs 2018+: -0x0CDA."
                              "\n\nOVISI O: Lambda main, load os (2016 1503)\n"
-                             "UTJECE NA: Efektivni kut paljenja (aditivna korekcija na osnovu paljenja, 2016 1503)"),
+                             "UTJECE NA: Efektivni kut paljenja (aditivna korekcija na osnovu paljenja, 2016 1503)\n"
+                             "POVECANJE: Agresivniji timing → vise snage, ali rizik detonacije (2016 1503)\n"
+                             "SMANJENJE: Konzervativniji timing → bolja zastita motora, manje snage"),
             category      = "ignition",
             rows=8, cols=8,
             byte_order    = "LE", dtype = "u8",
@@ -6025,7 +6059,9 @@ class MapFinder:
             description   = ("Korekcija goriva ovisno o temperaturi usisnog zraka (MAT). "
                              "12pt 1D tablica Q15. Vrijednosti ~0.93-0.97."
                              "\n\nOVISI O: MAT senzor (temperatura usisnog zraka, 2016 1503)\n"
-                             "UTJECE NA: Fuel 2D (multiplikativna korekcija gustoce naboja po temperaturi zraka, 2016 1503)"),
+                             "UTJECE NA: Fuel 2D (multiplikativna korekcija gustoce naboja po temperaturi zraka, 2016 1503)\n"
+                             "POVECANJE: Veci faktor → vise goriva pri hladnom usisnom zraku (2016 1503)\n"
+                             "SMANJENJE: Manji faktor → manje goriva → moguca lean smjesa pri hladnom usisu"),
             category      = "injection",
             rows=1, cols=12,
             byte_order    = "LE", dtype = "u16",
@@ -6063,7 +6099,9 @@ class MapFinder:
                              "1B global faktor + 5×5 sub-tablica. "
                              "Identican sa 2018+ po kalibraciji (260==215)."
                              "\n\nOVISI O: Brzina otvaranja papucice (dTPS rate), CTS temperatura (2016 1503)\n"
-                             "UTJECE NA: Fuel 2D tranzijentni enrichment pri naglom gazu (2016 1503 platforma)"),
+                             "UTJECE NA: Fuel 2D tranzijentni enrichment pri naglom gazu (2016 1503 platforma)\n"
+                             "POVECANJE: Agresivniji enrichment → bolja reakcija pri naglom gazu (2016 1503)\n"
+                             "SMANJENJE: Manje obogacivanje → moguc lean spike → trzanje ili flat spot"),
             category      = "injection",
             rows=5, cols=5,
             byte_order    = "LE", dtype = "u16",
@@ -6097,7 +6135,9 @@ class MapFinder:
             description   = ("Kolicina goriva pri hladnom startu — 1×6 Q15. "
                              "Identican s 2018+ (isti injektori)."
                              "\n\nOVISI O: CTS temperatura pri startu (2016 1503)\n"
-                             "UTJECE NA: Fuel 2D pri cold start (kratkotrajan cranking enrichment, 2016 1503)"),
+                             "UTJECE NA: Fuel 2D pri cold start (kratkotrajan cranking enrichment, 2016 1503)\n"
+                             "POVECANJE: Vise goriva pri pokretanju → laksi hladni start na 2016 1503\n"
+                             "SMANJENJE: Manje goriva → tezi cranking po hladnom"),
             category      = "injection",
             rows=1, cols=6,
             byte_order    = "LE", dtype = "u16",
@@ -6131,7 +6171,9 @@ class MapFinder:
                              "X-os: MAP kPa (SC) ili pedal° (NA). "
                              "Y-os: load/ETA. 260hp != 215hp (198/200B razlika)."
                              "\n\nOVISI O: Pozicija papucice gasa (pedal°), MAP senzor (SC boost, 2016 1503)\n"
-                             "UTJECE NA: Throttle body zahtjev (drive-by-wire linearizacija, 2016 1503)"),
+                             "UTJECE NA: Throttle body zahtjev (drive-by-wire linearizacija, 2016 1503)\n"
+                             "POVECANJE: Agresivniji odziv pedale → vise zahtjevanog momenta pri istom kutu (2016 1503)\n"
+                             "SMANJENJE: Meksi odziv → linearnije upravljanje, manje naglih trzaja"),
             category      = "misc",
             rows=10, cols=20,
             byte_order    = "LE", dtype = "u8",
@@ -6169,7 +6211,9 @@ class MapFinder:
                              "SC: identičan sadrzaj ref230 (bez 0xFFFF bypass). "
                              "Offset vs 2018+ (0x025ADA): -0x1AA6."
                              "\n\nOVISI O: CTS temperatura, Lambda main (2016 1503)\n"
-                             "UTJECE NA: Rich enrichment pri previsokoj temp — zastita klipa (2016 1503)"),
+                             "UTJECE NA: Rich enrichment pri previsokoj temp — zastita klipa (2016 1503)\n"
+                             "POVECANJE: Vise goriva pri pretemperaturi → bolji rashladni efekt (2016 1503)\n"
+                             "SMANJENJE: Manje goriva → rizik toplinskog ostecenja klipa"),
             category      = "lambda",
             rows=1, cols=63,
             byte_order    = "LE", dtype = "u16",
@@ -6204,7 +6248,9 @@ class MapFinder:
                              "Flat 0x4040 = Q14 1.004 (minimalna korekcija). "
                              "Offset vs 2018+ (0x025B58): -0x1AA6."
                              "\n\nOVISI O: Gear/neutral signal (mjenjac u neutralu, 2016 1503)\n"
-                             "UTJECE NA: Fuel 2D korekcija u neutralu (flat 1.004 = nema korekcije, 2016 1503)"),
+                             "UTJECE NA: Fuel 2D korekcija u neutralu (flat 1.004 = nema korekcije, 2016 1503)\n"
+                             "POVECANJE: Veci faktor → vise goriva u neutralu (2016 1503)\n"
+                             "SMANJENJE: Manji faktor → manje goriva → stednja, ali moguca nestabilnost"),
             category      = "injection",
             rows=1, cols=63,
             byte_order    = "LE", dtype = "u16",
@@ -6238,7 +6284,9 @@ class MapFinder:
                              "260hp != 215hp (141/141 razlika). "
                              "Offset vs 2018+ (0x0265D6): -0x1AA6."
                              "\n\nOVISI O: Lambda main (izmjerena lambda, 2016 1503)\n"
-                             "UTJECE NA: Baza lambda cilja (offset korekcija za cijelo podrucje rada, 2016 1503)"),
+                             "UTJECE NA: Baza lambda cilja (offset korekcija za cijelo podrucje rada, 2016 1503)\n"
+                             "POVECANJE: Visi bias (lean) → ECU cilja siromasaniju smjesu prema lambda mapi (2016 1503)\n"
+                             "SMANJENJE: Nizi bias (rich) → ECU cilja bogatiju smjesu, koristan za performance tune"),
             category      = "lambda",
             rows=1, cols=141,
             byte_order    = "LE", dtype = "u16",
@@ -6274,7 +6322,9 @@ class MapFinder:
                              "Bit-identičan 2018+ (BRP nije mijenjao za 2016 gen). "
                              "Offset vs 2018+: -0x14."
                              "\n\nOVISI O: SC bypass (0x012C60), MAP senzor (boost tlak, 2016 ACE)\n"
-                             "UTJECE NA: Fuel 2D korekcija po boost tlaku (2016 ACE platforma); NA=flat 1.0"),
+                             "UTJECE NA: Fuel 2D korekcija po boost tlaku (2016 ACE platforma); NA=flat 1.0\n"
+                             "POVECANJE: Visi faktor → vise goriva pri boost tlaku (bogatija smjesa u SC modu)\n"
+                             "SMANJENJE: Nizi faktor → manje goriva pri boost tlaku (siromasanija smjesa, rizik detonacije)"),
             category      = "misc",
             rows=9, cols=7,
             byte_order    = "LE", dtype = "u16",
@@ -6309,7 +6359,9 @@ class MapFinder:
                              "flat 20046 = Q14×1.2235 (+22.4%). "
                              "Identičan 2018+ kalibraciji."
                              "\n\nOVISI O: SC bypass (0x012C60), MAP senzor (boost tlak, 2016 ACE)\n"
-                             "UTJECE NA: Fuel 2D skaliranje u SC modu (boost multiplikator 2016 ACE)"),
+                             "UTJECE NA: Fuel 2D skaliranje u SC modu (boost multiplikator 2016 ACE)\n"
+                             "POVECANJE: Visi multiplikator → vise goriva u SC modu (vece punjenje, bogatija smjesa)\n"
+                             "SMANJENJE: Nizi multiplikator → manje goriva u SC modu (leaner, rizik detonacije pri boost-u)"),
             category      = "misc",
             rows=1, cols=40,
             byte_order    = "LE", dtype = "u16",
@@ -6343,7 +6395,9 @@ class MapFinder:
                              "SC varijante: sve 0xFFFF (bypass zaštite). "
                              "Offset vs 2018+: -0x2AA."
                              "\n\nOVISI O: CTS temperatura, Lambda main (2016 ACE)\n"
-                             "UTJECE NA: Rich enrichment pri previsokoj temp — zastita klipa (2016 ACE); SC=bypass (0xFFFF)"),
+                             "UTJECE NA: Rich enrichment pri previsokoj temp — zastita klipa (2016 ACE); SC=bypass (0xFFFF)\n"
+                             "POVECANJE: Visi lambda prag → zastitno obogacivanje poci kasnje (manji termalni buffer)\n"
+                             "SMANJENJE: Nizi lambda prag → ranije bogatija smjesa pri prekoracenju temp (bolja zastita klipa)"),
             category      = "lambda",
             rows=1, cols=63,
             byte_order    = "LE", dtype = "u16",
@@ -6375,7 +6429,9 @@ class MapFinder:
             description   = ("Neutral/idle korekcija — 1×63 Q14 flat 0x4040 = 1.004. "
                              "Offset vs 2018+: -0x2AA."
                              "\n\nOVISI O: Gear/neutral signal (mjenjac u neutralu, 2016 ACE)\n"
-                             "UTJECE NA: Fuel 2D korekcija u neutralu (flat 1.004 = nema korekcije, 2016 ACE)"),
+                             "UTJECE NA: Fuel 2D korekcija u neutralu (flat 1.004 = nema korekcije, 2016 ACE)\n"
+                             "POVECANJE: Visi faktor → vise goriva u neutralu (visi idle AFR, moze nestabilizirati paljenje)\n"
+                             "SMANJENJE: Nizi faktor → manje goriva u neutralu (lean idle, rizik gusenja na niskim temp)"),
             category      = "injection",
             rows=1, cols=63,
             byte_order    = "LE", dtype = "u16",
@@ -6409,7 +6465,9 @@ class MapFinder:
                              "Sadrzaj identičan 2018+. "
                              "Offset vs 2018+: -0x294."
                              "\n\nOVISI O: Rev limiter (RPM cut tocka), throttle position (decel uvjet, 2016 ACE)\n"
-                             "UTJECE NA: Fuel cut pri deceleraciji (2016 ACE platforma)"),
+                             "UTJECE NA: Fuel cut pri deceleraciji (2016 ACE platforma)\n"
+                             "POVECANJE: Visi RPM ramp → DFCO aktivira pri visim RPM (krace fuel cut, vise goriva kod decel)\n"
+                             "SMANJENJE: Nizi RPM ramp → DFCO aktivira pri nizim RPM (dulje fuel cut, bolja ekonomija)"),
             category      = "misc",
             rows=16, cols=11,
             byte_order    = "LE", dtype = "u16",
@@ -6445,7 +6503,9 @@ class MapFinder:
                              "PAŽNJA: Q14 format (2× vece vrijednosti od Q15 u 2018+)! "
                              "Fizicki inject amount identičan 2018+ 300hp SC."
                              "\n\nOVISI O: SC bypass (0x012C60), temp korekcija goriva, lambda cilj (2016 ACE)\n"
-                             "UTJECE NA: Trajanje injekcije → AFR, snaga, emisije (2016 gen 1630 ACE)"),
+                             "UTJECE NA: Trajanje injekcije → AFR, snaga, emisije (2016 gen 1630 ACE)\n"
+                             "POVECANJE: Veca vrijednost → bogatija smjesa (nizi AFR) → vise snage, ali veca potrosnja\n"
+                             "SMANJENJE: Manja vrijednost → siromasanija smjesa (visi AFR) → bolja ekonomija, ali rizik detonacije"),
             category      = "injection",
             rows=12, cols=16,
             byte_order    = "LE", dtype = "u16",
@@ -6555,7 +6615,9 @@ class MapFinder:
             description   = ("Ogranicenje momenta — 16×16 BE u16 Q8. "
                              "Format isti kao 2018+. Identičan 004675==004672."
                              "\n\nOVISI O: RPM osa, load osa (2016 gen 1630 ACE)\n"
-                             "UTJECE NA: Efektivni limit momenta po RPM×load (2016 gen 1630 ACE)"),
+                             "UTJECE NA: Efektivni limit momenta po RPM×load (2016 gen 1630 ACE)\n"
+                             "POVECANJE: Visi limit → ECU dopusta veci moment (vise snage u RPM×load tocki)\n"
+                             "SMANJENJE: Nizi limit → ECU krati moment (zastita mjenjaca/pogonskog sustava)"),
             category      = "torque",
             rows=16, cols=16,
             byte_order    = "BE", dtype = "u16",

@@ -1,5 +1,58 @@
 # ME17Suite — Work Log
 
+## 2026-03-21 23:55 — UI fix: _on_main_tab_changed + Kalkulator tab vidljivost
+
+### Zadatak
+Dvije popravke vidljivosti u `ui/main_window.py`:
+1. `_on_main_tab_changed` — koristio setCurrentIndex(1/2) na `_sidebar_stack` koji ima samo stranicu 0 (DTC i EEPROM sidebari su odavno premješteni u vlastite tabove). Rezultat: crash/warning pri navigaciji na EEPROM/DTC tab.
+2. Kalkulator tab — bio zadnji (pozicija 6) od 7 tabova u uskom PropertiesPanel (270px). Nije bio vidljiv jer su ga prethodni tabovi "pregažili".
+
+### Promjene
+- `ui/main_window.py`: `_on_main_tab_changed()` — zamijenjen logikom show/hide: MAPE tab (idx=0) → `_sidebar_stack.show()`, svi ostali → `_sidebar_stack.hide()`
+- `ui/main_window.py`: `CalculatorWidget` — premješten s pozicije 6 na poziciju 1 (`insertTab(1, ...)`, odmah iza "Cell"), preimenovan iz "Kalkulator" u "Calc" za uštedu mjesta
+- Redoslijed tabova PropertiesPanel nakon promjene: Cell | **Calc** | Mapa | SW | ECU | DTC | History
+
+### Test
+- `python -c "from ui.main_window import MainWindow; print('OK')"` → OK
+
+### Fajlovi
+- `ui/main_window.py` — jedini fajl mijenjan
+
+---
+
+## 2026-03-21 23:30 — POVECANJE/SMANJENJE dodani svim MapDef opisima u map_finder.py
+
+### Zadatak
+Dodavanje `\nPOVECANJE: ...\nSMANJENJE: ...` blokova na kraj svakog MapDef `description` stringa koji ima `UTJECE NA:` blok u `core/map_finder.py`. ASCII only, tehnički točne rečenice, nema promjena logike.
+
+### Promjene
+- `core/map_finder.py`: stotine Edit operacija — dodane POVECANJE/SMANJENJE rečenice za sve aktivne MapDef objekte koji imaju UTJECE NA blok
+  - Pokriveno: ignition (sve mape), fuel 2D, linearization, torque, lambda (main/adapt/trim/bias/eff/prot), SC bypass, boost faktor, SC korekcija, DFCO, KFPED, FWM, KFWIRKBA, cold start, knock params, overtemp lambda, neutral corr, deadtime, RPM ose, temp fuel, thermal enrichment, accel enrichment, 2016 gen varijante
+  - 2016 gen scan metode: sc_corr, boost, overtemp_lambda, neutral_corr, dfco, fuel, torque, lambda bias 1503
+- Sintaksa verificirana: `python -c "from core.map_finder import MapFinder; print('OK')"` → OK
+- 2 zakomentarirane UTJECE NA linije (prepretni komentari) — svjesno ostavljene bez POVECANJE (nisu aktivni MapDef-ovi)
+
+## 2026-03-21 17:00 — Refaktorizacija main_window.py — novi tab layout
+
+### Zadatak
+Refaktorizacija `ui/main_window.py` prema specifikaciji korisnika.
+
+### Promjene
+- `_build_menus()`: menuBar sakriven (`hide()`), shortcuts registrirani direktno kao QAction na MainWindow (Ctrl+1/2, Ctrl+S, Ctrl+Z/Y, F5, Ctrl+Q)
+- `_main_tabs` restrukturiran: Tab0=MAPE, Tab1=EEPROM (full-page + header s Back gumbom + Load dugmetom), Tab2=DTC (full-page + header s Back gumbom), Tab3=DIFF (skriven, otvara se via toolbar), Tab4=MAP DIFF (skriven)
+- Uklonjen `self.tabs` (sub-QTabWidget unutar ALATI) i sve stare varijable (`_dtc_tab`, `_eeprom_tab`, `_calc_tab`, `_diff_tab`, `_map_diff_tab`)
+- `CalculatorWidget` premješten u `PropertiesPanel.__init__` kao Tab 5 (Kalkulator)
+- `_on_main_tab_changed()` ažuriran: idx0→sidebar0, idx1(EEPROM)→sidebar2, idx2(DTC)→sidebar1, else→sidebar0
+- `_on_tab_changed()` uklonjen
+- `_show_diff()` / `_show_map_diff()`: koriste `setTabVisible(3/4, True)` + `setCurrentIndex(3/4)`
+- `_open_eeprom_from_btn()` nova metoda; `_open_eeprom()` delegira na nju + navigira na Tab1
+- DTC iz map_selected: `setCurrentIndex(2)` (bez stare `tabs.setCurrentIndex`)
+- `_load2()`: uklonjen `tabs.setTabVisible(_diff/_map_diff_tab)` (nema više tih varijabli)
+- Test: `python -c "from ui.main_window import MainWindow; print('OK')"` → OK
+
+### Fajlovi
+- `ui/main_window.py` — jedini fajl mijenjan
+
 ## 2026-03-21 16:30 — Poboljšani nazivi i dependency opisi u map_finder.py
 
 ### Zadatak: map_finder.py — poboljšani nazivi i dependency blokovi
@@ -5914,3 +5967,15 @@ Sva 4 agenta završena:
 **Ukupno u ovoj sesiji (oba dijela):** 59 MapDef description stringova dobilo OVISI O/UTJECE NA blokove
 
 **Provjera:** `python -c "from core.map_finder import MapFinder; print('OK')"` → OK
+
+## 2026-03-21 — UI refaktor + bugfixi (sesija u toku)
+
+**Fajlovi:** `ui/main_window.py`, `core/map_finder.py`, `ui/map_dependency_viewer.html`
+
+- Reset bug fix: `FoundMap.ori_data` snapshot, `refresh_cell` dirty check, `_on_reset_map` handler
+- UI: menu bar skriven, 5 top-level tabova (MAPE/EEPROM/DTC/Diff/MapDiff), Back gumb u EEPROM/DTC
+- Kalkulator premješten u PropertiesPanel (uvijek dostupan uz map editor)
+- CS Fix: pravi dialog (stored/computed/status + Write gumb ako treba)
+- Zoom slider vraćen (0.5x-2.0x, default 1.0x); +/- Scale bar (0.1%-2.0% step)
+- map_dependency_viewer.html: D3.js force graph, 31 node, 6 grupacija
+- map_finder.py: 59 MapDef dopunjeni OVISI O/UTJECE NA; agent radi POVECANJE/SMANJENJE u pozadini

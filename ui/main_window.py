@@ -39,7 +39,7 @@ from PyQt6.QtGui import QColor, QBrush, QAction, QFont, QKeySequence, QIcon, QPi
 from core.engine import ME17Engine
 from core.map_finder import MapFinder, FoundMap, MapDef
 from core.map_editor import MapEditor, EditResult
-from core.checksum import ChecksumEngine
+from core.checksum import ChecksumEngine, verify_boot_crc, read_stored_cs, compute_new_cs
 from core.dtc import DtcEngine, DTC_REGISTRY, DtcStatus
 from core.dtc_descriptions import DTC_INFO
 from core.safety_validator import SafetyValidator, Level as SvLevel
@@ -789,6 +789,9 @@ class DtcSidebarPanel(QWidget):
         code = item.data(0, Qt.ItemDataRole.UserRole)
         if code is not None:
             self.dtc_selected.emit(code)
+        else:
+            # Parent/sub node — toggle expand na jedan klik
+            item.setExpanded(not item.isExpanded())
 
 
 # ─── EEPROM Sidebar Panel ─────────────────────────────────────────────────────
@@ -1773,6 +1776,10 @@ class PropertiesPanel(QWidget):
         self._hist_tab_idx = self.tabs.addTab(hist_w, "History")
         self._hist_undo_ref: list = []   # referenca na MainWindow._undo (postavlja se izvana)
 
+        # ── Tab 5: Kalkulator — umetnut na poziciju 1 (odmah iza Cell) ───────
+        self.calc_widget = CalculatorWidget()
+        self._calc_tab_idx = self.tabs.insertTab(1, self.calc_widget, "Calc")
+
     # ── Public update metode ──────────────────────────────────────────────────
 
     def show_ecu(self, eng: ME17Engine, n_maps: int | None = None):
@@ -2621,8 +2628,7 @@ class MainWindow(QMainWindow):
         self.eeprom_sidebar = EepromSidebarPanel()
         self.eeprom_sidebar.entry_selected.connect(self._on_eeprom_entry_selected)
         self._sidebar_stack.addWidget(self.map_lib)        # page 0
-        self._sidebar_stack.addWidget(self.dtc_sidebar)    # page 1
-        self._sidebar_stack.addWidget(self.eeprom_sidebar) # page 2
+        # dtc_sidebar i eeprom_sidebar su ugradjeni u vlastite tabove (ne u stack)
         main_split.addWidget(self._sidebar_stack)
 
         # ── Centar: 2 glavna taba (MAPE | ALATI) + hex + log ──────────────
@@ -2645,40 +2651,103 @@ class MainWindow(QMainWindow):
         self.map_view.reset_requested.connect(self._on_reset_map)
         self._main_tabs.addTab(self.map_view, "MAPE")
 
-        # ── Tab 1: ALATI — DTC / EEPROM / Kalkulator / Diff ──────────────
-        alati_w = QWidget()
-        alati_lo = QVBoxLayout(alati_w)
-        alati_lo.setContentsMargins(0, 0, 0, 0)
-        alati_lo.setSpacing(0)
+        # ── Tab 1: EEPROM — full page ─────────────────────────────────────
+        self.eeprom_widget = EepromWidget()
 
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
+        eeprom_page = QWidget()
+        ep_lo = QVBoxLayout(eeprom_page); ep_lo.setContentsMargins(0,0,0,0); ep_lo.setSpacing(0)
 
+        ee_hdr = QWidget()
+        ee_hdr.setStyleSheet("background:#141418; border-bottom:2px solid #2A2A32;")
+        ee_hdr_lo = QHBoxLayout(ee_hdr); ee_hdr_lo.setContentsMargins(12, 6, 12, 6)
+
+        btn_back_ee = QPushButton("◀  Nazad na mape")
+        btn_back_ee.setStyleSheet("""
+            QPushButton {
+                background:#1A2F4A; border:1px solid #4FC3F7; color:#4FC3F7;
+                font-size:15px; font-weight:bold; font-family:Consolas;
+                padding:8px 20px; border-radius:4px;
+            }
+            QPushButton:hover { background:#0d3a5c; }
+        """)
+        btn_back_ee.setFixedHeight(38)
+        btn_back_ee.clicked.connect(lambda: self._main_tabs.setCurrentIndex(0))
+
+        btn_ee_load = QPushButton("📂  Učitaj EEPROM dump...")
+        btn_ee_load.setStyleSheet("""
+            QPushButton {
+                background:#1A3A1A; border:1px solid #4CAF50; color:#4CAF50;
+                font-size:13px; font-family:Consolas; padding:6px 16px; border-radius:4px;
+            }
+            QPushButton:hover { background:#0d2a0d; }
+        """)
+        btn_ee_load.setFixedHeight(38)
+        btn_ee_load.clicked.connect(self._open_eeprom_from_btn)
+
+        ee_hdr_lo.addWidget(btn_back_ee)
+        ee_hdr_lo.addSpacing(12)
+        ee_hdr_lo.addWidget(btn_ee_load)
+        ee_hdr_lo.addStretch()
+
+        ep_lo.addWidget(ee_hdr)
+
+        # Horizontalni split: lijevo navigacija | desno editor
+        ee_content = QSplitter(Qt.Orientation.Horizontal)
+        ee_content.addWidget(self.eeprom_sidebar)
+        ee_content.addWidget(self.eeprom_widget)
+        ee_content.setSizes([180, 820])
+        ee_content.setStretchFactor(0, 0)
+        ee_content.setStretchFactor(1, 1)
+        ep_lo.addWidget(ee_content, 1)
+        self._main_tabs.addTab(eeprom_page, "EEPROM")
+
+        # ── Tab 2: DTC — full page ────────────────────────────────────────
         self.dtc_panel = DtcPanel()
         self.dtc_panel.action_done.connect(lambda msg: self.log_strip.log(msg, "ok"))
-        self._dtc_tab = self.tabs.addTab(self.dtc_panel, "DTC Off")
 
-        self.eeprom_widget = EepromWidget()
-        self._eeprom_tab = self.tabs.addTab(self.eeprom_widget, "EEPROM")
+        dtc_page = QWidget()
+        dp_lo = QVBoxLayout(dtc_page); dp_lo.setContentsMargins(0,0,0,0); dp_lo.setSpacing(0)
 
-        self.calc_widget = CalculatorWidget()
-        self._calc_tab = self.tabs.addTab(self.calc_widget, "Kalkulator")
+        dtc_hdr = QWidget()
+        dtc_hdr.setStyleSheet("background:#141418; border-bottom:2px solid #2A2A32;")
+        dtc_hdr_lo = QHBoxLayout(dtc_hdr); dtc_hdr_lo.setContentsMargins(12, 6, 12, 6)
 
+        btn_back_dtc = QPushButton("◀  Nazad na mape")
+        btn_back_dtc.setStyleSheet("""
+            QPushButton {
+                background:#1A2F4A; border:1px solid #4FC3F7; color:#4FC3F7;
+                font-size:15px; font-weight:bold; font-family:Consolas;
+                padding:8px 20px; border-radius:4px;
+            }
+            QPushButton:hover { background:#0d3a5c; }
+        """)
+        btn_back_dtc.setFixedHeight(38)
+        btn_back_dtc.clicked.connect(lambda: self._main_tabs.setCurrentIndex(0))
+
+        dtc_hdr_lo.addWidget(btn_back_dtc)
+        dtc_hdr_lo.addStretch()
+
+        dp_lo.addWidget(dtc_hdr)
+
+        # Horizontalni split: lijevo stablo DTC kodova | desno detalji
+        dtc_content = QSplitter(Qt.Orientation.Horizontal)
+        dtc_content.addWidget(self.dtc_sidebar)
+        dtc_content.addWidget(self.dtc_panel)
+        dtc_content.setSizes([230, 700])
+        dtc_content.setStretchFactor(0, 0)
+        dtc_content.setStretchFactor(1, 1)
+        dp_lo.addWidget(dtc_content, 1)
+        self._main_tabs.addTab(dtc_page, "DTC")
+
+        # ── Tab 3: DIFF — skriven ──────────────────────────────────────────
         self.diff_widget = DiffWidget()
-        self._diff_tab = self.tabs.addTab(self.diff_widget, "Diff")
-        self.tabs.setTabVisible(self._diff_tab, False)
+        self._main_tabs.addTab(self.diff_widget, "DIFF")
+        self._main_tabs.setTabVisible(3, False)
 
+        # ── Tab 4: MAP DIFF — skriven ──────────────────────────────────────
         self.map_diff_widget = MapDiffWidget()
-        self._map_diff_tab = self.tabs.addTab(self.map_diff_widget, "Map Diff")
-        self.tabs.setTabVisible(self._map_diff_tab, False)
-
-        _tb = self.tabs.tabBar()
-        _tb.setTabTextColor(self._dtc_tab, QColor("#f48771"))   # DTC Off — narandzasta
-        _tb.setTabTextColor(self._eeprom_tab, QColor("#c586c0")) # EEPROM — ljubicasta
-
-        self.tabs.currentChanged.connect(self._on_tab_changed)
-        alati_lo.addWidget(self.tabs)
-        self._main_tabs.addTab(alati_w, "ALATI")
+        self._main_tabs.addTab(self.map_diff_widget, "MAP DIFF")
+        self._main_tabs.setTabVisible(4, False)
 
         self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
         center_vsplit.addWidget(self._main_tabs)
@@ -2871,38 +2940,21 @@ class MainWindow(QMainWindow):
         self.status.showMessage(f"{self._scan_msg_base}{dots}")
 
     def _build_menus(self):
-        mb = self.menuBar()
-
-        fm = mb.addMenu("Fajl")
-        self._add_action(fm, "Otvori Fajl 1  (Ctrl+1)", "Ctrl+1", self._load1)
-        self._add_action(fm, "Otvori Fajl 2  (Ctrl+2)", "Ctrl+2", self._load2)
-        fm.addSeparator()
-        self._add_action(fm, "Spremi  (Ctrl+S)",   "Ctrl+S", self._save)
-        self._add_action(fm, "Spremi kao...",       "",       self._save_as)
-        fm.addSeparator()
-        self._add_action(fm, "Export CSV...",       "",       self._export_csv)
-        fm.addSeparator()
-        self._add_action(fm, "Otvori EEPROM dump...", "",    self._open_eeprom)
-        fm.addSeparator()
-        self._add_action(fm, "Izlaz  (Ctrl+Q)",    "Ctrl+Q", self.close)
-
-        em = mb.addMenu("Editovanje")
-        self._add_action(em, "Undo  (Ctrl+Z)",     "Ctrl+Z", self._undo_action)
-        self._add_action(em, "Redo  (Ctrl+Y)",     "Ctrl+Y", self._redo_action)
-
-        tm = mb.addMenu("Alati")
-        self._add_action(tm, "Skeniraj mape  (F5)", "F5",    self.scan_maps)
-        self._add_action(tm, "Prikazi Diff (regije)", "",     self._show_diff)
-        self._add_action(tm, "Prikazi Map Diff",      "",     self._show_map_diff)
-        tm.addSeparator()
-        self._add_action(tm, "Kalkulator  (Ctrl+K)", "Ctrl+K",
-                         lambda: (self._main_tabs.setCurrentIndex(1),
-                                  self.tabs.setCurrentIndex(self._calc_tab)))
-        tm.addSeparator()
-        self._add_action(tm, "Checksum analiza...", "",       self._checksum_analysis)
-
-        hm = mb.addMenu("Pomoc")
-        self._add_action(hm, "O programu", "", self._about)
+        self.menuBar().hide()
+        shortcuts = [
+            ("Ctrl+1", self._load1),
+            ("Ctrl+2", self._load2),
+            ("Ctrl+S", self._save),
+            ("Ctrl+Z", self._undo_action),
+            ("Ctrl+Y", self._redo_action),
+            ("F5",     self.scan_maps),
+            ("Ctrl+Q", self.close),
+        ]
+        for shortcut, slot in shortcuts:
+            a = QAction(self)
+            a.setShortcut(shortcut)
+            a.triggered.connect(slot)
+            self.addAction(a)
 
     @staticmethod
     def _add_action(menu, label, shortcut, slot):
@@ -2914,18 +2966,12 @@ class MainWindow(QMainWindow):
     # ── Tab / Sidebar ─────────────────────────────────────────────────────────
 
     def _on_main_tab_changed(self, idx: int):
-        if idx == 0:  # MAPE
-            self._sidebar_stack.setCurrentIndex(0)
-        else:  # ALATI
-            self._on_tab_changed(self.tabs.currentIndex())
-
-    def _on_tab_changed(self, idx: int):
-        if idx == self._dtc_tab:
-            self._sidebar_stack.setCurrentIndex(1)
-        elif idx == self._eeprom_tab:
-            self._sidebar_stack.setCurrentIndex(2)
+        # Lijevi sidebar (map_lib) vidljiv samo na MAPE tabu;
+        # DTC i EEPROM tabovi imaju vlastite ugradjene panele
+        if idx == 0:    # MAPE
+            self._sidebar_stack.show()
         else:
-            self._sidebar_stack.setCurrentIndex(0)
+            self._sidebar_stack.hide()
 
     def _on_dtc_sidebar_selected(self, code: int):
         self.dtc_panel.show_dtc(code)
@@ -3011,8 +3057,6 @@ class MainWindow(QMainWindow):
             self.log_strip.log(f"SW: {info.sw_id} — {info.sw_desc}", "info")
             self.btn_diff.setEnabled(True)
             self.btn_map_diff.setEnabled(True)
-            self.tabs.setTabVisible(self._diff_tab, True)
-            self.tabs.setTabVisible(self._map_diff_tab, True)
             w = ScanWorker(eng); w.finished.connect(self._done2); w.start(); self._w2 = w
         except Exception as e:
             QMessageBox.critical(self, "Greska", str(e))
@@ -3138,8 +3182,7 @@ class MainWindow(QMainWindow):
             )
             if dtc_code and self.dtc_eng:
                 self.dtc_panel.show_dtc(dtc_code)
-                self._main_tabs.setCurrentIndex(1)
-                self.tabs.setCurrentIndex(self._dtc_tab)
+                self._main_tabs.setCurrentIndex(2)
                 status = self.dtc_eng.get_status(dtc_code)
                 if status: self.props.show_dtc_details(status)
                 if self.eng1: self.hex_strip.show(self.eng1, fm.address)
@@ -3410,17 +3453,18 @@ class MainWindow(QMainWindow):
 
     # ── EEPROM ────────────────────────────────────────────────────────────────
 
-    def _open_eeprom(self):
+    def _open_eeprom_from_btn(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Otvori EEPROM dump", "",
             "Binary fajlovi (*.bin);;Svi fajlovi (*)"
         )
-        if not path:
-            return
+        if not path: return
         self.eeprom_widget.load_file(path)
-        self._main_tabs.setCurrentIndex(1)
-        self.tabs.setCurrentIndex(self._eeprom_tab)
         self.log_strip.log(f"EEPROM učitan: {path}", "ok")
+
+    def _open_eeprom(self):
+        self._open_eeprom_from_btn()
+        self._main_tabs.setCurrentIndex(1)
 
     # ── Diff ──────────────────────────────────────────────────────────────────
 
@@ -3428,8 +3472,8 @@ class MainWindow(QMainWindow):
         if not (self.eng1 and self.eng2):
             self.status.showMessage("Ucitaj oba fajla."); return
         self.diff_widget.show_diff(self.eng1, self.eng2)
-        self._main_tabs.setCurrentIndex(1)
-        self.tabs.setCurrentIndex(self._diff_tab)
+        self._main_tabs.setTabVisible(3, True)
+        self._main_tabs.setCurrentIndex(3)
 
     def _show_map_diff(self):
         if not (self.eng1 and self.eng2):
@@ -3442,8 +3486,8 @@ class MainWindow(QMainWindow):
         try:
             differ = MapDiffer(self.eng1, self.eng2)
             self.map_diff_widget.load_diff(differ, sw1, sw2)
-            self._main_tabs.setCurrentIndex(1)
-            self.tabs.setCurrentIndex(self._map_diff_tab)
+            self._main_tabs.setTabVisible(4, True)
+            self._main_tabs.setCurrentIndex(4)
             self.log_strip.log("Map Diff: gotovo.", "ok")
         except Exception as e:
             self.log_strip.log(f"Map Diff greska: {e}", "err")
@@ -3477,36 +3521,68 @@ class MainWindow(QMainWindow):
     def _checksum_analysis(self):
         if not self.eng1:
             self.status.showMessage("Ucitaj fajl."); return
-        cs = ChecksumEngine(self.eng1)
-        results = cs.verify()
-        candidates = cs.find_checksum_candidates()
 
-        lines = ["=== CHECKSUM ANALIZA ===\n"]
-        for k, v in results.items():
-            if isinstance(v, dict):
-                lines.append(f"{k}:")
-                for kk, vv in v.items(): lines.append(f"  {kk}: {vv}")
-            else:
-                lines.append(f"{k}: {v}")
+        cs_eng = ChecksumEngine(self.eng1)
+        data   = self.eng1.get_bytes()
+        stored = read_stored_cs(data)
+        ok, _  = verify_boot_crc(data)
+        new_cs = compute_new_cs(data) if not ok else stored
 
-        lines.append(f"\n=== KANDIDATI U BOOT 0x000-0x100 ({len(candidates)} komada) ===")
-        for c in candidates[:20]:
-            lines.append(f"  {c['offset']:>4}  {c['value']}  {c['type']}")
+        dlg = QDialog(self)
+        dlg.setWindowTitle("CS Fix — Checksum analiza")
+        dlg.setFixedSize(500, 300)
+        dlg.setStyleSheet("background:#1C1C1F; color:#C8C8D0; font-family:Consolas;")
+        lo = QVBoxLayout(dlg); lo.setContentsMargins(22, 18, 22, 16); lo.setSpacing(10)
 
-        if self.eng2:
-            lines.append("\n=== BOOT DIFF (ORI vs STG2) ===")
-            boot_diffs = cs.analyze_boot_diff(self.eng2)
-            lines.append(f"  Promijenjenih bajtova u BOOT: {boot_diffs['total_changed']}")
-            lines.append(f"  Blokovi (>=4B): {len(boot_diffs['blocks'])}")
-            for b in boot_diffs['blocks']:
-                lines.append(
-                    f"  0x{b['offset']:06X}  {b['size']}B  "
-                    f"ORI:{b['val_ori']}  STG2:{b['val_stg2']}"
-                )
+        title = QLabel("Checksum — BOOT region  [0x0000 – 0x7EFF]")
+        title.setStyleSheet("color:#4FC3F7; font-weight:bold; font-size:15px; font-family:Consolas;")
+        lo.addWidget(title)
 
-        txt = "\n".join(lines)
-        QMessageBox.information(self, "Checksum analiza", txt[:3000])
-        self.log_strip.log("Checksum analiza zavrsena.", "info")
+        grid = QGridLayout(); grid.setSpacing(8); grid.setColumnMinimumWidth(0, 180)
+
+        def _row(g, r, lbl, val, color="#C8C8D0"):
+            l = QLabel(lbl); l.setStyleSheet("color:#808090; font-size:13px;")
+            v = QLabel(val); v.setStyleSheet(f"color:{color}; font-size:14px; font-weight:bold;")
+            g.addWidget(l, r, 0); g.addWidget(v, r, 1)
+
+        _row(grid, 0, "Trenutni CS  @ 0x30:", f"0x{stored:08X}")
+        _row(grid, 1, "Ispravan CS (izračun):", f"0x{new_cs:08X}",
+             "#4CAF50" if ok else "#FFD600")
+        _row(grid, 2, "Status:", "✓  OK — checksum ispravna" if ok else "⚠  NEISPRAVNA — treba popravku",
+             "#4CAF50" if ok else "#EF5350")
+        _row(grid, 3, "Algoritam:", "CRC32-HDLC  poly=0xEDB88320  residua=0x6E23044F")
+
+        note = QLabel("CODE mape (0x10000–0x5FFFF) ne zahtijevaju popravku checksuma.")
+        note.setStyleSheet("color:#505060; font-size:12px;")
+        note.setWordWrap(True)
+        grid.addWidget(note, 4, 0, 1, 2)
+
+        lo.addLayout(grid)
+        lo.addStretch()
+
+        btn_row = QHBoxLayout(); btn_row.addStretch()
+
+        if not ok:
+            write_btn = _btn("Upiši novi CS", "primary")
+            write_btn.setFixedHeight(30)
+            write_btn.setToolTip(f"Upisuje 0x{new_cs:08X} na adresu 0x30 u binarni fajl")
+            def _do_write():
+                cs_eng.update_all()
+                self._update_sb_checksum(True)
+                self.log_strip.log(f"CS Fix: upisan 0x{new_cs:08X} → 0x30", "ok")
+                self.status.showMessage("CS Fix: novi checksum upisan.")
+                dlg.accept()
+            write_btn.clicked.connect(_do_write)
+            btn_row.addWidget(write_btn)
+
+        close_btn = _btn("Zatvori")
+        close_btn.setFixedHeight(30)
+        close_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(close_btn)
+        lo.addLayout(btn_row)
+
+        dlg.exec()
+        self.log_strip.log("Checksum analiza završena.", "info")
 
     # ── About ─────────────────────────────────────────────────────────────────
 

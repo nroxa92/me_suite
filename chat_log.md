@@ -3,6 +3,21 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-21 23:55]**
+👤 loogiraj sve. odlican posao...
+🤖 Logirano u work_log.md i chat_log.md. Dvije popravke: _on_main_tab_changed sad koristi show/hide umjesto netočnih setCurrentIndex poziva; Kalkulator tab premješten na poziciju 1 i skraćen na "Calc" — sada vidljiv u uskom panelu.
+
+---
+**[2026-03-21 23:50]**
+👤 (nastavak sesije) — popravke: DTC dva lijeva sidebara, ne vidim kalkulatore, greske jednim klikom otvara stablo
+🤖 Tri popravke: 1) DtcSidebarPanel._click — single click širi/skuplja parent node; 2) dtc_sidebar ugrađen u DTC tab kao QSplitter (uklonjen iz _sidebar_stack); 3) eeprom_sidebar isto; 4) _on_main_tab_changed popravljen na show/hide; 5) Calc tab premješten na poziciju 1. Import OK.
+
+---
+**[2026-03-21 17:00]**
+👤 Refaktoriraj ui/main_window.py: ukloni QMenuBar (samo shortcuts), restrukturiraj _main_tabs (MAPE/EEPROM/DTC/DIFF/MAPDIFF), premjesti CalculatorWidget u PropertiesPanel, ažuriraj _on_main_tab_changed i sve stare tab indekse.
+🤖 Sve promjene primijenjene u ui/main_window.py. Import test OK.
+
+---
 **[2026-03-21 16:30]**
 👤 Poboljsaj nazive i opise mapa u core/map_finder.py — _IGN_NAMES s opisnima nazivima, dependency blokovi (OVISI O / UTJECE NA) u description svakog MapDef za 1630 ACE mape.
 🤖 Implementirano: 19 IGN naziva s opisnima kontekstima, dependency blokovi u _make_ign_def (5 grana) + 26 MapDef definicija. Import provjera OK.
@@ -1375,3 +1390,9 @@ Claude: Ekstrakcija potvrđena. 1037524060 je PRE-10SW multi-image container (3�
 🤖 Dodano preostalih 16 OVISI O/UTJECE NA blokova: _SPARK_LAMBDA_DEF + sve 2016 1503 skenere (ign_corr_2d, mat_corr, accel, cold_start, kfped, overtemp_lambda, neutral_corr, lambda_bias) + sve 2016 ACE skenere (sc_corr, boost, overtemp_lambda, neutral_corr, dfco, fuel, torque). Validacija OK.
 
 ---
+
+---
+**[2026-03-21 sesija — UI refaktor + bugfixi]**
+👤 Reset tipka ne radi, boja ostaje nakon undo, gornji menu bar ne treba, eeprom i dtc kao posebni tabovi s Back gumbom, kalkulatori u map editoru, CS Fix kao pravi dialog, zoom slider nazad, +/- scale buttons.
+🤖 Fixevi: ori_data snapshot na FoundMap, refresh_cell dirty check, reset_requested signal + _on_reset_map handler. UI: menu bar skriven (keyboard shortcuts ostaju), 5 top-level tabova (MAPE/EEPROM/DTC/Diff/MapDiff), kalkulator u PropertiesPanel. CS Fix: dialog s current/computed/status + Write gumb. Zoom slider vraćen (1.0x default). +/- scale bar dodan.
+
