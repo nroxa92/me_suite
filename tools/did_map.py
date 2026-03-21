@@ -543,16 +543,17 @@ UDS_DID_MAP = {
     # maps24: 24 parametara poredani u ciklusu 73 UDS + 16 KWP
 
     0x213C: {
-        "name": "? (maps24 session)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Control Active B_lr (kandidat)",
+        "unit": "bool",
+        "scale": 1.0,
+        "offset": 0,
         "nbytes": 1,
         "signed": False,
         "endian": "big",
         "bench_hex": "00",
         "bench_phys": 0,
-        "notes": "maps24 background DID, val=0",
+        "notes": "val=0 na bench (motor stoji) — kandidat za 'Control Active (B_lr)' iz BUDS2. "
+                 "B_lr = lambda closed-loop control active (0=off bench, 1=running). maps24",
     },
 
     0x2108: {
@@ -584,29 +585,31 @@ UDS_DID_MAP = {
     # ── OSTALI PODRŽANI DIDs (iz sniff_cdid.csv scan) ────────────────────
 
     0x2107: {
-        "name": "? (val=0xFFFF = max u16)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Lambda zaštita — prag (bench=0xFFFF=disabled)",
+        "unit": "lambda Q15",
+        "scale": 1.0 / 32768,
+        "offset": 0,
         "nbytes": 2,
         "signed": False,
         "endian": "big",
         "bench_hex": "FF FF",
         "bench_phys": 65535,
-        "notes": "0xFFFF = invalid/not available marker?",
+        "notes": "0xFFFF na bench = lambda protection threshold 'disabled' (off bench). "
+                 "NPRo STG2 = uvijek 0xFFFF (bypass). Map @ 0x02B378 (79×u16 Q15). 95% conf.",
     },
 
     0x2158: {
-        "name": "? (val=0xFFFF = max u16)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Lambda zaštita — prag 2 (bench=0xFFFF=disabled)",
+        "unit": "lambda Q15",
+        "scale": 1.0 / 32768,
+        "offset": 0,
         "nbytes": 2,
         "signed": False,
         "endian": "big",
         "bench_hex": "FF FF",
         "bench_phys": 65535,
-        "notes": "0xFFFF = invalid/not available marker?",
+        "notes": "0xFFFF na bench = lambda protection threshold 'disabled' (off bench). "
+                 "NPRo STG2 = uvijek 0xFFFF (bypass). Map @ 0x02B378 (79×u16 Q15). 95% conf.",
     },
 
     0x2134: {
@@ -662,16 +665,17 @@ UDS_DID_MAP = {
     },
 
     0x2183: {
-        "name": "? (val=0x40=64)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "VTS Position (kandidat)",
+        "unit": "%",
+        "scale": 100.0 / 255,
+        "offset": 0,
         "nbytes": 1,
         "signed": False,
         "endian": "big",
         "bench_hex": "40",
-        "bench_phys": 64,
-        "notes": "0x40=64, moguće VTS/gear pozicija",
+        "bench_phys": 25.1,  # 64/255*100 = 25.1% (VTS default/rest position)
+        "notes": "0x40=64 = 25% od 255, kandidat za 'VTS Position' (BUDS2 lista). "
+                 "VTS rest position na bench ≈25% — konzistentno. maps24 background",
     },
 
     0x214F: {
@@ -740,42 +744,46 @@ UDS_DID_MAP = {
     },
 
     0x2106: {
-        "name": "? (val=43792 = isti kao 0x2105)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Indicated Basic Torque (kandidat)",
+        "unit": "Nm",
+        "scale": 1.0,
+        "offset": 0,
         "nbytes": 2,
         "signed": True,
         "endian": "big",
         "bench_hex": "AB 10",
         "bench_phys": None,
-        "notes": "Identična vrijednost kao 0x2105 — mirror ili alt format Mass Fuel Flow?",
+        "notes": "Identična vrijednost kao 0x2105 (AB 10) — nije mirror (Mass Fuel ne =-21744Nm). "
+                 "Kandidat za 'Indicated Basic Torque' (BUDS2 lista). Format nejasan. maps24",
     },
 
     0x210F: {
-        "name": "? (LE=82)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Throttle Opening Requirement For Idle Speed (kandidat)",
+        "unit": "%",
+        "scale": 1.0,
+        "offset": 0,
         "nbytes": 2,
         "signed": False,
         "endian": "little",
         "bench_hex": "52 00",
-        "bench_phys": None,
-        "notes": "LE=82, BE=20992, maps24 background",
+        "bench_phys": 82.0,  # LE=82 (direktan % ili raw?)
+        "notes": "LE=82 na bench — kandidat za 'Throttle Opening Requirement For Idle Speed' "
+                 "(BUDS2 lista). 82 = idle throttle setpoint (raw ili %). maps24 background",
     },
 
     0x2110: {
-        "name": "? (BE=62105, Q15=-0.101)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Flow Model Based Temperature Correction (kandidat)",
+        "unit": "corr",
+        "scale": 1.0 / 32768,
+        "offset": 0,
         "nbytes": 2,
         "signed": True,
         "endian": "big",
         "bench_hex": "F2 99",
-        "bench_phys": None,
-        "notes": "s16=-3431, Q15=-0.105, maps24 background",
+        "bench_phys": -0.105,  # s16=-3431/32768=-0.105
+        "notes": "s16=-3431, Q15=-0.105 (negativna korekcija) — kandidat za "
+                 "'Flow Model Based Temperature Correction' ili "
+                 "'Combustion Chamber Temperature Correction' (BUDS2 lista). maps24",
     },
 
     0x216A: {
@@ -792,7 +800,7 @@ UDS_DID_MAP = {
     },
 
     0x2135: {
-        "name": "? (val=133, T=26.5°C?)",
+        "name": "Lake Water Temperature (kandidat)",
         "unit": "degC",
         "scale": 0.5,
         "offset": -40,
@@ -801,20 +809,24 @@ UDS_DID_MAP = {
         "endian": "big",
         "bench_hex": "85",
         "bench_phys": 26.5,
-        "notes": "0x85=133, 133*0.5-40=26.5°C (sobna temperatura?) — maps24 background",
+        "notes": "0x85=133, 133*0.5-40=26.5°C — sobna temperatura na bench, "
+                 "kandidat za 'Lake Water Temperature' (BUDS2 lista). "
+                 "Na bench bez rashladne vode = sobna temp (OK). maps24 background",
     },
 
     0x2144: {
-        "name": "? (val=0x8027=32807)",
-        "unit": None,
-        "scale": None,
-        "offset": None,
+        "name": "Optimum Indicated Torque (kandidat)",
+        "unit": "% Q15",
+        "scale": 100.0 / 32768,
+        "offset": 0,
         "nbytes": 2,
         "signed": False,
         "endian": "big",
         "bench_hex": "80 27",
-        "bench_phys": None,
-        "notes": "s16=32807, LE=10112, maps24 background",
+        "bench_phys": 100.1,  # 32807/32768*100 = 100.1% (idle bench, normalizirani torque)
+        "notes": "BE=32807/32768=1.001 (≈100.1%) — blizu 1.0 na bench, "
+                 "kandidat za 'Optimum Indicated Torque' iz BUDS2 liste. "
+                 "Moguce i 'Desired Indicated Torque Before Slope Limitation'. maps24 background",
     },
 }
 
@@ -1023,6 +1035,205 @@ KWP_LID_MAP = {
     },
 }
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUDS2 LIVEVIEW — kompletna lista parametara (iz BUDS2 UI screenshotova)
+# Izvor: _materijali/live data info/Screenshot_1-7.png
+# Snimano: 2026-03-22, vozilo: GTX/RXT Dolphin, iBR=True, NA varijanta
+# Ukupno: 129 parametara dostupnih u BUDS2 Liveview dropdownu
+# ─────────────────────────────────────────────────────────────────────────────
+BUDS2_PARAMETER_LIST = [
+    # ── Adaptacijske vrijednosti ────────────────────────────────────────────
+    "Adaptive Value Of Integral Idle Speed",
+    "Additive Adaptive O2 Correction (rka_w)",        # DID 0x212A
+    "Additive Adjustment of Calc. Air Mass Flow",
+    "Multiplicative Adaptive O2 Correction (Fra_w)",  # DID 0x212C
+    "Multiplicative Adjustment Of Calc. Air Mass Flow",
+
+    # ── Senzori / okolina ────────────────────────────────────────────────
+    "Ambient Pressure",                               # DID 0x2136 ✓
+    "Battery Voltage",
+    "Boat Speed",
+    "Engine Coolant Temperature",                     # DID 0x2121
+    "Engine Speed",                                   # DID 0x210E
+    "Engine Total Hour",
+    "Exhaust Water Temperature",                      # DID 0x2188
+    "Intake Air Pressure",                            # DID 0x212B
+    "Intake Temperature",                             # DID 0x2120
+    "Lake Water Temperature",                         # DID 0x2135 (kandidat)
+    "Oil Pressure Switch",
+    "Oil Temperature",
+    "Throttle Actuator Sensor",
+    "Voltage PWG Potentiometer 1",
+    "Voltage PWG Potentiometer 2",
+    "VTS Position",                                   # DID 0x2183 (kandidat)
+
+    # ── Lambda / O2 ──────────────────────────────────────────────────────
+    "Charge Based O2 Target",                         # DID 0x216C
+    "Desired O2",                                     # DID 0x2126
+    "O2 Correction From Controller (Fr_w)",           # DID 0x2125
+    "O2 Full Load Correction",                        # DID 0x212F
+    "O2 Sensor Heating",
+    "STFT (Bank 1)",
+
+    # ── Punjenje zraka ───────────────────────────────────────────────────
+    "Desired Relative Air Charge",
+    "Desired Relative Air Charge After Torque Coordination",
+    "Desired Throttle Angle",
+    "Manifold Pressure With Altitude Correction",     # DID 0x211A
+    "Relative Air Charge",                            # DID 0x213F
+    "Relative Air Charge Based Primary Sensor",
+    "Throttle Body Air Mass Flow",
+    "Throttle Opening",                               # DID 0x2140
+    "Throttle Opening Requirement For Idle Speed",    # DID 0x210F (kandidat)
+
+    # ── Moment / torque ──────────────────────────────────────────────────
+    "Coordinated Torque Effective Upon Cylinder Charging",
+    "Desired Indicated Engine Torque",                # DID 0x2103
+    "Desired Indicated Torque Before Slope Limitation",
+    "Driver's Desire Throttle Angle",                 # DID 0x213B
+    "Engine Friction Torque",                         # DID 0x212D
+    "Indicated Basic Torque",                         # DID 0x2106 (kandidat)
+    "Indicated Resultant Torque",                     # DID 0x210A
+    "Optimum Indicated Torque",                       # DID 0x2144 (kandidat)
+
+    # ── Paljenje ─────────────────────────────────────────────────────────
+    "Desired Ignition Angle After Torque Intervention",  # DID 0x2142
+
+    # ── Gorivo / injection ───────────────────────────────────────────────
+    "Fuel Cut-Off Factor",                            # DID 0x212E
+    "Fuel Pump",
+    "Mass Fuel Flow Injected",                        # DID 0x2105
+    "Purge Valve Correction",
+
+    # ── Brzinsko ograničenje ─────────────────────────────────────────────
+    "Engine Speed Limitation Active",                 # DID 0x2145
+    "Engine Speed Limitation Set Point",
+    "Vehicle Speed",
+    "Vehicle Speed Limitation Set Point",
+
+    # ── Idle / pokretanje ────────────────────────────────────────────────
+    "Idle Reference Speed",                           # DID 0x2104
+    "Idle Speed Control Active",
+
+    # ── Temperatura korekcije ────────────────────────────────────────────
+    "Combustion Chamber Temperature Correction",
+    "Flow Model Based Temperature Correction",        # DID 0x2110 (kandidat)
+
+    # ── Servisni / dijagnostički ─────────────────────────────────────────
+    "Check Engine Lamp",
+    "Customer Name",
+    "Distance Counter For Check Engine ON",
+    "Distance Counter For Limp Home ON",
+    "Error (B_maxflsv || B_minflsv || B_sigflsv || B_nplflsv)",
+    "Exchange Security Invalid",
+    "Flooded Engine",
+    "Last Service Hour",
+    "Learn Duration Time Counter For One Learnstep",
+    "Limp Home Lamp",
+    "Logistic Programming 3 Raw",
+    "Maintenance Interval",
+    "MoF_bSrgDiffErr",
+    "Number Of Maintenance Calls Up To Now",
+    "Odometer Backup",
+    "OTAS Switch State Not Plausible",
+    "OTAS Switch State Valid",
+    "Starter Solenoid",
+    "Start Switch",
+    "State Of DESS",
+    "State Of Tip Over Switch",
+    "Stop Switch",
+    "Time Spent In Learning Key",
+    "Time Spent In Limp Home",
+    "Time Spent In Normal Key",
+    "Time Spent In Rental Key",
+    "TPS Learning Successful",
+    "Transmission Position",
+    "Vehicle Hour Counter",
+
+    # ── B_ boolean zastavice (Bosch Merkmal) ─────────────────────────────
+    "B_accessdenied (Vehicle Access Is Denied)",
+    "B_brems (Condition: Brake Operated)",
+    "B_ccon (Cruise Control Is Active)",
+    "B_fembgact (Torque Limitation In FEM Active)",  # FEM = Fahrerwunsch! Potvrđuje FWM mapu
+    "B_keypresent (Plugged Key Was Detected By The Vehicle)",
+    "B_klpedd (Enhanced Throttle Mode Active)",      # sport/enhanced throttle mode
+    "B_ll (Idle Speed From Driver's Side)",
+    "B_mil (Lamp - Check Engine)",
+    "B_nachlauf (ECU Control For ECU Switch Off Delay)",
+    "B_nmot (Engine Speed Greater NMIN)",
+    "B_poelmn (Oil Pressure Too Low)",
+    "B_skion (Ski Mode Status)",
+    "B_stendes (End Of Start Also For Injection)",
+    "B_ugd (Throttle Angle Near Max. Possible Air Charge)",  # blizu WOT
+    "B_upsddwn (Vehicle Is Upside Down)",
+    "Brake Switch",
+    "Clutch Switch",
+    "Control Active (B_lr)",                         # DID 0x213C (kandidat) = lambda CL active
+    "Heating Active (B_hsve)",
+    "Init(B_lsvklt)",
+    "Key Switch Input",
+
+    # ── Byte konfiguracija (vehicle config word) ─────────────────────────
+    "Byte 0 Vehicle",          # = "Dolphin" (GTX/RXT codename)
+    "Byte 1 Bit 0 Supercharger Fit",     # False = NA, True = SC
+    "Byte 1 Bit 1 iS Fit",               # intelligent Suspension
+    "Byte 1 Bit 2 iBR fit",              # intelligent Brake & Reverse
+    "Byte 1 Bit 3 C/U or Inter (Inter = 1)",  # Intercooler
+    "Byte 1 Bit 4 Fuel tank config bit 1",
+    "Byte 1 Bit 5 Fuel tank config bit 2",
+    "Byte 1 Bit 6 SBOAT BALLAST",
+    "Byte 1 Bit 7",
+    "Byte 2 Engine",
+    "Byte 3 Bit 0 CRUISE + SLOW SPEED CRUISE",
+    "Byte 3 Bit 1 SKI MODE",
+    "Byte 3 Bit 2 Fuel Autonomy",
+    "Byte 3 Bit 3 Top/Avr Spd/RPM, LAP,Engine Temp",
+    "Byte 3 Bit 4 Altitude",
+    "Byte 3 Bit 5 VTS Switch",
+    "Byte 3 Bit 6",
+    "Byte 3 Bit 7",
+    "Byte 4", "Byte 5", "Byte 6", "Byte 7",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUDS2 RUNNING ENGINE — prioritetni parametri za running engine CAN sesiju
+# Strategija: kratki WOT pulsevi u plivajućem dock-u, IXXAT 500kbps
+# Cilj: potvrditi mape FWM/KFZW2/Lambda/DFCO u stvarnom radu
+# ─────────────────────────────────────────────────────────────────────────────
+BUDS2_RUNNING_ENGINE_PRIORITY = [
+    # Format: (BUDS2_naziv, DID, cilj_verifikacije)
+    # ── FWM (vozačev zahtjev momenta) @ 0x02A7F0 ──
+    ("Driver's Desire Throttle Angle",         0x213B, "FWM ulaz — prati gas pedal"),
+    ("Desired Indicated Engine Torque",        0x2103, "FWM izlaz — SC<100% / NA>100%"),
+    ("Desired Indicated Torque Before Slope Limitation", None, "FWM raw (prije ramp filter)"),
+    ("Optimum Indicated Torque",               0x2144, "alt FWM kandidat"),
+    ("B_fembgact (Torque Limitation In FEM Active)", None, "FEM=FWM aktivan (bool)"),
+
+    # ── KFZW2 (paljenje za moment) @ 0x022374 ──
+    ("Desired Ignition Angle After Torque Intervention", 0x2142, "KFZW2 izlaz — stupnjevi BTDC"),
+
+    # ── Lambda lanac ──
+    ("O2 Correction From Controller (Fr_w)",   0x2125, "lambda CL korekcija (aktivna u radu)"),
+    ("Control Active (B_lr)",                  0x213C, "lambda CL status (0=bench, 1=running)"),
+    ("STFT (Bank 1)",                          None,   "kratkoročna lambda trim"),
+    ("Additive Adaptive O2 Correction (rka_w)", 0x212A, "dugoročna lambda adapt (additive)"),
+    ("Multiplicative Adaptive O2 Correction (Fra_w)", 0x212C, "dugoročna lambda adapt (mult)"),
+
+    # ── DFCO (decel fuel cut) @ 0x028C30 ──
+    ("Fuel Cut-Off Factor",                    0x212E, "DFCO aktivan (1=cut, 0=normal)"),
+    ("Engine Speed",                           0x210E, "RPM pri DFCO aktivaciji"),
+
+    # ── Boost / punjenje ──
+    ("Relative Air Charge",                    0x213F, "punjenje cilindra %"),
+    ("Desired Relative Air Charge",            None,   "željeno punjenje (torque coordination)"),
+    ("Manifold Pressure With Altitude Correction", 0x211A, "MAP kPa (boost/vakuum)"),
+
+    # ── Termalni parametri ──
+    ("Engine Coolant Temperature",             0x2121, "CTS za thermal mape"),
+    ("Lake Water Temperature",                 0x2135, "rashladna voda temperature"),
+    ("Exhaust Water Temperature",              0x2188, "EWT (overtemp zaštita)"),
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POLLING STATISTIKE iz sniff logova

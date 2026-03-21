@@ -62,6 +62,16 @@ CAN_SAT_CRITICAL  = 0x01CD   # KRITIČNI heartbeat GTX/GTI @ ~50ms
 CAN_SAT_DESS      = 0x04CD   # DESS relay                 @ ~1Hz
 CAN_DTC           = 0x017C   # DTC / fault codes          (event)
 
+# Aliasi za kompatibilnost s can_logger_widget i can_live_widget
+CAN_RPM           = DIAG_RPM
+CAN_TEMP          = DIAG_TEMP
+CAN_ENGINE_HOURS  = DIAG_RPM
+CAN_ENGINE_FLAGS  = DIAG_DTC_STATUS
+CAN_EOT_MUX       = DIAG_EOT
+CAN_BROADCAST     = DIAG_MISC_A
+CAN_SPARK_EGT     = DIAG_MISC_B
+CAN_SPARK_THB     = DIAG_MISC_C
+
 # SW-specific scalars u byte[4] od DIAG_RPM (0x0102)
 SW_SCALAR = {
     0x14: "10SW066726 (300hp 2020/2021)",

@@ -46,11 +46,8 @@ from core.map_differ import MapDiffer
 from ui.calculator_widget import CalculatorWidget
 from ui.diff_viewer import MapDiffWidget
 from ui.eeprom_widget import EepromWidget
-from ui.can_network_widget import CanNetworkWidget
-from ui.can_logger_widget import CanLoggerWidget
-from ui.can_live_widget import CanLivePanel
-from ui.map_visualizer import MapHeatWidget, MapMiniPreview
 from ui.map_editor_widget import MapEditorWidget
+from ui.sw_compat_widget import SwCompatWidget
 
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -1716,15 +1713,44 @@ class PropertiesPanel(QWidget):
             self._st[k] = vl
         map_lo.addWidget(stats_g)
 
+        # Opis mape — categoria + tekst
+        cat_lo = QHBoxLayout()
+        self._cat_badge = QLabel("—")
+        self._cat_badge.setStyleSheet(
+            "background:#1A2F4A; color:#4FC3F7; font-size:10px; font-weight:bold; "
+            "padding:2px 8px; border-radius:3px; letter-spacing:0.5px;"
+        )
+        self._conf_badge = QLabel("")
+        self._conf_badge.setStyleSheet(
+            "background:#1a3a2a; color:#4CAF50; font-size:10px; font-weight:bold; "
+            "padding:2px 8px; border-radius:3px;"
+        )
+        cat_lo.addWidget(self._cat_badge)
+        cat_lo.addWidget(self._conf_badge)
+        cat_lo.addStretch()
+        map_lo.addLayout(cat_lo)
+
+        desc_g = QGroupBox("OPIS — KADA / ZAŠTO")
+        dl = QVBoxLayout(desc_g); dl.setContentsMargins(6,6,6,6)
+        self._desc_lbl = QLabel("—")
+        self._desc_lbl.setWordWrap(True)
+        self._desc_lbl.setStyleSheet("color:#C8C8D0; font-size:12px; line-height:1.4;")
+        dl.addWidget(self._desc_lbl)
+        map_lo.addWidget(desc_g)
+
         notes_g = QGroupBox("NAPOMENE")
         nl = QVBoxLayout(notes_g); nl.setContentsMargins(6,6,6,6)
         self._notes = QLabel("—")
         self._notes.setWordWrap(True)
-        self._notes.setStyleSheet("color:#505060; font-size:12px;")
+        self._notes.setStyleSheet("color:#505060; font-size:11px;")
         nl.addWidget(self._notes)
         map_lo.addWidget(notes_g)
         map_lo.addStretch()
         self.tabs.addTab(map_w, "Mapa")
+
+        # ── Tab 4: SW Kompatibilnost ───────────────────────────────────────
+        self._sw_compat = SwCompatWidget()
+        self.tabs.addTab(self._sw_compat, "SW")
 
         # ── Tab 2: ECU ─────────────────────────────────────────────────────
         ecu_w = QWidget()
@@ -1901,7 +1927,31 @@ class PropertiesPanel(QWidget):
         self._st["Raspon"].setText(f"{mx-mn:.3f} {u}")
         self._st["Celije"].setText(f"{defn.rows}×{defn.cols} = {len(data)}")
         self._st["Mirror"].setText(f"+0x{defn.mirror_offset:X}" if defn.mirror_offset else "—")
-        self._notes.setText(defn.notes[:280] if defn.notes else "—")
+        self._notes.setText(defn.notes[:300] if defn.notes else "—")
+        # Opis / kategorija / pouzdanost
+        cat_map = {
+            "ignition": "PALJENJE", "injection": "GORIVO", "lambda": "LAMBDA",
+            "torque": "MOMENT", "rpm_limiter": "REV LIMIT", "axis": "OS",
+            "misc": "OSTALO", "dtc": "DTC",
+        }
+        self._cat_badge.setText(cat_map.get(defn.category, defn.category.upper()))
+        # Pouzdanost iz naziva mape ili notes
+        notes_lo = (defn.notes or "").lower()
+        name_lo  = defn.name.lower()
+        if "2016" in name_lo or "2016" in notes_lo:
+            conf_txt, conf_color = "2016 GEN", "#FF9800"
+        elif "85%" in notes_lo or "85% conf" in notes_lo:
+            conf_txt, conf_color = "85%", "#FFB74D"
+        elif "80%" in notes_lo or "75%" in notes_lo:
+            conf_txt, conf_color = "~80%", "#f48771"
+        else:
+            conf_txt, conf_color = "POTVRĐENO", "#4CAF50"
+        self._conf_badge.setText(conf_txt)
+        self._conf_badge.setStyleSheet(
+            f"background:#1C1C1F; color:{conf_color}; font-size:10px; font-weight:bold; "
+            "padding:2px 8px; border-radius:3px;"
+        )
+        self._desc_lbl.setText(defn.description if defn.description else "—")
         # Step labele
         s = defn.scale
         self._btn_d.setText(f"▼ -{s:.3g}")
@@ -2681,6 +2731,13 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
+        self.btn_sw_compat = _btn("🔍 SW Compat")
+        self.btn_sw_compat.setToolTip("Provjeri kompatibilnost SW ID-a s dostupnim mapama")
+        self.btn_sw_compat.clicked.connect(self._open_sw_compat)
+        tb.addWidget(self.btn_sw_compat)
+
+        tb.addSeparator()
+
         self._file_lbl = QLabel("  nema fajla")
         self._file_lbl.setStyleSheet("color:#808090; padding:0 10px; font-size:12px;")
         tb.addWidget(self._file_lbl)
@@ -2712,28 +2769,48 @@ class MainWindow(QMainWindow):
         self.dtc_sidebar.dtc_selected.connect(self._on_dtc_sidebar_selected)
         self.eeprom_sidebar = EepromSidebarPanel()
         self.eeprom_sidebar.entry_selected.connect(self._on_eeprom_entry_selected)
-        self.can_sidebar = CanSidebarPanel()
-        self.can_sidebar.id_selected.connect(self._on_can_id_selected)
         self._sidebar_stack.addWidget(self.map_lib)        # page 0
         self._sidebar_stack.addWidget(self.dtc_sidebar)    # page 1
         self._sidebar_stack.addWidget(self.eeprom_sidebar) # page 2
-        self._sidebar_stack.addWidget(self.can_sidebar)    # page 3
         main_split.addWidget(self._sidebar_stack)
 
-        # ── Centar: mapa + hex + log (vertikalni split) ────────────────────
+        # ── Centar: 2 glavna taba (MAPE | ALATI) + hex + log ──────────────
         center_vsplit = QSplitter(Qt.Orientation.Vertical)
 
-        # Tab widget (Map Editor | DTC Off | Diff | CAN Network | ...)
-        self.tabs = QTabWidget(); self.tabs.setDocumentMode(True)
+        # Top-level: 2 glavna taba
+        self._main_tabs = QTabWidget()
+        self._main_tabs.setDocumentMode(True)
+        self._main_tabs.setStyleSheet(
+            "QTabBar::tab { font-size:12px; font-weight:600; padding:6px 24px; "
+            "letter-spacing:0.5px; } "
+            "QTabBar::tab:selected { color:#4FC3F7; }"
+        )
+
+        # ── Tab 0: MAPE — Map Editor ───────────────────────────────────────
         self.map_view = MapTableView()
         self.map_view.cell_clicked.connect(self._on_cell_click)
         self.map_view.btn_csv.clicked.connect(self._export_csv)
         self.map_view.bulk_edit_requested.connect(self._on_bulk_edit)
-        self.tabs.addTab(self.map_view, "Map Editor")
+        self._main_tabs.addTab(self.map_view, "MAPE")
+
+        # ── Tab 1: ALATI — DTC / EEPROM / Kalkulator / Diff ──────────────
+        alati_w = QWidget()
+        alati_lo = QVBoxLayout(alati_w)
+        alati_lo.setContentsMargins(0, 0, 0, 0)
+        alati_lo.setSpacing(0)
+
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
 
         self.dtc_panel = DtcPanel()
         self.dtc_panel.action_done.connect(lambda msg: self.log_strip.log(msg, "ok"))
         self._dtc_tab = self.tabs.addTab(self.dtc_panel, "DTC Off")
+
+        self.eeprom_widget = EepromWidget()
+        self._eeprom_tab = self.tabs.addTab(self.eeprom_widget, "EEPROM")
+
+        self.calc_widget = CalculatorWidget()
+        self._calc_tab = self.tabs.addTab(self.calc_widget, "Kalkulator")
 
         self.diff_widget = DiffWidget()
         self._diff_tab = self.tabs.addTab(self.diff_widget, "Diff")
@@ -2743,43 +2820,16 @@ class MainWindow(QMainWindow):
         self._map_diff_tab = self.tabs.addTab(self.map_diff_widget, "Map Diff")
         self.tabs.setTabVisible(self._map_diff_tab, False)
 
-        self.calc_widget = CalculatorWidget()
-        self._calc_tab = self.tabs.addTab(self.calc_widget, "Kalkulator")
-
-        self.eeprom_widget = EepromWidget()
-        self._eeprom_tab = self.tabs.addTab(self.eeprom_widget, "EEPROM")
-
-        self.can_widget = CanNetworkWidget()
-        self._can_tab = self.tabs.addTab(self.can_widget, "CAN Network")
-
-        self.can_logger_widget = CanLoggerWidget()
-        self._can_logger_tab = self.tabs.addTab(self.can_logger_widget, "CAN Logger")
-
-        # CAN Live — live decode s dashboardom
-        self.can_live_panel = CanLivePanel()
-        self._can_live_tab = self.tabs.addTab(self.can_live_panel, "CAN Live")
-
-        # Vizualizacija — heat mapa odabrane mape
-        self.heat_widget = MapHeatWidget()
-        self.heat_widget.cell_clicked.connect(
-            lambda r, c, v: self._on_heat_cell_clicked(r, c)
-        )
-        self._viz_tab = self.tabs.addTab(self.heat_widget, "Vizualizacija")
-
-        # Map Grid — read-only pregled mapa s listom i tablicom
-        self.map_grid_tab = MapGridTab()
-        self._map_grid_tab_idx = self.tabs.addTab(self.map_grid_tab, "Mape")
-
-        # Vizualno naglasavanje kljucnih tabova
         _tb = self.tabs.tabBar()
-        _tb.setTabTextColor(0, QColor("#9cdcfe"))               # Map Editor — plava
         _tb.setTabTextColor(self._dtc_tab, QColor("#f48771"))   # DTC Off — narandzasta
-        _tb.setTabTextColor(self._can_tab, QColor("#4ec9b0"))   # CAN Network — teal
-        _tb.setTabTextColor(self._can_live_tab, QColor("#4ec9b0"))  # CAN Live — teal
-        _tb.setTabTextColor(self._viz_tab, QColor("#c586c0"))   # Vizualizacija — ljubicasta
+        _tb.setTabTextColor(self._eeprom_tab, QColor("#c586c0")) # EEPROM — ljubicasta
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        center_vsplit.addWidget(self.tabs)
+        alati_lo.addWidget(self.tabs)
+        self._main_tabs.addTab(alati_w, "ALATI")
+
+        self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
+        center_vsplit.addWidget(self._main_tabs)
 
         # Hex + Log — vertikalni split
         hl_split = QSplitter(Qt.Orientation.Vertical)
@@ -2994,7 +3044,8 @@ class MainWindow(QMainWindow):
         self._add_action(tm, "Prikazi Map Diff",      "",     self._show_map_diff)
         tm.addSeparator()
         self._add_action(tm, "Kalkulator  (Ctrl+K)", "Ctrl+K",
-                         lambda: self.tabs.setCurrentIndex(self._calc_tab))
+                         lambda: (self._main_tabs.setCurrentIndex(1),
+                                  self.tabs.setCurrentIndex(self._calc_tab)))
         tm.addSeparator()
         self._add_action(tm, "Checksum analiza...", "",       self._checksum_analysis)
 
@@ -3010,13 +3061,17 @@ class MainWindow(QMainWindow):
 
     # ── Tab / Sidebar ─────────────────────────────────────────────────────────
 
+    def _on_main_tab_changed(self, idx: int):
+        if idx == 0:  # MAPE
+            self._sidebar_stack.setCurrentIndex(0)
+        else:  # ALATI
+            self._on_tab_changed(self.tabs.currentIndex())
+
     def _on_tab_changed(self, idx: int):
         if idx == self._dtc_tab:
             self._sidebar_stack.setCurrentIndex(1)
         elif idx == self._eeprom_tab:
             self._sidebar_stack.setCurrentIndex(2)
-        elif idx == self._can_tab:
-            self._sidebar_stack.setCurrentIndex(3)
         else:
             self._sidebar_stack.setCurrentIndex(0)
 
@@ -3042,12 +3097,7 @@ class MainWindow(QMainWindow):
         self.eeprom_widget.show_entry(key)
 
     def _on_can_id_selected(self, can_id: int):
-        self.can_widget.show_id(can_id)
-
-    def _populate_can_sidebar(self):
-        from ui.can_network_widget import CAN_ID_INFO
-        ids = sorted(CAN_ID_INFO.items())
-        self.can_sidebar.populate([(can_id, info[0]) for can_id, info in ids])
+        pass  # CAN Network tab uklonjen — sidebar CAN ID selekcija nije aktivna
 
     # ── Load / Save ───────────────────────────────────────────────────────────
 
@@ -3063,9 +3113,6 @@ class MainWindow(QMainWindow):
             self.dtc_panel.set_engine(self.dtc_eng)
             self.dtc_panel.dtc_status_changed.connect(self._on_dtc_status_changed)
             self.dtc_sidebar.set_engine(self.dtc_eng)
-            self.can_widget.set_engine(eng)
-            # Napuni CAN sidebar s ID-ovima iz widgeta
-            self._populate_can_sidebar()
             name = Path(path).name
             self._file_lbl.setText(
                 f"  <b style='color:#9cdcfe'>{info.sw_id}</b>"
@@ -3213,7 +3260,7 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         self._sb_progress.hide()
         self.map_lib.populate(maps)
-        self.map_grid_tab.set_maps(maps)
+        # map_grid_tab uklonjen
         self.log_strip.log(f"Pronadjeno {len(maps)} mapa.", "ok")
         self.status.showMessage(f"✓ {len(maps)} mapa učitano.")
         # Update maps count badge in status bar
@@ -3243,6 +3290,7 @@ class MainWindow(QMainWindow):
             )
             if dtc_code and self.dtc_eng:
                 self.dtc_panel.show_dtc(dtc_code)
+                self._main_tabs.setCurrentIndex(1)
                 self.tabs.setCurrentIndex(self._dtc_tab)
                 status = self.dtc_eng.get_status(dtc_code)
                 if status: self.props.show_dtc_details(status)
@@ -3258,8 +3306,6 @@ class MainWindow(QMainWindow):
         compare = fm_ref or fm2
 
         self.map_view.show_map(fm, compare)
-        # Heat mapa — ažuriraj vizualizaciju
-        self.heat_widget.set_map(fm)
         # Ažuriraj label za REF vs Fajl 2
         if compare:
             src = "REF" if fm_ref else "Fajl 2"
@@ -3268,7 +3314,7 @@ class MainWindow(QMainWindow):
             )
         self.props.show_map_stats(fm)
         if self.eng1: self.hex_strip.show(self.eng1, fm.address)
-        self.tabs.setCurrentIndex(0)
+        self._main_tabs.setCurrentIndex(0)
         cmp = "  |  REF aktivna" if fm_ref else ("  |  Fajl 2 aktivna" if fm2 else "")
         self.status.showMessage(f"{fm.defn.name}  @  0x{fm.address:06X}  {fm.defn.rows}×{fm.defn.cols}  {fm.defn.unit}{cmp}")
         # Region badge in status bar
@@ -3281,7 +3327,7 @@ class MainWindow(QMainWindow):
         if not self._cur: return
         self._on_cell_click(row, col, self._cur)
         # Prebaci na Map Editor i selektiraj ćeliju
-        self.tabs.setCurrentIndex(0)
+        self._main_tabs.setCurrentIndex(0)
         self.map_view.select_cell(row, col)
 
     def _on_cell_click(self, row: int, col: int, fm: FoundMap):
@@ -3494,6 +3540,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         self.eeprom_widget.load_file(path)
+        self._main_tabs.setCurrentIndex(1)
         self.tabs.setCurrentIndex(self._eeprom_tab)
         self.log_strip.log(f"EEPROM učitan: {path}", "ok")
 
@@ -3503,6 +3550,7 @@ class MainWindow(QMainWindow):
         if not (self.eng1 and self.eng2):
             self.status.showMessage("Ucitaj oba fajla."); return
         self.diff_widget.show_diff(self.eng1, self.eng2)
+        self._main_tabs.setCurrentIndex(1)
         self.tabs.setCurrentIndex(self._diff_tab)
 
     def _show_map_diff(self):
@@ -3516,6 +3564,7 @@ class MainWindow(QMainWindow):
         try:
             differ = MapDiffer(self.eng1, self.eng2)
             self.map_diff_widget.load_diff(differ, sw1, sw2)
+            self._main_tabs.setCurrentIndex(1)
             self.tabs.setCurrentIndex(self._map_diff_tab)
             self.log_strip.log("Map Diff: gotovo.", "ok")
         except Exception as e:
@@ -3555,6 +3604,16 @@ class MainWindow(QMainWindow):
             self._update_sb_checksum(cs_ok)
         except Exception:
             pass
+
+    # ── SW Kompatibilnost ─────────────────────────────────────────────────────
+
+    def _open_sw_compat(self):
+        """Otvori SW Kompatibilnost dijalog s trenutno učitanim SW ID-om."""
+        sw_id = ""
+        if self.eng1 and self.eng1.info:
+            sw_id = self.eng1.info.sw_id or ""
+        dlg = SwCompatWidget(self, sw_id=sw_id)
+        dlg.exec()
 
     # ── Checksum analiza ──────────────────────────────────────────────────────
 
@@ -3596,13 +3655,18 @@ class MainWindow(QMainWindow):
 
     def _about(self):
         QMessageBox.information(self, "O programu",
-            "ME17Suite\nBosch ME17.8.5 by Rotax\n\n"
+            "ME17Suite  —  Bosch ME17.8.5 Rotax Editor\n\n"
             "MCU: Infineon TC1762 (TriCore, Little Endian)\n"
-            "SW: 10SW066726 (ORI) / 10SW040039 (NPRo STG2)\n\n"
-            "Mape: Ignition 14×12×12, Injection 12×32,\n"
-            "      Torque 16×16, Lambda 12×18, Rev Limiter×5\n\n"
-            "Faza 3: Undo/Redo, CSV export\n"
-            "Faza 4: Checksum analiza (u toku)"
+            "Platform: Rotax 1630 ACE / 1503 4-TEC / 900 ACE\n\n"
+            "Podržani SW: 10SW format (2016–2022)\n"
+            "  • Puna podrška: 2018–2021 (56–64 mapa)\n"
+            "  • Parcijalna: 2016 gen (~24 mape), 2017 gen\n"
+            "  • 2022 (10SW082806): samo SC bypass adrese\n\n"
+            "Mape: Ignition (19), Fuel 2D, Lambda (10+),\n"
+            "      Torque, SC Bypass, KFPED, DTC Off (121)\n\n"
+            "Funkcije: Map edit + Undo/Redo, DTC Off/On,\n"
+            "          EEPROM read/write, CAN live, Diff,\n"
+            "          SW Kompatibilnost, CSV export, 3D plot"
         )
 
     def keyPressEvent(self, e):

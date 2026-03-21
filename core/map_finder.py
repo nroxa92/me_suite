@@ -186,7 +186,8 @@ _REV_SCALAR_DEF = MapDef(
 )
 
 # 2 potvrdjene adrese rev limitera (ostale su bile pogresno identificirane — unutar 2D tablice)
-_REV_KNOWN_ADDRS = [0x02B72A, 0x02B73E]
+# 0x026E1E / 0x026D82: 2016 gen 4-TEC 1503 (10SW000776/000778/012502) — potvrdjeno 2026-03-21
+_REV_KNOWN_ADDRS = [0x02B72A, 0x02B73E, 0x026E1E, 0x026D82]
 
 _REV_LIMIT_HEUR = MapDef(
     name        = "Rev limiter — soft/mid/hard",
@@ -1137,7 +1138,7 @@ EFF_CORR_ADDR        = 0x0259DC   # 14×10 u8 data (ISPRAVKA: bilo 0x0259D2 s di
 EFF_CORR_AXIS_ADDR   = EFF_CORR_AXIS_Y_ADDR
 
 _EFF_CORR_DEF = MapDef(
-    name          = "Lambda — efikasnost sub-tablica (KFWIRKBA 2D sub)",
+    name          = "Faktor efikasnosti goriva (KFWIRKBA sub)",
     description   = (
         "KFWIRKBA 2D lambda-efikasnost sub-tablica odmah iza deadtime-a. "
         "14 redova (izmjerena lambda) × 10 kolona (referentna lambda). u8, scale /128. "
@@ -1459,7 +1460,7 @@ IGN_CORR_ADDR = 0x022374   # Start podatkovnog dijela (poslije 2×8B osi)
 IGN_CORR_AXIS_ADDR = 0x022364  # Y-os (prva os, 8× u8)
 
 _IGN_CORR_DEF = MapDef(
-    name          = "Paljenje — korekcija po RPM×load",
+    name          = "Paljenje — korekcija za moment (KFZW2)",
     description   = (
         "2D korekcijska tablica paljenja — 8×8 u8 vrijednosti. "
         "Osi ugrađene kao u8 ispred podataka (nije standardni format). "
@@ -1490,7 +1491,8 @@ _IGN_CORR_DEF = MapDef(
         "X-os (load%): raw/2.55 = %, 300hp max=255=100%, 130hp max=127=100% (normirani). "
         "VARIJANTA-SPECIFIČAN SADRŽAJ: osi se razlikuju za 300hp vs 130hp. "
         "STG2 cap: sve > 180 → 180 (ograničava torque/timing korekciju). "
-        "A2L naziv nepoznat — moguće KFZW2 ili KFMDREG. Confidence 70%."
+        "DID 0x2142 = 'Desired Ignition Angle After Torque Intervention' potvrdjuje da paljenje "
+        "prolazi kroz torque korekcijsku tablicu — ova 8x8 mapa je ta korekcija. Confidence 80%."
     ),
 )
 
@@ -1509,13 +1511,13 @@ _IGN_CORR_DEF = MapDef(
 TORQUE_OPT_ADDR = 0x02A7F0
 
 _TORQUE_OPT_DEF = MapDef(
-    name          = "Moment — optimalni / vozačev zahtjev [%]",
+    name          = "Vozačev zahtjev momenta — FWM [%]",
     description   = (
-        "Drugi torque blok odmah iza torque mirrora — Q8 format, 93–107% raspon. "
-        "Manji raspon od glavne torque mape (93–119%). "
-        "Moguće: 'Optimal torque' ili 'Driver demand torque' (BitEdit ME17.8.5). "
-        "300hp: 93–107%, 230hp: 90–108%, 130hp: 92–108%. "
-        "Razlikuje se po HP varijanti — aktivno kalibriran."
+        "Fahrerwunschmoment (FWM) — vozačev zahtjev momenta po RPM×load. "
+        "Potvrđeno: DID 0x213B (Driver's Desire Throttle Angle) → ova mapa → DID 0x2103 (Desired Indicated Engine Torque). "
+        "SC 300hp: 75–98% (smanjuje zahtjev — limitiranje), NA 130hp: 100–116% (pojačava — kompenzacija). "
+        "Q8 format, odmah iza torque mirrora @ 0x02A7F0. Razlikuje se po HP varijanti. "
+        "Confidence 95% (DID 0x2103/0x213B + binarni podaci potvrđeni)."
     ),
     category      = "torque",
     rows=16, cols=16,
@@ -1531,9 +1533,9 @@ _TORQUE_OPT_DEF = MapDef(
     notes         = (
         f"@ 0x{TORQUE_OPT_ADDR:06X}. Odmah iza torque mirrora (0x02A7F0). "
         "Q8 format: raw × 100/32768 = %. LSB uvijek 0x00. "
-        "BitEdit naziv: 'Optimal torque'. "
-        "300hp ORI: 93-107%, STG2: slicno ali preraspoređeno. "
-        "A2L potvrda potrebna za tocne osi i fizikalni smisao."
+        "DID 0x213B → FWM → DID 0x2103 (Desired Indicated Engine Torque). "
+        "300hp SC: 75-98% (ispod 1.0 = limiting), 130hp NA: 100-116% (iznad 1.0 = boost). "
+        "Confidence 95% — potvrđeno DID lancem i binarnom analizom."
     ),
 )
 
@@ -1670,7 +1672,7 @@ _DECEL_RPM_CUT_ENTRY_SIZE = 22   # 3×u16 RPM ticks + 8×u16 load os = 11×u16 =
 _DECEL_RPM_CUT_ENTRIES    = 16
 
 _DECEL_RPM_CUT_DEF = MapDef(
-    name          = "Decel RPM ramp — DFCO per-load pragovi",
+    name          = "DFCO — rampa odrezivanja goriva (RPM pragovi)",
     description   = (
         "Deceleration/DFCO RPM ramp tablica — 16 unosa × 22B = 352B. "
         "Svaki unos: 3 RPM period-ticks + 8 load-os vrijednosti. "
@@ -2597,11 +2599,120 @@ _300HP_SW_IDS = {
     "10SW066726",  # ori_300, rxpx300_21 (2016-2021, RXP/RXT/GTX 300hp)
     "10SW054296",  # 300hp SC 2020 ORI (2020 model year 300hp, pronađen u dumps/2020/1630ace/)
     "10SW040039",  # npro_stg2_300 (300hp NPRo tune, radi s 2020 i 2021 ORI)
-    "10SW004672",  # rxpx300_16 (300hp)
+    "10SW004672",  # rxpx300_16 (300hp, nema verif. dumpa)
+    "10SW004675",  # rxpx300_16_ori (300hp 2016 VERIFICIRAN — fuel @ 0x022016, rev @ 0x028E44, SC 0x3333)
     "10SW082806",  # backup_flash (noviji 300hp variant)
     "10SW053727",  # GTI SE 230 / Wake Pro 230 2021 (Rotax 1630 SC, 230hp)
     # 10SW053729 (GTI SE 130/170 2021) — NA motor, injection @ 0x022066 (GTI format) → nije ovdje!
 }
+
+# 4-TEC 1503 SW ID-ovi (GTI/RXP-X 130/155/230/260hp, 2018-2020)
+# VERIFICIRANO 2026-03-20: injection @ 0x02436C = sve nule za 1503 → skipati _scan_injection!
+# Iste adrese kao 1630 ACE za sve ostale mape (fuel/ign/lambda/torque/kfped).
+_1503_SW_IDS = {
+    "10SW025021",  # GTI 230hp 1503 SC 2018 (s fizičkim SC ventilom @ 0x020534)
+    "10SW025022",  # GTI 130hp 1503 NA 2018 v1
+    "10SW025752",  # GTI 155hp 1503 NA 2018 v2
+    "10SW040008",  # GTI 130/155/230hp 1503 2019 (isti SW za sve snage!)
+    "10SW040962",  # GTI 130hp 1503 NA 2020
+}
+
+# 2016 generacija — stariji ME17 CODE layout, standardne 2018+ adrese NE rade
+# 4-TEC 1503 varijante (000776/000778/012502):
+#   Rev limiter @ 0x026E1E (main), 0x026D82 (mirror) — potvrdjeno 2026-03-21
+#   SC bypass @ 0x012C60 = 0x2020 (ne standardna 0x020534/0x0205A8!)
+#   Fuel 2D @ 0x0232D0 (12×16 LE u16 Q15); IGN_BASE @ 0x028988 (stride 144B)
+#   Lambda @ 0x024A90 (main), +0x1B0 adapt, +0x360 trim; mirror +0x518
+#   Torque @ 0x027604 (16×16 LE u16 Q8), mirror @ 0x027B1C (+0x518)
+# 1630 ACE varijante (004675/004672):
+#   Rev limiter @ 0x028E44/0x028E94; SC bypass 0x3333 @ 0x0205A8; fuel NE radi na 0x022066
+_2016_GEN_SW_IDS = {
+    "10SW000776",  # 215hp SC 2016 4TEC 1503
+    "10SW000778",  # 260hp SC 2016 4TEC 1503
+    "10SW012502",  # 260hp SC 2017 4TEC 1503 — isti CODE layout kao 2016 gen
+    "10SW004675",  # 300hp SC 2016 1630 ACE (2016 gen layout, fuel garbage @ 0x022066)
+    "10SW004672",  # 300hp SC 2016/17 1630 ACE (1265B razlika od 004675, isti layout)
+}
+
+# 2017 generacija — parcijalna migracija prema 2018 layoutu (10SW012999 SAMO)
+# RADE na 2018 adresama: SC bypass (0x020534/0x0205A8), ign_base (0x02B730), rev_lim (0x028E94),
+#        sc_corr (0x02220E), kfped (0x029548), fuel_2d (0x022066)
+#        torque_main @ 0x02A0D8 (ISTA adresa kao 2018, ali drugačije vrijednosti)
+# OFFSET -0x2AA od 2018 adresa za SC-specifične mape (0x025000–0x027000 regija):
+#   boost_factor: 0x025B4E (ne 0x025DF8), temp_fuel: 0x025BA6 (ne 0x025E50)
+#   lambda_main: 0x026446 (ne 0x0266F0), mirror @ 0x02695E (+0x518)
+#   lambda_trim: 0x026B0E (ne 0x026DB8)
+#   torque_mirror: 0x029BC0 (ISPRED main-a, ne +0x518!)
+# Rev limiter samo @ 0x028E94 (nema kopije na 0x028E96)
+_2017_GEN_SW_IDS = {
+    "10SW012999",  # 230hp SC 2017 4TEC 1503 (jedini s parcijalnom migracijom)
+}
+
+# ─── 2016 gen 4-TEC 1503 — potvrdjene adrese mapa ────────────────────────────
+# Vrijedi za: 10SW000776 (215hp), 10SW000778 (260hp), 10SW012502 (260hp 2017)
+# Offset vs 1630 ACE 2016: -0x2076 (rev limiter), ostatak nema jednostavan globalni offset
+
+# 2016 gen 1503 — set koji ima poznate mape (1503 SW-ovi, NE 1630 ACE 004675/004672)
+_2016_GEN_1503_SW_IDS = {"10SW000776", "10SW000778", "10SW012502"}
+
+IGN_BASE_2016_1503   = 0x028988   # Ignition base — 12×12 u8, stride 144B; ~6 validnih mapa
+IGN_COUNT_2016_1503  = 19         # Skeniraj sve, validacija odbacuje nevalidne
+IGN_STRIDE_2016_1503 = 144        # isti stride kao 2018+
+
+LAM_TRIM_2016_1503   = 0x024A90   # Lambda trim — sve >1.0 (lean bias); potvrđeno agent a227/a12791
+LAM_MAIN_2016_1503   = 0x024C4A   # Lambda main — structural proof: lambda_bias(0x024B30)+141×2=0x024C4A; crosses ±1.0
+# LAM_ADAPT_2016_1503 = neidentificirana — tražiti poslije 0x025308 (oba agenta)
+LAM_MIRROR_2016_1503 = 0x518      # Mirror offset (isti kao 2018+ za sve lambda mape)
+# Mirrors: trim @ 0x024FA8 (=trim+0x518), main @ 0x025162 (=main+0x518)
+
+TORQUE_MAIN_2016_1503   = 0x027604   # Torque main — 16×16 LE u16 Q8
+TORQUE_MIRROR_2016_1503 = 0x027B1C   # Torque mirror — main + 0x518
+
+FUEL_2016_1503     = 0x0232D0   # Fuel 2D main — 12×16 LE u16 Q15
+FUEL_RPM_2016_1503 = 0x0232B0   # RPM X-os (16pt LE u16, raw/4 = RPM)
+FUEL_LOAD_2016_1503= 0x023298   # Load Y-os (12pt LE u16, Q14)
+
+SC_2016_1503 = 0x012C60   # SC bypass (shadow/active) — u8 value 0x2020 za SC varijante
+
+SC_CORR_2016_1503       = 0x023478   # SC correction 9×7 u16 LE Q14 (vs 2018+ @ 0x02220E)
+THERMAL_2016_1503       = 0x028004   # Thermal enrichment 8×7 u16 LE /64=% (vs 2018+ @ 0x02AA42)
+DEADTIME_2016_1503      = 0x023E04   # Deadtime 10×14 u16 LE (vs 2018+ @ 0x0258AA)
+EFF_CORR_2016_1503      = 0x023F36   # Eff correction 14×10 u8 /128 (vs 2018+ @ 0x0259DC)
+IGN_CORR_2D_2016_1503   = 0x02169A   # Ign correction 2D 8×8 u8 (vs 2018+ @ 0x022374)
+MAT_CORR_AXIS_2016_1503 = 0x025A92   # MAT correction axis 12pt u8
+MAT_CORR_DATA_2016_1503 = 0x025A9E   # MAT correction data 12pt u16 LE Q15 (vs 2018+ @ 0x0275EE)
+ACCEL_2016_1503         = 0x026223   # Accel enrichment 5×5 Q14 kompleksni format (vs 2018+ @ 0x028059)
+COLD_START_AXIS_2016_1503 = 0x02422A # Cold start axis 6pt u16 LE
+COLD_START_DATA_2016_1503 = 0x024236 # Cold start injection 1×6 u16 LE Q15 (vs 2018+ @ 0x025CDC)
+KFPED_HDR_2016_1503     = 0x026F4C   # KFPED header 32B (vs 2018+ @ 0x029528)
+KFPED_DATA_2016_1503    = 0x026F6C   # KFPED data 10×20 u8 (vs 2018+ @ 0x029548)
+KFPED_MIRROR_2016_1503  = 0xE6       # KFPED mirror offset (vs 2018+ 0xE8)
+
+OVERTEMP_LAM_2016_1503  = 0x024034   # Overtemp lambda 1×63 u16 LE Q15 (vs 2018+ 0x025ADA, -0x1AA6)
+NEUTRAL_CORR_2016_1503  = 0x0240B2   # Neutral correction 1×63 u16 LE Q14 (vs 2018+ 0x025B58, -0x1AA6)
+LAM_BIAS_2016_1503      = 0x024B30   # Lambda bias 1×141 u16 LE Q15 (vs 2018+ 0x0265D6, -0x1AA6)
+
+# ─── 2016 gen 1630 ACE — potvrdjene adrese mapa ───────────────────────────────
+# Vrijedi za: 10SW004675 (300hp 2016), 10SW004672 (300hp 2016/17)
+# Verificirano 2026-03-21 (Agent 5 scan). 004675 == 004672 na svim mapama (0 diff)!
+# Offset vs 2018+ NIJE JEDINSTVEN: fuel=-0x14, lambda=-0x2AC, ign=-0x412, torque=-0x590
+
+IGN_BASE_2016_ACE    = 0x02B31E   # IGN base — 19 mapa stride 144B (vs 2018+ 0x02B730, -0x412)
+                                   # Sadrzaj identican 2018+! (0 diff po svim 19 mapama)
+FUEL_2016_ACE        = 0x022052   # Fuel 2D — 12×16 u16 LE **Q14** (vs 2018+ 0x022066 Q15)
+                                   # Vrijednosti 2× vece od 2018+ Q15 (isto fizicki inject amount)
+LAM_MAIN_2016_ACE    = 0x026444   # Lambda main — 12×18 LE u16 Q15 (vs 2018+ 0x0266F0, -0x2AC)
+LAM_ADAPT_2016_ACE   = 0x0265F4   # Lambda adapt — (vs 2018+ 0x0268A0, -0x2AC)
+LAM_TRIM_2016_ACE    = 0x026B0C   # Lambda trim  — (vs 2018+ 0x026DB8, -0x2AC)
+                                   # NEMA mirror (0x026444+0x518=0x026960 je nesto drugo)
+TORQUE_MAIN_2016_ACE = 0x029B48   # Torque main — 16×16 BE u16 Q8 (vs 2018+ 0x02A0D8, -0x590)
+TORQUE_MIRROR_2016_ACE = 0x02A060 # Torque mirror — main + 0x518
+
+SC_BOOST_2016_ACE     = 0x025B4E  # SC boost 1×40 Q14 flat 20046 (vs 2018+ 0x025DF8, -0x2AA)
+SC_CORR_2016_ACE      = 0x0221FA  # SC corr 9×7 Q14 (vs 2018+ 0x02220E, -0x14; bit-identičan)
+OVERTEMP_LAM_2016_ACE = 0x025830  # Overtemp lambda 1×63 Q15 0xFFFF SC bypass (vs 0x025ADA, -0x2AA)
+NEUTRAL_CORR_2016_ACE = 0x0258AE  # Neutral corr 1×63 Q14 flat 0x4040 (vs 0x025B58, -0x2AA)
+DFCO_2016_ACE         = 0x02899C  # DFCO ramp 16×11 u16 LE (vs 2018+ 0x028C30, -0x294)
 
 # Poznati Spark 900 ACE SW ID-ovi s "10SW0" prefiksom (starija 666-serija HW063)
 # Ovi nemaju "1037" prefiks ali su verificirani Spark binariji
@@ -2768,15 +2879,15 @@ LAMBDA_EFF_U8_ADDR_4 = 0x027963  # kopija 4
 LAMBDA_EFF_U8_STRIDE = 290        # 256B podaci + 34B X-os
 
 _LAMBDA_EFF_U8_DEF = MapDef(
-    name          = "Lambda efikasnost u8 lookup (4x kopija)",
+    name          = "KFWIRKBA — tranzijentni odaziv (4 uvjeta)",
     description   = (
-        "Lambda efficiency lookup u8 format — 16×16 × 4 kopije @ 0x0275FD. "
-        "Svaka kopija: 256B u8 podaci + 34B X-os (lambda u8, /128). "
-        "Stride izmedju kopija: 290B. SC300: 0.797-0.898, NA130: 0.836-0.938. "
-        "NPRo STG2: prvih 2 stupca svih redova +5 do +8 (lean-side povecanje). "
-        "SC vs NA: RAZLICITI (222/240 razlika) — SC ima nizi faktor (boost efikasnost). "
-        "Fizikalni smisao: lambda Wirkungsgrad u8 sub-lookup (analogno KFWIRKBA). "
-        "Confidence: 70% (nema A2L potvrde, namjena pretpostavljena)."
+        "Lambda efikasnost u8 sub-lookup — 16×16 × 4 kopije @ 0x0275FD. "
+        "4 kopije = 4 uvjeta rada (cold/warm/WOT/decel ili 4 cil. stanja). "
+        "Tranzijentni odaziv: NPRo STG2 mijenja C0,C1 svih redova (+5 do +8) "
+        "→ agresivniji throttle odaziv (korisnik potvrdio NPRo je agresivniji na gas). "
+        "SC300: 0.797-0.898 (niža efikasnost = boost zona), NA130: 0.836-0.938. "
+        "SC vs NA: 222/240 razlika — potpuno različita kalibracija. "
+        "Confidence 80% (tranzijentni efekt potvrdjen NPRo ponašanjem)."
     ),
     category      = "lambda",
     rows=16, cols=16,
@@ -2800,7 +2911,7 @@ _LAMBDA_EFF_U8_DEF = MapDef(
         "Stride = 290B (256B data + 34B X-os u8). Skaliranje: raw/128 = faktor. "
         "NPRo STG2: C0,C1 svih redova +5 do +8 (lean-side korekcija). "
         "SC300 vs NA130: 222/240 razlika. 300hp vs 230hp: 56/240. "
-        "Confidence 70% — moguce A2L naziv KFWIRKBA u8 sub (specijalni uvjeti)."
+        "Confidence 80% — tranzijentni efekt potvrđen NPRo ponašanjem (agresivniji gas)."
     ),
 )
 
@@ -2821,19 +2932,20 @@ _LAMBDA_EFF_U8_DEF = MapDef(
 # lambda opseg za KFWIRKBA korekciju. STG2 bypass = ECU ignorira sve lambda-
 # zaštitne pragove (max performanse, bez toplinske zaštite).
 # SC300 vs NA130: 79/79 razlika — potpuno drugačija kalibracija po varijanti.
-# Confidence: 75% (Q15 lambda format potvrđen, namjena pretpostavljena)
+# Confidence: 95% (Q15 format + DID 0x2107/0x2158=0xFFFF bench potvrda + NPRo bypass)
 
 LAMBDA_THRESH_ADDR = 0x02B378
 
 _LAMBDA_THRESH_DEF = MapDef(
-    name          = "Lambda thresholds — KFWIRKBA pragovi [Q15]",
+    name          = "Lambda zaštita — pragovi aktivacije [Q15]",
     description   = (
-        "Lambda zastitni pragovi za KFWIRKBA korekciju — 79 u16 LE Q15 vrijednosti. "
+        "Lambda zaštitni pragovi — 79 u16 LE Q15 vrijednosti. "
         "Odmah ispred ignition bloka (0x02B730). "
-        "ORI 300hp SC: lam 0.43-1.80 (siroki raspon). ORI 130hp NA: lam 0.61-1.32 (uzi). "
-        "NPRo STG2: SVE 0xFFFF/0xFFFE = bypass svih pragova (max performanse). "
-        "SC vs NA: KOMPLETNO RAZLICITI (79/79 razlika). "
-        "Confidence: 75% (Q15 format potvrdjen, A2L naziv nepoznat)."
+        "ORI 300hp SC: λ 0.43–1.80 (široki raspon). ORI 130hp NA: λ 0.61–1.32 (uži). "
+        "NPRo STG2: SVE 0xFFFF/0xFFFE = bypass svih lambda zaštita (max performanse). "
+        "Bench potvrda: DID 0x2107/0x2158 = 0xFFFF (pragovi 'disabled' = konzistentno). "
+        "SC vs NA: 79/79 razlika — potpuno različita kalibracija. "
+        "Confidence 95% (DID bench potvrda + NPRo bypass uzorci)."
     ),
     category      = "lambda",
     rows=1, cols=79,
@@ -2942,10 +3054,27 @@ class MapFinder:
         sw = self._sw()
         return sw.startswith("10SW") and sw not in _300HP_SW_IDS and sw not in _SPARK_10SW_IDS
 
+    def _is_1503(self) -> bool:
+        """4-TEC 1503 detekcija. 0x02436C = sve nule za 1503 → _scan_injection preskočiti."""
+        return self._sw() in _1503_SW_IDS
+
+    def _is_2016_gen(self) -> bool:
+        """Stariji ME17 CODE layout — standardne 2018+ adrese ne rade.
+        SC bypass @ 0x012C60, fuel mapa NE @ 0x022066, boost @ 0x025DF8 = 0."""
+        return self._sw() in _2016_GEN_SW_IDS
+
+    def _is_2017_gen(self) -> bool:
+        """Parcijalna 2018 migracija — neke adrese rade (ign/rev/sc/lambda_main/kfped/fuel_2d),
+        neke ne (boost_fact/temp_fuel/lambda_trim/torque/inj_lin).
+        Rev limiter samo na jednoj adresi (0x028E94), ne na 0x028E96."""
+        return self._sw() in _2017_GEN_SW_IDS
+
     def find_all(self, progress_cb: Optional[Callable] = None) -> list[FoundMap]:
         self.results = []
-        is_spark  = self._is_spark()
-        is_gti_na = self._is_gti_na()
+        is_spark    = self._is_spark()
+        is_gti_na   = self._is_gti_na()
+        is_2016_gen = self._is_2016_gen()
+        is_2017_gen = self._is_2017_gen()
 
         if is_spark:
             # Spark 900 ACE mape (SW: 1037xxxxxx ili 10SW011328/039116)
@@ -2954,14 +3083,114 @@ class MapFinder:
             self._scan_spark_ignition(progress_cb)
             self._scan_spark_lambda(progress_cb)
             self._scan_spark_aux(progress_cb)
-        else:
-            # 300hp / 260hp ACE 1630 mape (SW: 10SWxxxxxx ili nepoznat)
-            # Za GTI/NA: standardni scan + GTI-specifični extras
+
+        elif is_2016_gen:
+            # ── 2016 generacija — stariji ME17 CODE layout ────────────────────
+            is_2016_1503 = self._sw() in _2016_GEN_1503_SW_IDS
+            if is_2016_1503:
+                # 4-TEC 1503 2016 gen: poznate adrese za sve glavne mape
+                if progress_cb: progress_cb(
+                    f"2016 gen 1503 SW detektiran ({self._sw()}) -- "
+                    "skeniranje 2016 gen 1503 mapa (fuel/ign/lambda/torque/sc)."
+                )
+                self._scan_rev_limiter_known(progress_cb)
+                self._scan_2016_1503_sc(progress_cb)
+                self._scan_2016_1503_sc_corr(progress_cb)
+                self._scan_2016_1503_fuel(progress_cb)
+                self._scan_2016_1503_ignition(progress_cb)
+                self._scan_2016_1503_ign_corr_2d(progress_cb)
+                self._scan_2016_1503_lambda(progress_cb)
+                self._scan_2016_1503_torque(progress_cb)
+                self._scan_2016_1503_thermal(progress_cb)
+                self._scan_2016_1503_deadtime(progress_cb)
+                self._scan_2016_1503_eff_corr(progress_cb)
+                self._scan_2016_1503_mat_corr(progress_cb)
+                self._scan_2016_1503_accel(progress_cb)
+                self._scan_2016_1503_cold_start(progress_cb)
+                self._scan_2016_1503_kfped(progress_cb)
+                self._scan_2016_1503_overtemp_lambda(progress_cb)
+                self._scan_2016_1503_neutral_corr(progress_cb)
+                self._scan_2016_1503_lambda_bias(progress_cb)
+            else:
+                # 1630 ACE 2016 gen (004675/004672) — podrska za sve glavne mape
+                # Rev @ 0x028E44/0x028E94 (heuristika pronalazi)
+                # SC bypass @ 0x0205A8 = 0x3333; fuel Q14 format @ 0x022052
+                if progress_cb: progress_cb(
+                    f"2016 gen 1630 ACE detektiran ({self._sw()}) -- "
+                    "skeniranje 2016 ACE mapa (fuel Q14/ign/lambda/torque/sc)."
+                )
+                self._scan_rev_limiter_known(progress_cb)
+                self._scan_rev_limiter_heuristic(progress_cb)
+                self._scan_sc(progress_cb)
+                self._scan_2016_ace_sc_corr(progress_cb)
+                self._scan_2016_ace_boost(progress_cb)
+                self._scan_2016_ace_fuel(progress_cb)
+                self._scan_2016_ace_ignition(progress_cb)
+                self._scan_2016_ace_lambda(progress_cb)
+                self._scan_2016_ace_torque(progress_cb)
+                self._scan_2016_ace_overtemp_lambda(progress_cb)
+                self._scan_2016_ace_neutral_corr(progress_cb)
+                self._scan_2016_ace_dfco(progress_cb)
+
+        elif is_2017_gen:
+            # ── 2017 generacija — parcijalna 2018 migracija ───────────────────
+            # RADE na 2018 adresama: ign, rev_lim, sc_bypass, sc_corr, lambda_main,
+            #                        kfped, fuel_2d (0x022066)
+            # NE RADE: boost_fact (0x025DF8=358), temp_fuel (0x025E50≈3000),
+            #           lambda_trim (0x026DB8=0), torque_main (0x02A0D8=39424),
+            #           inj_lin (0x02436C=0)
+            if progress_cb: progress_cb(
+                f"2017 gen SW detektiran ({self._sw()}) -- "
+                "parcijalna podrska (boost/temp_fuel/lambda_trim/torque/inj_lin preskoceni)."
+            )
             self._scan_rpm_axes(progress_cb)
             self._scan_rev_limiter_known(progress_cb)
             self._scan_rev_limiter_heuristic(progress_cb)
             self._scan_ignition(progress_cb)
-            self._scan_injection(progress_cb)
+            # inj_lin @ 0x02436C = 0 za 2017 → skipati
+            # torque @ 0x02A0D8 = 39424 (nije 32768 Q8 baseline) → skipati
+            self._scan_lambda(progress_cb)
+            self._scan_sc(progress_cb)
+            self._scan_cold_start(progress_cb)
+            self._scan_knock_params(progress_cb)
+            self._scan_cts_temp_axis(progress_cb)
+            self._scan_sc_correction(progress_cb)
+            # temp_fuel @ 0x025E50 ≈ 3000 (ne ~23000) → skipati
+            self._scan_lambda_bias(progress_cb)
+            self._scan_lambda_prot(progress_cb)
+            # lambda_trim @ 0x026DB8 = 0 → skipati
+            self._scan_lambda_adapt(progress_cb)
+            self._scan_deadtime(progress_cb)
+            self._scan_dfco(progress_cb)
+            self._scan_decel_rpm_cut(progress_cb)
+            self._scan_idle_rpm(progress_cb)
+            self._scan_accel_enrich(progress_cb)
+            self._scan_start_inj(progress_cb)
+            self._scan_ign_corr(progress_cb)
+            self._scan_therm_enrich(progress_cb)
+            self._scan_eff_corr(progress_cb)
+            self._scan_overtemp_lambda(progress_cb)
+            self._scan_neutral_corr(progress_cb)
+            # boost_fact @ 0x025DF8 = 358 (ne 23130 Q14) → skipati
+            self._scan_lambda_eff(progress_cb)
+            self._scan_lambda_thresh(progress_cb)
+            self._scan_kfped(progress_cb)
+            self._scan_mat(progress_cb)
+            # fuel_2d @ 0x022066 vjerojatno radi za 2017 gen
+            self._scan_ace1630_injection(progress_cb)
+
+        else:
+            # ── 2018+ generacija — standardni layout ──────────────────────────
+            # 300hp / 260hp ACE 1630 mape (SW: 10SWxxxxxx ili nepoznat)
+            # Za GTI/NA: standardni scan + GTI-specifični extras
+            is_1503 = self._is_1503()
+            self._scan_rpm_axes(progress_cb)
+            self._scan_rev_limiter_known(progress_cb)
+            self._scan_rev_limiter_heuristic(progress_cb)
+            self._scan_ignition(progress_cb)
+            # 0x02436C (injection linearization) = sve nule za 4-TEC 1503 → skipati!
+            if not is_1503:
+                self._scan_injection(progress_cb)
             self._scan_torque(progress_cb)
             self._scan_lambda(progress_cb)
             self._scan_sc(progress_cb)
@@ -3039,6 +3268,10 @@ class MapFinder:
             if addr + 2 > len(data):
                 continue
             val = int.from_bytes(data[addr:addr+2], 'little')
+            # 0x2121 = IGN DATA bajtovi [0x21, 0x21] = 24.75° BTDC — nije rev limiter!
+            if val == 0x2121:
+                if cb: cb(f"  Rev @ 0x{addr:06X}: 0x2121 = IGN DATA, preskacam")
+                continue
             if 4000 <= val <= 13000:
                 defn = MapDef(
                     name          = f"Rev limiter — scalar (0x{addr:06X})",
@@ -4933,6 +5166,983 @@ class MapFinder:
         if cb: cb(f"  MAT @ 0x{addr:06X}  12pt Q15  "
                   f"temp=[{temp_raw[0]-40}–{temp_raw[5]-40}°C korisno]  "
                   f"faktor=[{vals[0]/32768:.3f}–{vals[5]/32768:.3f}]")
+
+    # ── 2016 gen 4-TEC 1503 skeneri ──────────────────────────────────────────
+
+    def _scan_2016_1503_sc(self, cb=None):
+        """SC bypass @ 0x012C60 — 2016 gen 1503.
+        Vrijednost 0x2020 = SC aktivan (215/260hp SC); NA varijante nemaju SC ventil.
+        Adresa je drukčija od standardne (0x020534/0x0205A8)!
+        """
+        if cb: cb("2016 1503: trazim SC bypass @ 0x012C60...")
+        data = self.eng.get_bytes()
+        addr = SC_2016_1503
+        n    = _SC_DEF.rows * _SC_DEF.cols  # 7 × 7 = 49
+
+        if addr + n > len(data):
+            if cb: cb(f"  SC 2016: adresa van granica fajla")
+            return
+
+        vals = list(data[addr:addr + n])
+        non_trivial = sum(1 for v in vals if 0 < v < 255)
+        if non_trivial < n // 4:
+            if cb: cb(f"  SC 2016 @ 0x{addr:06X}: nedovoljno raznolikih vrijednosti — preskacam")
+            return
+
+        from dataclasses import replace as _rep
+        defn = _rep(_SC_DEF,
+                    notes=f"2016 gen 1503 SC bypass @ 0x{addr:06X}. "
+                          "SC 215/260hp = 0x2020 (razlicita adresa od 2018+ 0x020534!). "
+                          "NA varijante imaju bypass aktivan (nije fizicki ventil).")
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  SC 2016 1503 @ 0x{addr:06X}  7×7  raw=[{min(vals)}-{max(vals)}]")
+
+    def _scan_2016_1503_fuel(self, cb=None):
+        """2D fuel injection mapa @ 0x0232D0 — 2016 gen 1503.
+        Format: 12×16 LE u16 Q15 (isto kao 2018+ ACE 1630 ali na drugoj adresi).
+        RPM X-os @ 0x0232B0 (16pt LE u16, raw/4=RPM); Load Y-os @ 0x023298 (12pt LE u16 Q14).
+        """
+        if cb: cb("2016 1503: trazim fuel 2D mapu @ 0x0232D0...")
+        data = self.eng.get_bytes()
+        addr  = FUEL_2016_1503
+        ROWS, COLS = 12, 16
+        n = ROWS * COLS  # 192
+
+        if addr + n * 2 > len(data):
+            if cb: cb(f"  Fuel 2016: adresa van granica fajla")
+            return
+
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+
+        in_range = sum(1 for v in vals if 500 <= v <= 35000)
+        if in_range < n * 0.70:
+            if cb: cb(f"  Fuel 2016 @ 0x{addr:06X}: Q15 validacija pala ({in_range}/{n}) — preskacam")
+            return
+
+        row_vars = [max(vals[r*COLS:(r+1)*COLS]) - min(vals[r*COLS:(r+1)*COLS])
+                    for r in range(ROWS)]
+        if sum(1 for v in row_vars if v > 200) < 3:
+            if cb: cb(f"  Fuel 2016 @ 0x{addr:06X}: premalo varijacije (flat?) — preskacam")
+            return
+
+        # Osi su u Q14-like enkodiranju (slicno 2018 GTI 1503 load osi) — NISU RPM/4!
+        # Vrijednosti 714-2325 (X) i 1950-2270 (Y) su raw Q14 normalizirane velicine
+        rpm_vals  = [int.from_bytes(data[FUEL_RPM_2016_1503  + i*2: FUEL_RPM_2016_1503  + i*2 + 2], 'little')
+                     for i in range(COLS)]
+        # Load os: zadnje 2 vrijednosti (0, ~480) su sumnjive — koristimo prvih 10 ako ROWS=12
+        load_vals = [int.from_bytes(data[FUEL_LOAD_2016_1503 + i*2: FUEL_LOAD_2016_1503 + i*2 + 2], 'little')
+                     for i in range(ROWS)]
+
+        x_axis = AxisDef(count=COLS, byte_order="LE", dtype="u16", scale=1.0/16384, unit="load X [Q14]", values=rpm_vals)
+        y_axis = AxisDef(count=ROWS, byte_order="LE", dtype="u16", scale=1.0/16384, unit="load Y [Q14]", values=load_vals)
+
+        defn = MapDef(
+            name          = "Gorivo — 2D mapa [Q15] (2016 1503)",
+            description   = ("2D fuel injection mapa za 4-TEC 1503 2016 gen. "
+                             "Format identičan 2018+ ACE 1630 ali adresa drukčija (0x0232D0 vs 0x022066). "
+                             "12×16 LE u16 Q15: raw/32768 = relativni faktor punjenja."),
+            category      = "fuel",
+            rows=ROWS, cols=COLS,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0, offset_val = 0.0, unit = "Q15",
+            axis_x        = x_axis,
+            axis_y        = y_axis,
+            raw_min       = 500, raw_max = 35000,
+            mirror_offset = 0,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Osi @ 0x0232B0 (16pt, Q14 raw) i @ 0x023298 (12pt, Q14 raw). "
+                             "Napomena: dijagonalne 0-vrijednosti su normalne (fuel cut zone). "
+                             "NEMA mirrora. Tocno fizikalno znacenje osi zahtijeva A2L potvrdu."),
+        )
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        if cb: cb(f"  Fuel 2016 1503 @ 0x{addr:06X}  12×16  Q15  "
+                  f"min={min(vals)/32767:.3f}  max={max(vals)/32767:.3f}  RPM={rpm_vals[0]}-{rpm_vals[-1]}")
+
+    def _scan_2016_1503_ignition(self, cb=None):
+        """Ignition serija @ 0x028988 — 2016 gen 1503.
+        Format: 12×12 u8, stride 144B (isti kao 2018+, ali na drugoj bazi).
+        ~6 validnih mapa; nastavlja skenirati sve dok postoji validnih podataka.
+        """
+        if cb: cb(f"2016 1503: trazim ignition mape @ 0x{IGN_BASE_2016_1503:06X}...")
+        data  = self.eng.get_bytes()
+        found = 0
+
+        for idx in range(IGN_COUNT_2016_1503):
+            addr = IGN_BASE_2016_1503 + idx * IGN_STRIDE_2016_1503
+            if addr + IGN_STRIDE_2016_1503 > len(data):
+                break
+
+            raw = list(data[addr:addr + IGN_STRIDE_2016_1503])
+
+            is_knock   = idx in (8, 9)
+            is_partial = idx == 18
+            if is_knock or is_partial:
+                in_range  = sum(1 for v in raw if 0 <= v <= 58)
+                threshold = 0.40
+            else:
+                in_range  = sum(1 for v in raw if 16 <= v <= 58)
+                threshold = 0.80
+            if in_range / len(raw) < threshold:
+                if cb: cb(f"  Ign 2016 #{idx:02d} @ 0x{addr:06X}: validacija pala — preskacam")
+                continue
+
+            # Koristimo standardne IGN_DEFS ako postoje, inace generiramo
+            if idx < len(_IGN_DEFS):
+                defn = _IGN_DEFS[idx]
+                name = _IGN_NAMES[idx] if idx < len(_IGN_NAMES) else f"Paljenje #{idx:02d}"
+            else:
+                name = f"Paljenje — mapa #{idx:02d}"
+                defn = MapDef(
+                    name     = f"{name} (2016 1503)",
+                    description = f"Ignition mapa #{idx:02d} @ 0x{addr:06X} — 2016 gen 1503",
+                    category = "ignition",
+                    rows=12, cols=12, byte_order="BE", dtype="u8",
+                    scale=0.75, offset_val=0.0, unit="° BTDC",
+                    raw_min=0, raw_max=58, mirror_offset=0,
+                )
+
+            from dataclasses import replace as _rep
+            defn2 = _rep(defn,
+                         name  = defn.name + " (2016 1503)",
+                         notes = (getattr(defn, 'notes', '') or '') +
+                                 f" 2016 gen 1503 @ 0x{addr:06X} (base 0x028988, stride 144B).")
+            self.results.append(FoundMap(
+                defn    = defn2,
+                address = addr,
+                sw_id   = self._sw(),
+                data    = raw,
+            ))
+            found += 1
+            if cb: cb(f"  Ign 2016 1503 #{idx:02d} {name:20s} @ 0x{addr:06X}"
+                      f"  raw=[{min(raw)}–{max(raw)}]"
+                      f"  ({min(raw)*0.75:.1f}°–{max(raw)*0.75:.1f}°BTDC)")
+
+        if cb: cb(f"  Ignition 2016 1503: {found} mapa pronadjeno")
+
+    def _scan_2016_1503_lambda(self, cb=None):
+        """Lambda mape — 2016 gen 1503.
+        Trim @ 0x024A90 (sve >1.0, lean bias).
+        Main @ 0x024C4A (structural proof: lambda_bias@0x024B30 + 141×2 = 0x024C4A; crosses ±1.0).
+        Adapt — neidentificirana (tražiti poslije 0x025308).
+        Mirror offset +0x518. Format: 12×18 LE u16 Q15 (isti kao 2018+).
+        """
+        if cb: cb("2016 1503: trazim lambda mape (trim@0x024A90, main@0x024C4A)...")
+        data = self.eng.get_bytes()
+
+        entries = [
+            (LAM_TRIM_2016_1503, "Lambda trim — sekundarna korekcija (2016 1503)"),
+            (LAM_MAIN_2016_1503, "Lambda — ciljni AFR (2016 1503)"),
+        ]
+
+        for addr, name in entries:
+            n    = 12 * 18  # 216
+            size = n * 2
+            if addr + size > len(data):
+                if cb: cb(f"  Lambda 2016 @ 0x{addr:06X}: van granica")
+                continue
+
+            vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little') for i in range(n)]
+            non_zero = sum(1 for v in vals if v > 100)
+            if non_zero < n // 2:
+                if cb: cb(f"  Lambda 2016 @ 0x{addr:06X}: previse nula — preskacam")
+                continue
+
+            mirror_addr = addr + LAM_MIRROR_2016_1503
+            defn = MapDef(
+                name          = name,
+                description   = (f"Lambda mapa 2016 gen 1503 @ 0x{addr:06X}. "
+                                 "12×18 LE u16 Q15; raw/32768 = lambda. Mirror @ "
+                                 f"0x{mirror_addr:06X} (+0x518)."),
+                category      = "lambda",
+                rows=12, cols=18,
+                byte_order    = "LE", dtype = "u16",
+                scale         = 1.0 / 32768.0, offset_val = 0.0, unit = "lambda",
+                axis_x        = _LAMBDA_LOAD_AXIS_18,
+                axis_y        = _RPM_AXIS_12,
+                raw_min       = 16384, raw_max = 65535,
+                mirror_offset = LAM_MIRROR_2016_1503,
+                notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                                 "Osi vjerojatno iste kao 2018+ (nisu zasebno verificirane). "
+                                 f"Mirror @ 0x{mirror_addr:06X}."),
+            )
+            self.results.append(FoundMap(
+                defn    = defn,
+                address = addr,
+                sw_id   = self._sw(),
+                data    = vals,
+            ))
+            lam_min = min(vals) / 32768.0
+            lam_max = max(vals) / 32768.0
+            if cb: cb(f"  Lambda 2016 1503 @ 0x{addr:06X}  12×18  lam=[{lam_min:.3f}-{lam_max:.3f}]"
+                      f"  mirror @ 0x{mirror_addr:06X}")
+
+    def _scan_2016_1503_torque(self, cb=None):
+        """Torque mapa @ 0x027604 — 2016 gen 1503.
+        Format: 16×16 LE u16 Q8 (raw/256 = relativna vrijednost, tipično 0.50-0.55 za 1503).
+        Mirror @ 0x027B1C (+0x518).
+        """
+        if cb: cb(f"2016 1503: trazim torque mapu @ 0x{TORQUE_MAIN_2016_1503:06X}...")
+        data = self.eng.get_bytes()
+        addr = TORQUE_MAIN_2016_1503
+        n    = 16 * 16  # 256
+        size = n * 2
+
+        if addr + size > len(data):
+            if cb: cb(f"  Torque 2016: adresa van granica fajla")
+            return
+
+        # LE u16 Q8: stored as [value_lo, value_hi]; tipicno value_hi=0, value_lo=133-138
+        # raw = lo | (hi<<8); za malu vrijednost 128-160: hi=0, lo=128-160
+        # Validacija: second byte (hi) mora biti 0, first byte (lo) u razumnom rasponu
+        vals = []
+        for i in range(n):
+            o  = addr + i * 2
+            lo = data[o]      # LE: low byte first
+            hi = data[o + 1]  # high byte
+            if hi != 0x00:
+                if cb: cb(f"  Torque 2016 @ 0x{addr:06X}: hi byte != 0 na idx {i} — preskacam")
+                return
+            if not (64 <= lo <= 240):  # razuman raspon za Q8 torque scalar
+                if cb: cb(f"  Torque 2016 @ 0x{addr:06X}: lo={lo} van raspona na idx {i} — preskacam")
+                return
+            vals.append((hi << 8) | lo)
+
+        defn = MapDef(
+            name          = "Moment — ogranicenje [Q8] (2016 1503)",
+            description   = ("Ogranicenje momenta motora — 16×16 tablica, 2016 gen 1503. "
+                             "LE u16 Q8: raw/256 = relativni faktor (tipično 0.50-0.55 stock). "
+                             "215hp row0=0.50, 260hp row0=0.53. Mirror @ 0x027B1C."),
+            category      = "torque",
+            rows=16, cols=16,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 256.0, offset_val = 0.0, unit = "factor",
+            axis_x        = _RPM_AXIS_16,
+            axis_y        = _LOAD_AXIS_16,
+            raw_min       = 64, raw_max = 240,
+            mirror_offset = TORQUE_MIRROR_2016_1503 - TORQUE_MAIN_2016_1503,  # 0x518
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "LE u16 Q8 (ne BE Q8 kao 2018+ ACE 1630!). "
+                             "raw/256 = faktor; 128/256=0.50, 136/256=0.53. "
+                             f"Mirror @ 0x{TORQUE_MIRROR_2016_1503:06X} (+0x518)."),
+        )
+        self.results.append(FoundMap(
+            defn    = defn,
+            address = addr,
+            sw_id   = self._sw(),
+            data    = vals,
+        ))
+        lo_vals = [v & 0xFF for v in vals]
+        if cb: cb(f"  Torque 2016 1503 @ 0x{addr:06X}  16×16  "
+                  f"lo=[{min(lo_vals)}-{max(lo_vals)}]  "
+                  f"Q8=[{min(lo_vals)/256:.3f}-{max(lo_vals)/256:.3f}]  "
+                  f"mirror @ 0x{TORQUE_MIRROR_2016_1503:06X}")
+
+    def _scan_2016_1503_sc_corr(self, cb=None):
+        """SC correction 9×7 u16 LE Q14 @ 0x023478 — 2016 gen 1503."""
+        addr = SC_CORR_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 9*7*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(9 * 7)]
+        # Provjera: Q14 raspon [1.0–2.0] = raw [16384–32768]; može biti do ~31000
+        valid = sum(1 for v in vals if 16000 <= v <= 33000)
+        if valid < 50:
+            if cb: cb(f"  SC corr 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/63)")
+            return
+        defn = MapDef(
+            name          = "SC korekcija — boost kompenzacija (2016 1503)",
+            description   = ("SC bypass correction — 9×7 tablica Q14. "
+                             "Kompenzira boost faktor ovisno o MAP/ETA. "
+                             "Format isti kao 2018+ (Q14), ali adresa razlicita."),
+            category      = "misc",
+            rows=9, cols=7,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 14000, raw_max = 35000,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x02220E): +0x126A. "
+                             "215hp == 260hp == 2017/260 identicni."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  SC corr 2016 1503 @ 0x{addr:06X}  9×7  "
+                  f"Q14=[{min(vals)/16384:.3f}-{max(vals)/16384:.3f}]")
+
+    def _scan_2016_1503_thermal(self, cb=None):
+        """Thermal enrichment 8×7 u16 LE /64 @ 0x028004 — 2016 gen 1503."""
+        addr = THERMAL_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 8*7*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(8 * 7)]
+        valid = sum(1 for v in vals if 1000 <= v <= 25000)
+        if valid < 40:
+            if cb: cb(f"  Thermal 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/56)")
+            return
+        defn = MapDef(
+            name          = "Termicka korekcija goriva (2016 1503)",
+            description   = ("Termicka korekcija goriva — 8×7 tablica. "
+                             "raw/64 = postotak korekcije. "
+                             "Aktivna pri niskim CTS temperaturama (enrichment pri hladnom startu)."),
+            category      = "injection",
+            rows=8, cols=7,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 64.0,
+            unit          = "%",
+            raw_min       = 0, raw_max = 25600,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x02AA42): -0x2A3E. "
+                             "Vrijednosti identicne 2018+."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Thermal 2016 1503 @ 0x{addr:06X}  8×7  "
+                  f"raw=[{min(vals)}-{max(vals)}]  %=[{min(vals)/64:.1f}-{max(vals)/64:.1f}]")
+
+    def _scan_2016_1503_deadtime(self, cb=None):
+        """Deadtime 10×14 u16 LE @ 0x023E04 — 2016 gen 1503."""
+        addr = DEADTIME_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 10*14*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(10 * 14)]
+        # Deadtime su padajuci nizovi (vece vrijednosti pri nizem naponu)
+        valid = sum(1 for v in vals if 500 <= v <= 10000)
+        if valid < 100:
+            if cb: cb(f"  Deadtime 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/140)")
+            return
+        defn = MapDef(
+            name          = "Deadtime injekcije (2016 1503)",
+            description   = ("Deadtime injekcije — 10×14 tablica u16 LE. "
+                             "Trajanje mrtve zone injekcijske mlaznice. "
+                             "Osi: X=trajanje, Y=temp. Read-only."),
+            category      = "injection",
+            rows=10, cols=14,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0,
+            unit          = "us",
+            raw_min       = 0, raw_max = 10000,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x0258AA): -0x1AA6. "
+                             "Read-only tablica."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Deadtime 2016 1503 @ 0x{addr:06X}  10×14  "
+                  f"raw=[{min(vals)}-{max(vals)}]")
+
+    def _scan_2016_1503_eff_corr(self, cb=None):
+        """Eff correction 14×10 u8 /128 @ 0x023F36 — 2016 gen 1503."""
+        addr = EFF_CORR_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 14*10 > len(data):
+            return
+        vals = list(data[addr: addr + 14*10])
+        valid = sum(1 for v in vals if 96 <= v <= 200)
+        if valid < 100:
+            if cb: cb(f"  Eff corr 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/140)")
+            return
+        defn = MapDef(
+            name          = "Efikasnost korekcija (KFWIRKBA sub) (2016 1503)",
+            description   = ("Efikasnost korekcija — 14×10 u8. "
+                             "raw/128 = 1.0 je neutralno. "
+                             "Osi: Y=lambda (14pt), X=lambda (10pt)."),
+            category      = "lambda",
+            rows=14, cols=10,
+            byte_order    = "LE", dtype = "u8",
+            scale         = 1.0 / 128.0,
+            unit          = "faktor",
+            raw_min       = 64, raw_max = 200,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x0259DC): -0x1AA6. "
+                             "Susjedna s deadtime blokom."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Eff corr 2016 1503 @ 0x{addr:06X}  14×10 u8  "
+                  f"raw=[{min(vals)}-{max(vals)}]  f=[{min(vals)/128:.3f}-{max(vals)/128:.3f}]")
+
+    def _scan_2016_1503_ign_corr_2d(self, cb=None):
+        """Ign correction 2D 8×8 u8 @ 0x02169A — 2016 gen 1503."""
+        addr = IGN_CORR_2D_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 8*8 > len(data):
+            return
+        vals = list(data[addr: addr + 8*8])
+        valid = sum(1 for v in vals if 80 <= v <= 220)
+        if valid < 50:
+            if cb: cb(f"  Ign corr 2D 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/64)")
+            return
+        defn = MapDef(
+            name          = "Korekcija paljenja 2D (2016 1503)",
+            description   = ("2D korekcija kuta paljenja — 8×8 u8. "
+                             "scale 0.75°/bit. Offset vs 2018+: -0x0CDA."),
+            category      = "ignition",
+            rows=8, cols=8,
+            byte_order    = "LE", dtype = "u8",
+            scale         = 0.75,
+            unit          = "degBTDC",
+            raw_min       = 0, raw_max = 255,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x022374): -0x0CDA."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Ign corr 2D 2016 1503 @ 0x{addr:06X}  8×8 u8  "
+                  f"deg=[{min(vals)*0.75:.1f}-{max(vals)*0.75:.1f}]")
+
+    def _scan_2016_1503_mat_corr(self, cb=None):
+        """MAT (intake air temp) correction 12pt Q15 @ 0x025A9E — 2016 gen 1503."""
+        addr_data = MAT_CORR_DATA_2016_1503
+        data = self.eng.get_bytes()
+        if addr_data + 12*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr_data + i*2: addr_data + i*2 + 2], 'little')
+                for i in range(12)]
+        valid = sum(1 for v in vals if 25000 <= v <= 33000)
+        if valid < 8:
+            if cb: cb(f"  MAT corr 2016 1503 @ 0x{addr_data:06X}: odbacen (valid={valid}/12)")
+            return
+        defn = MapDef(
+            name          = "MAT korekcija goriva (2016 1503)",
+            description   = ("Korekcija goriva ovisno o temperaturi usisnog zraka (MAT). "
+                             "12pt 1D tablica Q15. Vrijednosti ~0.93-0.97."),
+            category      = "injection",
+            rows=1, cols=12,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0,
+            unit          = "faktor [Q15]",
+            raw_min       = 20000, raw_max = 34000,
+            notes         = (f"2016 gen 1503 @ 0x{addr_data:06X}. "
+                             "Axis @ 0x{MAT_CORR_AXIS_2016_1503:06X} (12pt u8 temp). "
+                             "Offset vs 2018+ (0x0275EE): -0x1B50."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr_data,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  MAT corr 2016 1503 @ 0x{addr_data:06X}  1×12  "
+                  f"Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    def _scan_2016_1503_accel(self, cb=None):
+        """Accel enrichment 5×5 Q14 @ 0x026223 — 2016 gen 1503."""
+        addr = ACCEL_2016_1503
+        data = self.eng.get_bytes()
+        # Kompleksni format: 1B global + 5 sub-tablica (kao 2018+)
+        # Čitamo samo 50B data blok (5×5×2)
+        size = 1 + 5*5*2
+        if addr + size > len(data):
+            return
+        raw_block = list(data[addr: addr + size])
+        vals_u16 = [int.from_bytes(data[addr + 1 + i*2: addr + 1 + i*2 + 2], 'little')
+                    for i in range(5*5)]
+        valid = sum(1 for v in vals_u16 if v <= 32768)
+        if valid < 20:
+            if cb: cb(f"  Accel enrich 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid}/25)")
+            return
+        defn = MapDef(
+            name          = "Ubrzano obogacivanje (2016 1503)",
+            description   = ("Accel enrichment — 5×5 Q14. Kompleksni format: "
+                             "1B global faktor + 5×5 sub-tablica. "
+                             "Identican sa 2018+ po kalibraciji (260==215)."),
+            category      = "injection",
+            rows=5, cols=5,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 0, raw_max = 32768,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x028059): -0x1E36. "
+                             "260hp == 215hp identicni."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr + 1,
+                                     sw_id=self._sw(), data=vals_u16))
+        if cb: cb(f"  Accel enrich 2016 1503 @ 0x{addr:06X}  5×5  "
+                  f"Q14=[{min(vals_u16)/16384:.3f}-{max(vals_u16)/16384:.3f}]")
+
+    def _scan_2016_1503_cold_start(self, cb=None):
+        """Cold start injection 1×6 Q15 @ 0x024236 — 2016 gen 1503."""
+        addr = COLD_START_DATA_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 6*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(6)]
+        # Očekivani pattern: rastuci niz Q15 [0, ~1024, ~1707, ~3413, ~5120, ~7680]
+        valid = sum(1 for v in vals if v <= 10000)
+        if valid < 5 or vals[0] != 0:
+            if cb: cb(f"  Cold start 2016 1503 @ 0x{addr:06X}: odbacen")
+            return
+        defn = MapDef(
+            name          = "Hladni start — injekcija (2016 1503)",
+            description   = ("Kolicina goriva pri hladnom startu — 1×6 Q15. "
+                             "Identican s 2018+ (isti injektori)."),
+            category      = "injection",
+            rows=1, cols=6,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0,
+            unit          = "rk [Q15]",
+            raw_min       = 0, raw_max = 32768,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             f"Axis @ 0x{COLD_START_AXIS_2016_1503:06X}. "
+                             "Offset vs 2018+ (0x025CDC): -0x1AA6."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Cold start 2016 1503 @ 0x{addr:06X}  1×6  "
+                  f"Q15={[f'{v/32768:.3f}' for v in vals]}")
+
+    def _scan_2016_1503_kfped(self, cb=None):
+        """KFPED throttle 10×20 u8 @ 0x026F6C — 2016 gen 1503."""
+        addr_data = KFPED_DATA_2016_1503
+        data = self.eng.get_bytes()
+        if addr_data + 10*20 > len(data):
+            return
+        vals = list(data[addr_data: addr_data + 10*20])
+        # KFPED: u8 vrijednosti tipično 0–100 (throttle %)
+        valid = sum(1 for v in vals if 0 <= v <= 100)
+        if valid < 150:
+            if cb: cb(f"  KFPED 2016 1503 @ 0x{addr_data:06X}: odbacen (valid={valid}/200)")
+            return
+        defn = MapDef(
+            name          = "KFPED — drive-by-wire pedalnost (2016 1503)",
+            description   = ("KFPED throttle mapping — 10×20 u8. "
+                             "X-os: MAP kPa (SC) ili pedal° (NA). "
+                             "Y-os: load/ETA. 260hp != 215hp (198/200B razlika)."),
+            category      = "misc",
+            rows=10, cols=20,
+            byte_order    = "LE", dtype = "u8",
+            scale         = 1.0,
+            unit          = "%",
+            raw_min       = 0, raw_max = 100,
+            mirror_offset = KFPED_MIRROR_2016_1503,
+            notes         = (f"2016 gen 1503: header @ 0x{KFPED_HDR_2016_1503:06X}, "
+                             f"data @ 0x{addr_data:06X}. "
+                             f"Mirror +0x{KFPED_MIRROR_2016_1503:02X} @ 0x{addr_data + KFPED_MIRROR_2016_1503:06X}. "
+                             "Offset vs 2018+ (0x029548): -0x25DC."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr_data,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  KFPED 2016 1503 @ 0x{addr_data:06X}  10×20 u8  "
+                  f"range=[{min(vals)}-{max(vals)}]  "
+                  f"mirror @ 0x{addr_data + KFPED_MIRROR_2016_1503:06X}")
+
+    def _scan_2016_1503_overtemp_lambda(self, cb=None):
+        """Overtemp lambda 1×63 u16 LE Q15 @ 0x024034 — 2016 gen 1503."""
+        addr = OVERTEMP_LAM_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 63*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(63)]
+        # SC: sadrzaj ~0xBCB6 (lambda SC) ili 0xFFFF (bypass); NA: raste prema 1.0
+        valid = sum(1 for v in vals if v > 24000)
+        if valid < 40:
+            if cb: cb(f"  Overtemp lambda 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "Overtemp lambda (2016 1503)",
+            description   = ("Overtemp lambda korekcija — 1×63 Q15. "
+                             "SC: identičan sadrzaj ref230 (bez 0xFFFF bypass). "
+                             "Offset vs 2018+ (0x025ADA): -0x1AA6."),
+            category      = "lambda",
+            rows=1, cols=63,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0,
+            unit          = "lambda",
+            raw_min       = 0, raw_max = 65535,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "260hp == 215hp identični (SC krivulja). "
+                             "Offset vs 2018+: -0x1AA6."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Overtemp lambda 2016 1503 @ 0x{addr:06X}  1×63  "
+                  f"Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    def _scan_2016_1503_neutral_corr(self, cb=None):
+        """Neutral correction 1×63 u16 LE Q14 @ 0x0240B2 — 2016 gen 1503."""
+        addr = NEUTRAL_CORR_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 63*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(63)]
+        # Neutral corr: flat 0x4040 = 16448 ≈ Q14 1.004
+        valid = sum(1 for v in vals if 16000 <= v <= 17000)
+        if valid < 50:
+            if cb: cb(f"  Neutral corr 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "Neutral korekcija goriva (2016 1503)",
+            description   = ("Neutral/idle korekcija goriva — 1×63 Q14. "
+                             "Flat 0x4040 = Q14 1.004 (minimalna korekcija). "
+                             "Offset vs 2018+ (0x025B58): -0x1AA6."),
+            category      = "injection",
+            rows=1, cols=63,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 14000, raw_max = 20000,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "Flat 0x4040=16448 za oba 260hp i 215hp. "
+                             "Offset vs 2018+: -0x1AA6."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Neutral corr 2016 1503 @ 0x{addr:06X}  1×63  "
+                  f"flat Q14={vals[0]/16384:.4f}")
+
+    def _scan_2016_1503_lambda_bias(self, cb=None):
+        """Lambda bias 1×141 u16 LE Q15 @ 0x024B30 — 2016 gen 1503."""
+        addr = LAM_BIAS_2016_1503
+        data = self.eng.get_bytes()
+        if addr + 141*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(141)]
+        valid = sum(1 for v in vals if 24000 <= v <= 36000)
+        if valid < 100:
+            if cb: cb(f"  Lambda bias 2016 1503 @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "Lambda bias (2016 1503)",
+            description   = ("Lambda bias krivulja — 1×141 Q15. "
+                             "260hp != 215hp (141/141 razlika). "
+                             "Offset vs 2018+ (0x0265D6): -0x1AA6."),
+            category      = "lambda",
+            rows=1, cols=141,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0,
+            unit          = "lambda",
+            raw_min       = 20000, raw_max = 40000,
+            notes         = (f"2016 gen 1503 @ 0x{addr:06X}. "
+                             "SC krivulja — razlikuje se 260hp vs 215hp. "
+                             "Offset vs 2018+: -0x1AA6."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Lambda bias 2016 1503 @ 0x{addr:06X}  1×141  "
+                  f"Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    # ── 2016 gen 1630 ACE skeneri ─────────────────────────────────────────────
+
+    def _scan_2016_ace_sc_corr(self, cb=None):
+        """SC correction 9×7 u16 LE Q14 @ 0x0221FA — 2016 gen 1630 ACE."""
+        addr = SC_CORR_2016_ACE
+        data = self.eng.get_bytes()
+        if addr + 9*7*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(9 * 7)]
+        valid = sum(1 for v in vals if 14000 <= v <= 35000)
+        if valid < 50:
+            if cb: cb(f"  SC corr 2016 ACE @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "SC korekcija — boost kompenzacija (2016 ACE)",
+            description   = ("SC bypass correction 9×7 Q14. "
+                             "Bit-identičan 2018+ (BRP nije mijenjao za 2016 gen). "
+                             "Offset vs 2018+: -0x14."),
+            category      = "misc",
+            rows=9, cols=7,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 14000, raw_max = 35000,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x02220E): -0x14. "
+                             "004675 == 004672. Identičan 2018+."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  SC corr 2016 ACE @ 0x{addr:06X}  9×7  Q14=[{min(vals)/16384:.3f}-{max(vals)/16384:.3f}]")
+
+    def _scan_2016_ace_boost(self, cb=None):
+        """SC boost factor 1×40 Q14 @ 0x025B4E — 2016 gen 1630 ACE."""
+        addr = SC_BOOST_2016_ACE
+        data = self.eng.get_bytes()
+        if addr + 40*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(40)]
+        # Flat 20046 = Q14 1.2235 (+22.4%)
+        flat_val = vals[0] if vals else 0
+        valid = sum(1 for v in vals if v == flat_val)
+        if valid < 35 or flat_val < 18000 or flat_val > 25000:
+            if cb: cb(f"  Boost 2016 ACE @ 0x{addr:06X}: odbacen (flat={flat_val}, cnt={valid})")
+            return
+        defn = MapDef(
+            name          = "SC boost faktor (2016 ACE)",
+            description   = ("SC boost multiplikator — 1×40 flat Q14. "
+                             "flat 20046 = Q14×1.2235 (+22.4%). "
+                             "Identičan 2018+ kalibraciji."),
+            category      = "misc",
+            rows=1, cols=40,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 16384, raw_max = 32768,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x025DF8): -0x2AA. "
+                             f"flat={flat_val} Q14={flat_val/16384:.4f}"),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Boost 2016 ACE @ 0x{addr:06X}  1×40  flat Q14={flat_val/16384:.4f}")
+
+    def _scan_2016_ace_overtemp_lambda(self, cb=None):
+        """Overtemp lambda 1×63 Q15 @ 0x025830 — 2016 gen 1630 ACE (SC bypass = 0xFFFF)."""
+        addr = OVERTEMP_LAM_2016_ACE
+        data = self.eng.get_bytes()
+        if addr + 63*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(63)]
+        # SC: sve 0xFFFF (bypass); NA: krivulja
+        bypass_cnt = sum(1 for v in vals if v == 0xFFFF)
+        if bypass_cnt < 50 and sum(1 for v in vals if v > 24000) < 40:
+            if cb: cb(f"  Overtemp 2016 ACE @ 0x{addr:06X}: odbacen")
+            return
+        defn = MapDef(
+            name          = "Overtemp lambda (2016 ACE)",
+            description   = ("Overtemp lambda zaštita — 1×63 Q15. "
+                             "SC varijante: sve 0xFFFF (bypass zaštite). "
+                             "Offset vs 2018+: -0x2AA."),
+            category      = "lambda",
+            rows=1, cols=63,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 32768.0,
+            unit          = "lambda",
+            raw_min       = 0, raw_max = 65535,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "SC: 63×0xFFFF (bypass). "
+                             "Offset vs 2018+ (0x025ADA): -0x2AA."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Overtemp 2016 ACE @ 0x{addr:06X}  1×63  bypass_cnt={bypass_cnt}")
+
+    def _scan_2016_ace_neutral_corr(self, cb=None):
+        """Neutral correction 1×63 Q14 @ 0x0258AE — 2016 gen 1630 ACE."""
+        addr = NEUTRAL_CORR_2016_ACE
+        data = self.eng.get_bytes()
+        if addr + 63*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(63)]
+        valid = sum(1 for v in vals if 16000 <= v <= 17000)
+        if valid < 50:
+            if cb: cb(f"  Neutral corr 2016 ACE @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "Neutral korekcija goriva (2016 ACE)",
+            description   = ("Neutral/idle korekcija — 1×63 Q14 flat 0x4040 = 1.004. "
+                             "Offset vs 2018+: -0x2AA."),
+            category      = "injection",
+            rows=1, cols=63,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,
+            unit          = "faktor [Q14]",
+            raw_min       = 14000, raw_max = 20000,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "Flat 0x4040=16448 = Q14 1.004. "
+                             "Offset vs 2018+ (0x025B58): -0x2AA."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Neutral corr 2016 ACE @ 0x{addr:06X}  1×63  flat Q14={vals[0]/16384:.4f}")
+
+    def _scan_2016_ace_dfco(self, cb=None):
+        """DFCO ramp 16×11 u16 LE @ 0x02899C — 2016 gen 1630 ACE."""
+        addr = DFCO_2016_ACE
+        data = self.eng.get_bytes()
+        size = 16 * 11 * 2
+        if addr + size > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(16 * 11)]
+        valid = sum(1 for v in vals if 500 <= v <= 16000)
+        if valid < 100:
+            if cb: cb(f"  DFCO 2016 ACE @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        defn = MapDef(
+            name          = "Decel DFCO ramp (2016 ACE)",
+            description   = ("Decel RPM ramp (DFCO) — 16×11 u16 LE. "
+                             "Sadrzaj identičan 2018+. "
+                             "Offset vs 2018+: -0x294."),
+            category      = "misc",
+            rows=16, cols=11,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0,
+            unit          = "rpm",
+            raw_min       = 0, raw_max = 16000,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "Offset vs 2018+ (0x028C30): -0x294. "
+                             "Redovi 0–14 identični 2018+."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  DFCO 2016 ACE @ 0x{addr:06X}  16×11  raw=[{min(vals)}-{max(vals)}]")
+
+    def _scan_2016_ace_fuel(self, cb=None):
+        """Fuel 2D 12×16 Q14 @ 0x022052 — 2016 gen 1630 ACE.
+        PAŽNJA: Q14 format (ne Q15 kao 2018+)! Scale = 1/16384."""
+        addr = FUEL_2016_ACE
+        data = self.eng.get_bytes()
+        if addr + 12*16*2 > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                for i in range(12 * 16)]
+        # Provjera: Q14 raspon; SC boost > 1.0 daje raw > 16384 (do ~62000 za max boost)
+        # Min check: barem 50 nenulatih vrijednosti
+        nonzero = sum(1 for v in vals if v > 0)
+        if nonzero < 50:
+            if cb: cb(f"  Fuel 2016 ACE @ 0x{addr:06X}: odbacen (valid={valid}, nz={nonzero})")
+            return
+        defn = MapDef(
+            name          = "Gorivo — 2D mapa [Q14] (2016 ACE)",
+            description   = ("2D fuel mapa — 12×16 tablica Q14 LE. "
+                             "PAŽNJA: Q14 format (2× vece vrijednosti od Q15 u 2018+)! "
+                             "Fizicki inject amount identičan 2018+ 300hp SC."),
+            category      = "injection",
+            rows=12, cols=16,
+            byte_order    = "LE", dtype = "u16",
+            scale         = 1.0 / 16384.0,   # Q14 (ne Q15!)
+            offset_val    = 0.0,
+            unit          = "rk [Q14]",
+            raw_min       = 0, raw_max = 32768,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             "Q14 format (ne Q15 kao 2018+)! Offset vs 2018+ (0x022066): -0x14. "
+                             "004675 == 004672 identicni. Max raw ~30932 (Q14=1.889, ekviv Q15=0.944)."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Fuel 2016 ACE @ 0x{addr:06X}  12×16 Q14  "
+                  f"Q14=[{min(v for v in vals if v>0)/16384:.3f}-{max(vals)/16384:.3f}]")
+
+    def _scan_2016_ace_ignition(self, cb=None):
+        """Ignition 19 mapa 12×12 u8 @ 0x02B31E — 2016 gen 1630 ACE."""
+        data = self.eng.get_bytes()
+        sw = self._sw()
+        count = 0
+        for idx in range(IGN_COUNT):
+            addr = IGN_BASE_2016_ACE + idx * IGN_STRIDE
+            if addr + IGN_STRIDE > len(data):
+                break
+            raw = list(data[addr: addr + IGN_STRIDE])
+            valid = sum(1 for b in raw if 16 <= b <= 58)
+            if valid < 100:
+                continue
+            defn = MapDef(
+                name         = f"{_IGN_NAMES[idx]} (2016 ACE)",
+                description  = (f"Kut predpaljenja #{idx:02d} — 2016 gen 1630 ACE. "
+                                "Sadrzaj identičan 2018+."),
+                category     = "ignition",
+                rows=12, cols=12,
+                byte_order   = "BE", dtype = "u8",
+                scale        = 0.75,
+                unit         = "degBTDC",
+                axis_x       = _RPM_AXIS_12,
+                axis_y       = _LOAD_AXIS_12,
+                raw_min      = 0 if idx in (8, 9, 18) else 16,
+                raw_max      = (255 if idx == 8 else 40) if idx in (8, 9) else 58,
+                notes        = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                                f"Offset vs 2018+ (0x{IGN_BASE + idx*IGN_STRIDE:06X}): -0x412."),
+            )
+            self.results.append(FoundMap(defn=defn, address=addr,
+                                         sw_id=sw, data=raw))
+            count += 1
+        if cb: cb(f"  Ign 2016 ACE  base=0x{IGN_BASE_2016_ACE:06X}  {count} mapa pronađeno")
+
+    def _scan_2016_ace_lambda(self, cb=None):
+        """Lambda main/adapt/trim @ 2016 gen 1630 ACE adresama."""
+        data = self.eng.get_bytes()
+        entries = [
+            (LAM_MAIN_2016_ACE,  "Lambda — ciljni AFR (2016 ACE)",         "lambda"),
+            (LAM_ADAPT_2016_ACE, "Lambda adaptacija — baza (2016 ACE)",    "lambda"),
+            (LAM_TRIM_2016_ACE,  "Lambda trim (2016 ACE)",                 "lambda"),
+        ]
+        for addr, name, cat in entries:
+            size = 12 * 18 * 2
+            if addr + size > len(data):
+                continue
+            vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'little')
+                    for i in range(12 * 18)]
+            valid = sum(1 for v in vals if 24000 <= v <= 40000)
+            if valid < 100:
+                if cb: cb(f"  {name} @ 0x{addr:06X}: odbacen (valid={valid})")
+                continue
+            defn = MapDef(
+                name          = name,
+                description   = (f"{name} — 12×18 Q15 LE. "
+                                 "Nema mirror u 2016 ACE gen (trim je na +0x518 poziciji)."),
+                category      = cat,
+                rows=12, cols=18,
+                byte_order    = "LE", dtype = "u16",
+                scale         = 1.0 / 32768.0,
+                unit          = "lambda",
+                axis_x        = _LAMBDA_LOAD_AXIS_18,
+                axis_y        = _RPM_AXIS_12,
+                raw_min       = 16384, raw_max = 65535,
+                mirror_offset = 0,   # NEMA mirror u 2016 gen
+                notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                                 "Offset vs 2018+: -0x2AC. NEMA mirror kopije."),
+            )
+            self.results.append(FoundMap(defn=defn, address=addr,
+                                         sw_id=self._sw(), data=vals))
+            if cb: cb(f"  {name.split('—')[0].strip()} @ 0x{addr:06X}  12×18  "
+                      f"Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    def _scan_2016_ace_torque(self, cb=None):
+        """Torque 16×16 BE u16 Q8 @ 0x029B48 — 2016 gen 1630 ACE."""
+        addr = TORQUE_MAIN_2016_ACE
+        data = self.eng.get_bytes()
+        size = 16 * 16 * 2
+        if addr + size > len(data):
+            return
+        vals = [int.from_bytes(data[addr + i*2: addr + i*2 + 2], 'big')
+                for i in range(16 * 16)]
+        # BE Q8: MSB=data, LSB=0x00; raspon 24000-42000 (93-160%)
+        valid = sum(1 for v in vals if 24000 <= v <= 51200)
+        if valid < 200:
+            if cb: cb(f"  Torque 2016 ACE @ 0x{addr:06X}: odbacen (valid={valid})")
+            return
+        mirror = TORQUE_MIRROR_2016_ACE - TORQUE_MAIN_2016_ACE  # 0x518
+        defn = MapDef(
+            name          = "Moment — ogranicenje [%] (2016 ACE)",
+            description   = ("Ogranicenje momenta — 16×16 BE u16 Q8. "
+                             "Format isti kao 2018+. Identičan 004675==004672."),
+            category      = "torque",
+            rows=16, cols=16,
+            byte_order    = "BE", dtype = "u16",
+            scale         = 100.0 / 32768.0,
+            unit          = "%",
+            axis_x        = _RPM_AXIS_16,
+            axis_y        = _LOAD_AXIS_16,
+            raw_min       = 20480, raw_max = 51200,
+            mirror_offset = mirror,
+            notes         = (f"2016 gen 1630 ACE @ 0x{addr:06X}. "
+                             f"Mirror @ 0x{TORQUE_MIRROR_2016_ACE:06X} (+0x{mirror:X}). "
+                             "Offset vs 2018+ (0x02A0D8): -0x590."),
+        )
+        self.results.append(FoundMap(defn=defn, address=addr,
+                                     sw_id=self._sw(), data=vals))
+        if cb: cb(f"  Torque 2016 ACE @ 0x{addr:06X}  16×16  "
+                  f"Q8=[{min(vals)/32768*100:.1f}%-{max(vals)/32768*100:.1f}%]  "
+                  f"mirror @ 0x{TORQUE_MIRROR_2016_ACE:06X}")
 
     # ── Map diff ──────────────────────────────────────────────────────────────
 

@@ -1,5 +1,852 @@
 # ME17Suite — Work Log
 
+## 2026-03-22 01:00 — Imenovanje mapa + dokumentacija (sesija završena)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — finalni nazivi i opisi za 6 ranije neidentificiranih mapa
+
+### Promjene naziva:
+1. `Lambda — efikasnost sub-tablica (KFWIRKBA 2D sub)` → `Faktor efikasnosti goriva (KFWIRKBA sub)` (Confidence 80%)
+2. `Paljenje — korekcija po RPM×load` → `Paljenje — korekcija za moment (KFZW2)` (Confidence 80%, DID 0x2142)
+3. `Moment — optimalni / vozačev zahtjev [%]` → `Vozačev zahtjev momenta — FWM [%]` (Confidence 95%, DID 0x2103/0x213B)
+4. `Decel RPM ramp — DFCO per-load pragovi` → `DFCO — rampa odrezivanja goriva (RPM pragovi)` (Confidence 90%)
+5. `Lambda efikasnost u8 lookup (4x kopija)` → `KFWIRKBA — tranzijentni odaziv (4 uvjeta)` (Confidence 80%)
+6. `Lambda thresholds — KFWIRKBA pragovi [Q15]` → `Lambda zaštita — pragovi aktivacije [Q15]` (Confidence 95%, DID 0x2107/0x2158)
+
+### DID korelacija (bench sniff_livedata.csv):
+- DID 0x2103 = Desired Indicated Engine Torque → potvrđuje FWM mapu
+- DID 0x213B = Driver's Desire Throttle Angle → potvrđuje FWM lanac
+- DID 0x2142 = Desired Ignition Angle After Torque Intervention → potvrđuje KFZW2 mapu
+- DID 0x2107/0x2158 = 0xFFFF (bench) → lambda pragovi "disabled" → potvrđuje Lambda zaštita mapu
+- DID 0x2136 = 0xCA = 101.0 kPa (atmosferski tlak na bench)
+
+### CAN 0x122 nalaz:
+- 10ms period, XOR checksum format identičan ECU, bytes[4:6]=0x0B5E=2910=engine hours
+- Hipoteza: IBR (Intelligent Braking and Reverse) modul
+
+## 2026-03-21 23:45 — Lambda konstante 2016 gen 1503 — ispravak imenovanja
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — konstante LAM_MAIN/TRIM/ADAPT ispravno preimenovane
+
+### Nalaz (oba agenta a12791 + a227 potvrdili):
+- `0x024A90` = **lambda_trim** (sve >1.0, lean bias) — staro pogrešno ime: "main"
+- `0x024C4A` = **lambda_main** (crosses ±1.0) — structural proof: lambda_bias@0x024B30 + 141×2 = 0x024C4A
+- `0x024DF0` = **NEVAŽEĆE** (tail corruption) — izbačeno iz skenera
+- Lambda_adapt = **neidentificirana** — tražiti poslije 0x025308
+- 2016 1503 260hp/215hp: 31 mapa (bila 32 — uklonjen invalid entry)
+- Overtemp lambda @ 0x024034: AKTIVNA krivulja (ne SC bypass), pada do Q15=0.102 pri visokim temp
+
+## 2026-03-21 23:30 — 2016 gen ACE/1503 skeneri — finalni test
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 5 novih _scan_2016_ace_* metoda (sc_corr, boost, overtemp, neutral, dfco)
+
+### Rezultati (map count)
+| SW | Model | Mapa (staro→novo) |
+|----|-------|-------------------|
+| 10SW004675 | 2016 ACE 300hp | ~24 → **31** |
+| 10SW004672 | 2016/17 ACE 300hp | ~24 → **31** |
+| 10SW039XXX | 2019 ACE | 57 (nepromijenjen) |
+| 10SW000778 | 2016 1503 260hp | ~24 → **32** |
+| 10SW012502 | 2017 1503 260hp | ~24 → **32** |
+| 10SW025021 | 2018 1503 230hp | 60 (nepromijenjen) |
+| 10SW012999 | 2017 1503 230hp | 23 (parcijalna podrska — by design) |
+
+- 2016 ACE: +7 mapa (sc_corr, boost, overtemp_lambda, neutral_corr, dfco + prethodni lambda/torque)
+- 2016 1503: +8 mapa (sc_corr, thermal, deadtime, eff_corr, ign_corr_2d, mat_corr, accel, cold_start, kfped, overtemp, neutral, lambda_bias)
+- Svi referentni 2018/2019 SW-ovi ostaju nepromijenjeni — nema regresija
+
+## 2026-03-20 17:30 — Lambda adapt adresa 2016 gen 4-TEC 1503 — conflict resolution
+
+### Fajlovi
+- `_docs/scan_2016_1503_lambda_verify.md` — novi izvjestaj
+
+### Nalazi
+- **Session A (0x024C40 = lambda_adapt) — POGRESAN naziv** — 0x024C40 je lambda_MAIN
+- **Session B (0x024DFA = lambda_adapt) — POGRESAN offset** — misaligned, 10B unutar Map C (garbage)
+- **Triplet** (sve tri mape direktno uzastopne, nema razmaka):
+  - `0x024A90` = lambda_trim/sekundarna korekcija (sve >1.0, lean bias, Q15 1.014-1.081)
+  - `0x024C40` = lambda_MAIN (raspon +/-1.0, Q15 0.988-1.050) — ispravna identifikacija
+  - `0x024DF0` = nevazeca (tail corruption u donjim redovima, non-Q15 vrijednosti)
+- Mirror set (+0x518 od svakog): 0x024FA8 (mirror trim) / 0x025158 (mirror main)
+- **Prava lambda_adapt 2016 gen 1503 = NEIDENTIFICIRANA** — nije ni 0x024C40 ni 0x024DFA
+- Shape distance prema 2018_main: 0x024A90=0.104, 0x024C40=0.138
+- Shape distance prema 2018_adapt: 0x024A90=0.123, 0x024C40=0.225
+- Axis struktura: 18pt RPM @ 0x024A44 (raw/4=4100-8500), 18pt load @ 0x024A68 (Q14, 3.9-40.4%)
+
+## 2026-03-20 16:00 — Lambda bias / MAT / Overtemp verifikacija 2016 gen 4-TEC 1503
+
+### Fajlovi
+- `_docs/scan_2016_1503_verify2.md` — novi izvjestaj
+
+### Nalazi
+- **Lambda bias @ 0x024B30** POTVRDJENO — aligment: 0x024B30+141*2=0x024C4A=lambda main start
+- Offset formula: 2016 gen = 2018 adresa - 0x1AA6 (za lambda bias i lambda main)
+- **260 vs 215 lambda bias: 141/141 razliciti** (Agent 2 bio u pravu) — razlicite kalibracije SC vs SC
+- 260: Q15 [1.0137..1.0811], 215: Q15 [1.0176..1.0834] — oba iskljucivo iznad 1.0 (SC karakteristika)
+- **MAT correction @ 0x025A92/9E**: 260 vs 215 prakticno identicni (3 minor diff: axis[6]=158vs155, axis[7]=162vs160, data[4]=31608vs31611)
+- **Overtemp lambda @ 0x024034**: 260 == 215 IDENTICNI (0/63 razlika); max=1.0039 (aktivna zastita, ne SC bypass)
+- MAT offset vs 2018: -0x1B50 (razlicit od lambda offset -0x1AA6 — nema uniformnog globalnog offseta)
+
+## 2026-03-21 — UI refaktor: 2 glavna taba, opis mapa, CAN uklonjen
+
+### Fajlovi promijenjeni
+- `ui/main_window.py` — CAN tab/sidebar uklonjen; 2 glavna taba (MAPE/ALATI); PropertiesPanel "Mapa" tab dobio OPIS sekciju
+
+### Promjene
+- **CAN Logger + CAN Live uklonjen** — tool je software-only, bez IXXAT hardvera
+- **Centar: 2 glavna taba**:
+  - `MAPE` (tab 0) → MapTableView (Map Editor) s map library sidebarom
+  - `ALATI` (tab 1) → sub-tabs: DTC Off | EEPROM | Kalkulator | Diff | Map Diff (s njihovim sidebarima)
+- **PropertiesPanel "Mapa" tab** — nova "OPIS — KADA / ZAŠTO" sekcija:
+  - Kategorija badge (PALJENJE/GORIVO/LAMBDA/itd.) + Pouzdanost badge (POTVRĐENO/2016 GEN/85%/~80%)
+  - Pun `defn.description` tekst — koji, kada, zašto za svaku mapu
+  - Napomene sekcija ostaje
+- **SwCompatWidget** dodan kao tab "SW" u PropertiesPanel
+- **Navigacija** ažurirana: `_on_main_tab_changed` + `_on_tab_changed`; sve setCurrentIndex pozive usmjeravaju na pravi parent tab
+
+---
+
+## 2026-03-21 — Lambda secondary mape za 2016 gen 1503 (Agent 2)
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 3 nova skenera: overtemp_lambda/neutral_corr/lambda_bias; KFWIRKBA nije u 2016 gen
+
+### Nove adrese (sve offset -0x1AA6 od 2018+)
+| Mapa | Adresa | Napomena |
+|------|--------|---------|
+| overtemp_lambda | 0x024034 | 260hp == 215hp (SC krivulja) |
+| neutral_corr | 0x0240B2 | flat 0x4040 = Q14 1.004 |
+| lambda_bias | 0x024B30 | 260hp != 215hp (141/141 razlika) |
+| KFWIRKBA | — | NIJE pronađena u 2016 gen |
+
+### Konačan rezultat — sve SW varijante
+| SW | Model | Mape |
+|----|-------|------|
+| 10SW004675 / 004672 | 2016 ACE 1630 300hp | **26** |
+| 10SW000776 / 000778 | 2016 1503 215/260hp | **32** |
+| 10SW012502 | 2017 1503 260hp | **32** |
+| 10SW012999 | 2017 1503 230hp | **23** |
+
+---
+
+## 2026-03-21 — 2016 gen 1630 ACE skeneri implementirani
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — nova konstante + 4 skenera za 2016 ACE; find_all() else grana
+
+### Adrese (Agent 5) — 10SW004675 / 10SW004672 (identični!)
+- Fuel 2D: **0x022052** — **Q14 format** (ne Q15!); 2× raw vrijednosti = iste fizičke količine
+- IGN base: **0x02B31E** (−0x412 od 2018+); sadržaj identičan 2018+!
+- Lambda main/adapt/trim: **0x026444/0265F4/026B0C** (sve −0x2AC); NEMA mirror
+- Torque: **0x029B48** (−0x590 od 2018+); mirror +0x518 = 0x02A060
+
+### Konačan broj mapa
+| SW | Mape |
+|----|------|
+| 10SW004675/004672 | **26** |
+| 10SW000776/778/012502 | **30** |
+| 10SW040039 2019 ACE | **57** (regresija OK) |
+
+---
+
+## 2026-03-21 — 9 novih skenera za 2016 gen 4-TEC 1503 u MapFinder
+
+### Fajlovi promijenjeni
+- `core/map_finder.py` — 14 novih konstanti + 9 novih `_scan_2016_1503_*` metoda + pozivi u `find_all()`
+
+### Implementirano (sve adrese iz agent scan rezultata)
+| Mapa | Adresa | Format | Agent |
+|------|--------|--------|-------|
+| sc_corr | 0x023478 | 9×7 u16 LE Q14 | Ag1 |
+| thermal_enrichment | 0x028004 | 8×7 u16 LE /64=% | Ag4 |
+| deadtime | 0x023E04 | 10×14 u16 LE | Ag4 |
+| eff_correction | 0x023F36 | 14×10 u8 /128 | Ag4 |
+| ign_corr_2d | 0x02169A | 8×8 u8 0.75°/bit | Ag4 |
+| mat_correction | 0x025A9E | 1×12 u16 LE Q15 | Ag4 |
+| accel_enrichment | 0x026223 | 5×5 u16 LE Q14 | Ag3 |
+| cold_start | 0x024236 | 1×6 u16 LE Q15 | Ag3 |
+| kfped | 0x026F6C | 10×20 u8 | Ag3 |
+
+### Rezultati testiranja
+- 260hp (10SW000778): **30 mapa** ✓
+- 215hp (10SW000776): **30 mapa** ✓
+- 2017 260hp (10SW012502): **30 mapa** ✓ (2016 gen layout)
+- 2019 300hp ACE: **57 mapa** ✓ (bez regresije)
+- 2019 Spark: **54 mapa** ✓ (bez regresije)
+
+### Nisu implementirani
+- `boost_factor` @ 0x02619C — NEPOTVRDENO (44 elem umjesto 40, pre-kontekst nije X-os boost)
+- `knock_params` @ 0x024268 — drugačija interna struktura od 2018+, skip za sada
+- Lambda secondary (bias/overtemp/neutral/KFWIRKBA) — Agent 2 nije završio istraživanje
+- 2016 gen 1630 ACE skeneri — Agent 5 nije završio
+
+---
+
+## 2026-03-21 — Map discovery: fuel, ign, lambda, torque u 2016 gen 1630 ACE
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_ace_maps.md` (novo)
+
+### Rezultati
+- **Fuel 2D**: **0x022052** — offset −0x14 od 2018+; format 12×16 Q14 (sve vrijednosti 2× veće od 2018+, iste osi); header @ 0x022016
+- **Ignition base**: **0x02B31E** — offset −0x412 od 2018+; 19 mapa stride 144B; sadržaj identičan 2018+ (0 diff po svim 19 mapama)
+- **Lambda main**: **0x026444** — offset −0x2AC od 2018+; 12×18 Q15; NEMA identičnog mirrora (za razliku od 2018+)
+- **Lambda trim**: **0x026B0C** — offset −0x2AC; Q15=[0.960–1.032]
+- **Lambda adapt**: **0x0265F4** — offset −0x2AC; Q15=[0.979–1.068]
+- **Torque main**: **0x029B48** — offset −0x590 od 2018+; 16×16 BE Q8; mirror @ 0x02A060 (+0x518, OK)
+- **SC boost factor**: **0x025B4E** — offset −0x2AA; flat 20046 Q14=1.224 (+22.4%)
+- **SC correction**: **0x0221FA** — offset −0x14; 9×7 Q14; identičan s 2018+
+
+### Ključni nalazi
+- Nema jedinstvenog globalnog CODE offseta: fuel/sc_corr=−0x14, lambda=−0x2AC, ign=−0x412, torque=−0x590
+- Fuel je Q14 format (2× Q15 vrijednosti) — drugačija normalizacija od 2018+
+- Lambda nema mirror kopiju u 2016 gen 1630 ACE (jedina kopija main)
+- 10SW004675 i 10SW004672 imaju 0 diff u svim mapama — iste kalibracije
+- SC bypass: 0x0205A8=0x3333 (razlikuje se od 2018+ koji ima 0x2626), 0x012C60=0x2020
+
+## 2026-03-21 24:20 — Signature search: KFPED, accel, cold start, knock u 2016 gen 1503
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_1503_control_maps.md` (novo)
+
+### Rezultati
+- **KFPED throttle**: header **0x026F4C** (32B), data **0x026F6C** (200B), mirror +0xE6 @ 0x027052; offset -0x25DC vs 2018
+  - 260 vs 215: različiti podaci (198/200B), logično (SC 260hp > 215hp)
+- **Accel enrichment**: **0x026223**; offset -0x1E36 vs 2018; 8B pre-sig match; 260==215 identični
+- **Cold start injection**: data **0x024236** (12B), axis **0x02422A** (12B); offset -0x1AA6; 260==215 identični
+- **Knock params**: **0x024268** (104B); offset -0x1490 vs 2018
+  - NAPOMENA: 2016 gen knock blok ima DRUGAČIJU strukturu — 9×0x4040 + 9×0x1F1F + tail, ne [ACCD+1F1F×50] kao 2018+
+
+### Ključni nalaz
+- Nema uniformnog CODE offseta: cold=-0x1AA6, knock=-0x1490, accel=-0x1E36, KFPED=-0x25DC, rev=-0x2076
+- Knock params ima potpuno drugačiji format u 2016 gen (9 threshold-a vs 2 u 2018+)
+- KFPED potvrđen kao tunabilna mapa — 260hp SC i 215hp SC imaju različite vrijednosti
+
+## 2026-03-21 — Signature search: SC correction i SC boost_factor u 2016 gen 4TEC 1503
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_1503_sc_maps.md` (novo)
+
+### Rezultati
+- **SC correction: PRONAĐENO @ 0x023478** (vrijedi za 10SW000778, 10SW000776, 10SW012502)
+  - Offset vs 2018 (0x02220E): +4714B = +0x126A
+  - 215hp == 260hp == 2017/260: identične vrijednosti (0/63 razlika)
+  - 2017/230 (10SW012999): @ 0x0221FA (−14B od 2018, konzistentno s −0x2AA offsetom za taj SW)
+  - Vrijednosti: Q14 [1.024–1.886] — ispravan SC correction raspon
+- **SC boost_factor: JEDINI KANDIDAT @ 0x02619C (NEPOTVRDENO)**
+  - 44 elementa flat 23130 (Q14=1.412, +41.2%) — ista vrijednost kao 2018+
+  - Ali pre-kontekst NIJE X-os boost (lambda-like vrijednosti, ne rastuci kPa niz)
+  - X-os boost iz 2018 (50 57 5d ... bb) nije pronaden ni u jednom 2016 gen binariju
+  - 2017/230 (10SW012999) boost @ 0x025B4E = POTVRĐENO flat 23130 (40 elem, −0x2AA od 2018)
+
+### Ključni nalaz
+- Nema jedinstvenoga offseta: SC corr je +0x126A, boost je neodređen
+- 10SW012502 (2017 260hp) = 2016 gen layout — SC corr na 0x023478 (ne 2018 adresi)
+- 2016 gen moguće nema odvojenu 1D boost_factor tablicu u standardnom formatu
+
+## 2026-03-21 23:55 — Signature search: correction mape u 2016 gen 1503
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_1503_corrections.md` (novo)
+
+### Rezultati
+- thermal_enrichment: **0x028004** (offset -0x2A3E vs 2018)
+- deadtime: **0x023E04** (offset -0x1AA6)
+- eff_correction: **0x023F36** (offset -0x1AA6, susjedan s deadtime)
+- ign_correction_2d: **0x02169A** (offset -0x0CDA)
+- MAT correction: **osa 0x025A92, data 0x025A9E** (offset -0x1B50; 2 kopije stride=0x122; pronađeno pattern scanom)
+- DFCO ramp: **NIJE PRISUTNA** — 2016/2017 gen ima samo 2pt stub @ 0x026CAC; 0x028C30 je IGN mapa u 2016 gen
+
+### Ključni nalaz
+- Nema jedinstvenoga globalnog offseta za sve mape — svaka mapa ima vlastiti pomak
+- 2016/2017 gen DFCO = stub (100,150,0xFFFF...), puna 16×11 tablica uvedena tek u 2018+
+
+## 2026-03-21 23:30 — 2016 gen 1503 skeneri implementirani u MapFinder
+
+### Fajlovi promijenjeni
+- `core/map_finder.py`
+
+### Nalaz i implementacija
+- `_REV_KNOWN_ADDRS` proširen: dodani 0x026E1E i 0x026D82 (2016 gen 1503)
+- `_2016_GEN_SW_IDS` ažuriran: dodan 10SW004672; komentar ažuriran s potpunim adresama
+- `_2016_GEN_1503_SW_IDS` = novi set {10SW000776, 10SW000778, 10SW012502}
+- 5 novih konstanti: `IGN_BASE_2016_1503`, `LAM_MAIN/ADAPT/TRIM_2016_1503`, `TORQUE_MAIN/MIRROR_2016_1503`, `FUEL_2016_1503`, `SC_2016_1503`
+- 5 novih scanner metoda: `_scan_2016_1503_sc/fuel/ignition/lambda/torque`
+- `find_all()` `is_2016_gen` grana: razlikuje 1503 (pune mape) od 1630 ACE (minimalna podrška)
+
+### Potvrđene adrese 2016 gen 1503 (sve 3 SW varijante identičan layout)
+- Rev: 0x026E1E (main), 0x026D82 (mirror) — 5126t = 8072 RPM
+- SC bypass: 0x012C60 (7×7 u8, value 0x2020)
+- Fuel 2D: 0x0232D0 (12×16 LE u16 Q15); osi @ 0x0232B0 (16pt) + 0x023298 (12pt) — Q14 format
+  - Napomena: dijagonalne 0-ćelije u mapi su normalne (fuel cut zone, identične 215hp i 260hp)
+- Ignition: 0x028988 base, stride 144B, 13 validnih mapa (od 19 skeniranih)
+- Lambda main: 0x024A90, adapt: 0x024C40 (+0x1B0), trim: 0x024DF0 (+0x360); mirror +0x518
+- Torque: 0x027604 (16×16 LE u16 Q8, lo=133-138 = Q8 0.52-0.54); mirror @ 0x027B1C
+
+### Rezultati testiranja
+- 10SW000776 (215hp): 21 mapa ✓
+- 10SW000778 (260hp): 21 mapa ✓
+- 10SW012502 (2017 260hp): 21 mapa ✓
+- 10SW004675 (2016 ACE): 4 mape (nepromijenjeno — minimalna podrška) ✓
+- 10SW066726 (2021 300hp): 57 mapa ✓
+- Svi testovi prolaze (test_core.py)
+
+## 2026-03-21 22:30 — 2016 gen 1503 rev limiter identificiran
+
+### Metodologija
+- Signature search: uzet kontekst oko 0x028E94 u 10SW012999 (poznat), tražen isti pattern u 1503 2016 gen
+- Cross-check: kontekst byte-for-byte identičan s 1630 ACE 2016 gen @ 0x028E94
+
+### Nalaz
+- **Adresa**: `0x026E1E` — rev limiter za SVE 2016 gen 1503 varijante
+- **Mirror**: `0x026D82` (156B = 0x9C ranije)
+- **Vrijednost**: 5126 ticks = **8072 RPM** (identično za 215hp i 260hp)
+- **SW koji koristi ovu adresu**: 10SW000776, 10SW000778, **10SW012502** (2017 260hp — 2016 gen layout!)
+- **Offset vs 1630 ACE ekvivalenta (0x028E94)**: −0x2076 bytes
+- **Potvrda**: identičan CODE kontekst (`06 14 1e 2d 3c 5a 78 00 05 00...`) u 1503 @ 0x026E1E i 1630 @ 0x028E94
+
+### Fajlovi ažurirani
+- `_docs/SEADOO_KNOWLEDGE.md`, `CLAUDE.md`, `memory/MEMORY.md`
+
+---
+
+## 2026-03-21 22:00 — Binarna verifikacija nesigurnih vrijednosti + dokumentacija
+
+### Verificirano binarno (svi dumps)
+- **GTI90 rev limiter**: 5875 ticks = **7043 RPM** — potvrđeno (maknuti ~ prefiks)
+- **Spark 900 rev limiter**: 5120 ticks = **8082 RPM** (ispravka: 8081 je bila pogreška zaokruživanja)
+- **GTI90 SC bypass**: **0x1C1B** @ 0x0205A8 — nova potvrda, dokumentirano
+- **SC bypass discrepancy**: 2018/2019 ORI: shadow (0x020534)=0x2626, active (0x0205A8)=0x3333
+  - 2020+ ORI: obje adrese = 0x2626 (usklađene)
+  - NPRo mijenja samo active + extra kopiju (shadow ostaje)
+
+### Fajlovi ažurirani
+- `_docs/SEADOO_KNOWLEDGE.md` — SC bypass tablica proširena (GTI90 + shadow/active napomena), rev limiter ispravci
+- `CLAUDE.md` — SW varijante ispravci (Spark 8082, GTI90 bypass 0x1C1B)
+- `memory/MEMORY.md` — rev limiter + bypass sekcija ažurirana
+
+---
+
+## 2026-03-21 21:00 — Dokumentacija — ispravci neistina (potvrda korisnika)
+
+### Ispravci
+1. **Throttle body 1630 ACE**: bio 60mm → **62mm** (korisnik potvrdio: svi motori 2012+ su 62mm)
+2. **Rev limiter**: Manual WOT RPM ≠ ECU cut. Binary ECU: 130/170hp NA = 7892 (isti SW, isti limit). Manual = dijagnostički WOT u vodi.
+3. **MEMORY.md**: Uklonjen duplikat 10SW082806
+4. **safety_validator.py komentar**: 170hp NA = 7892 binarno (ne 8440 iz manuala)
+
+### Fajlovi
+- `_docs/SEADOO_KNOWLEDGE.md`, `CLAUDE.md`, `core/safety_validator.py`, `memory/MEMORY.md`
+
+---
+
+## 2026-03-21 20:00 — XCU wiring analiza (2021/2022/2024 PDF)
+
+### Analizirani fajlovi
+- `C:/Users/SeaDoo/Desktop/SEADOO/0WIRING/2021 ALL.pdf` (3 str)
+- `C:/Users/SeaDoo/Desktop/SEADOO/0WIRING/2022 ALL.pdf` (9 str)
+- `C:/Users/SeaDoo/Desktop/SEADOO/0WIRING/PWC 2024 - Wiring Diagram_219101111_WD21Y24S10_en (2).pdf` (11 str)
+
+### Ključni nalazi
+
+**XCU uveden 2024 za 130/170hp NA modele:**
+- Str 3 (130/170 ENGINES): jasno oznaceno `XCU RELAY` — pin format 3-cifreni decimalni (101–256, ~48 pinova)
+- Stari ECM (ME17.8.5) na svim ostalim modelima: Spark, 230hp, 300hp
+- 325hp (RXP-X 325): ECM RELAY u dijagramu, ali fuse box poziva `XCU -127-` — dvosmislenost; pin format novi (`13-xx`/`4-xx`)
+
+**Pin format usporedba:**
+- ME17.8.5 (sve do 2024): `A-A1`–`A-M4` + `B-H2`/`B-L1`/`B-M1-3` = 38 pinova — **identičan 2018, 2021, 2022, 2024 230/300hp**
+- XCU (2024 130/170): 3-cifreni (101–256) — fizicki nekompatibilan s ME17 harnessom
+- 325hp ECM (2024): `13-01`–`13-56` + `4-xx` — novi format, novi konektor
+
+**Novi sustavi na 325hp (vs 300hp):**
+- FUEL PUMP RELAY (FPR) — zasebni relay (ME17 nema)
+- O2 sensor (02 SENSOR, 6-pin) — vanjska lambda sonda
+- LEVEL PRESSURE sensor — fuel pressure measurement
+- Max pin: 13-56 = 56+ pinova
+
+**Spark 2024**: ostaje na ECM/ME17.8.5 — bez promjena
+
+### Izmijenjeni fajlovi
+- `_docs/SEADOO_KNOWLEDGE.md` — dodana sekcija 13 "XCU platforma (2024+)"
+
+---
+
+## 2026-03-21 18:30 — Safety validator — ispravci i poboljšanja
+
+### Izmijenjeni fajlovi
+- `core/safety_validator.py`
+
+### Promjene
+
+**1. Rev limiter WARN threshold** — bio je 7500 rpm, što je krivo:
+- 170hp NA stock = 8440 RPM (najviši poznati stock) — triggerao lažni WARNING
+- 300/230hp SC stock = 8158/8168 RPM — isto triggeralo WARNING
+- **Ispravak**: WARN > 8700 rpm (iznad svih poznatih stock varijanti), ERROR > 9200 rpm
+
+**2. Q15 fuel mapa validacija** — `_check_injection` je za Q15 (`unit="Q15"`) koristio SC correction logiku
+- Nova metoda `_check_fuel_q15`: WARN > 1.0 (iznad Q15 max), ERROR > 1.1 (fizikalno nemoguće)
+- ORI referentne vrijednosti dokumentirane: 300hp=0.944, 230hp=0.785, 130/170hp=0.524
+
+**3. "fuel" category route** — dodan u `validate_edit()` dispatcher
+- `_check_fuel()`: routing za deadtime (µs, read-only), Q15, i generic
+- Ranije je "fuel" category padao kroz do `_check_generic` bez specifičnih provjera
+
+**4. Konstante** — dodani `_FUEL_Q15_WARN/ERROR`, `_REV_WARN_RPM/ERROR_RPM` umjesto magic brojeva
+
+### Testirano
+- 8440 rpm (170hp NA stock) → OK (bio Warning)
+- 8701 rpm → WARNING
+- 9300 rpm → ERROR
+- Q15 0.944 (300hp ORI) → OK
+- Q15 1.05 → WARNING
+- Q15 1.15 → ERROR
+- IGN ORI vrijednosti → OK
+
+---
+
+## 2026-03-21 — 2022 dump ispravak: čisti ORI, prijelazna platforma za 2023
+
+### Ispravak prethodnog agentovog zaključka
+- Agent je pogrešno zaključio "TUNED dump" — korisnik potvrdio: **10SW082806 = ČISTI ORI**
+- 2022 je **tranzicijska platforma**: BRP refaktorirao CODE za 2023 (325hp, novi ECU, blow-off, E-kontrolirani tlak goriva, novi SC)
+- 236KB CODE diff vs 2021 = strukturalna arhitekturna promjena, **ne tuning**
+- **2023 = potpuno novi ECU** (nije ME17.8.5) — ME17Suite scope završava s 2022
+- SC bypass @ 0x020534/0x0205A8 = 0x2626 jedine potvrđene adrese za 2022 SW
+- Sve ostale adrese (IGN, fuel, rev, lambda) su pomjerene — nepoznate bez adresne analize
+
+### Datoteke ažurirane
+- `CLAUDE.md`, `_docs/SEADOO_KNOWLEDGE.md`, `memory/MEMORY.md`
+
+---
+
+## 2026-03-20 14:30 — 2022 300hp dump analiza (10SW082806)
+
+### Što je napravljeno
+- Binarna analiza `_materijali/dumps/2022/300.bin`
+- Usporedba s 2021 (10SW066726) na svim ključnim adresama
+- MapFinder pokrenutan za 2022 SW
+
+### Ključni nalazi
+- **SW: 10SW082806** — verificiran (bio u KNOWN_SW kao "nema dumpa") — sada imamo dump
+- **Dump status: TUNED (nije ORI)** — više dokaza:
+  - Rev limiter @ 0x028E96 = 100 ticks (praktički uklonjen; trebalo bi biti ~5072)
+  - Cijela regija 0x028E94-0x028EAE = 100 ticks (19× ponavljanje)
+  - Fuel @ 0x022066: header nRows=257/nCols=257 (nerealno; 2021=12/16)
+  - Lambda @ 0x0266F0: vrijednosti 0.001 Q15 (nerealno)
+  - SC bypass extra @ 0x029993 = 0x3600 (vs 0x2626 u 2021)
+- **CODE diff vs 2021: 236,401B** (vs samo 2,891B za 2020→2021) — ZNACAJNA reorganizacija
+  - BOOT: 769B (SW string + checksum + 313× TriCore adresni pointeri)
+  - CODE: 236,401B
+  - CAL: 235,564B
+  - Ukupno: 472,734B = 30.7% razlicito
+- **SC bypass shadow (0x020534) = 0x2626 ISTI** kao 2021 — stock vrijednost
+- **SC bypass active (0x0205A8) = 0x2626 ISTI** kao 2021
+- **IGN @ 0x02B730 promijenjen** — u 2022 sadrzi u16 LE vrijednosti (multiplikacijski faktori ~1.0) umjesto u8 ignition kuta
+- **MapFinder: 14 mapa** (vs 57 za 2021) — vecina adresa mapa promijenjena u 2022 SW
+- 2022 SW = nova arhitektura CODE layout-a — nije kompatibilan s 2021 map adresama
+
+### Datoteke promijenjene
+- `_docs/SW_VERSIONS.md` — ažuriran 10SW082806 entry + sekcija "2021 vs 2022 diff"
+- `_docs/dumps_inventory.html` — dodano 2022/300 u DUMPS array + ažuriran SW_DB entry
+- `C:/Users/SeaDoo/.claude/projects/.../memory/MEMORY.md` — dodano 10SW082806 u SW tablicu + dumps inventar
+
+### Sljedeće
+- Nabaviti cisti ORI 2022 300hp dump za pravu adresnu analizu 10SW082806
+- Mapirati nove adrese mapa u 2022 CODE layoutu
+
+---
+
+## 2026-03-21 — SEADOO_KNOWLEDGE.md ažuriran s 2016 agent findings
+
+### Ispravke i dodaci iz zadnjeg agenta (2016 1630 ALL + 1503 GTX analiza)
+- **1503 throttle body = 62mm** (bio pogrešno 60mm u prvoj verziji)
+- **1503 idle = 1800±50 RPM** (ne 1700 — to je 1630 ACE)
+- Dodane kompletne tablice otpora senzora (CTS/MAPTS/OTS/EGTS — točne vrijednosti po °C iz shop manuala)
+- Dodan OPS (Oil Pressure Switch) spec: normally-closed, opens >180-220 kPa
+- Dodan magneto/stator: 1630=420W@6000RPM, 1503=360W@6000RPM
+- Dodana fuse tablica (F13-F19)
+- CAN wire colors po godištu: 2016=WHITE/RED + WHITE/BLACK; 2017+=WHITE/BLACK + WHITE/BEIGE
+- ECM montažni torque: 5.5Nm ±0.6Nm + Loctite 243
+- 1503 spec potvrđen: bore 100mm, stroke 63.4mm, disp 1493.8cc, CR NA=10.6:1 SC=8.4:1
+- Speed limiter spec (manual): 1503=8300RPM, 1630=8400RPM
+
+### Datoteke promijenjene
+- `_docs/SEADOO_KNOWLEDGE.md` — ažuriran
+
+---
+
+## 2026-03-21 — SEADOO_KNOWLEDGE.md — master knowledge dokument kreiran
+
+### Što je napravljeno
+- Kompiliran `_docs/SEADOO_KNOWLEDGE.md` — sintetizira sve PDF analize iz prethodne sesije
+- Pokriva: sensor specs (CPS/CTS/EGTS/KS/injektori/zavojnice), ECU hardware, CAN bus, gorivo/injekcija, RPM limiteri, SC specs, svjećice, SW verzije (19 SW-ova), razlike po godištu, limp home/zaštite, impeller dims
+- Uključuje "česte zamke" sekciju (10 pitfalls pri radu s različitim SW generacijama)
+
+### Datoteke promijenjene
+- `_docs/SEADOO_KNOWLEDGE.md` — novi fajl (master knowledge base)
+- `work_log.md`, `chat_log.md`
+
+---
+
+## 2026-03-20 20:30 — PDF analiza: Sea-Doo 2016 shop manuali (1630 ACE ALL + 1503 GTX/RXT/WakePro)
+
+### Što je napravljeno
+- Pročitana 2 PDF-a: `2016 1630 ALL.pdf` (930 str, 124MB) i `2016 1503 GTX_RXT_WakePro.pdf` (959 str, 124MB)
+- Korišten pypdf za ekstrakciju teksta (fajlovi preveliki za Read tool >100MB)
+- Čitane: tech specs (str 877-884 / 906-913), Vehicle Specifications shop manual (str 499-503 / 562-566), EFI sekcija, supercharger sekcija, ignition, fuel system
+- Napisan strukturirani markdown izvještaj
+
+### Ključni nalazi
+
+**Engine tech specs (owner's manual, potvrđene)**
+- 1630 ACE HO: bore=100mm, stroke=69.2mm, displacement=1630.5cm3, CR=8.4:1, 217kW@8000RPM, SOHC 3-cil 12v
+- 1503 4-TEC: bore=100mm, stroke=63.4mm, displacement=1493.8cm3, CR=155hp=10.6:1 / 215+260hp=8.4:1
+- 1503 snage: 155hp=106kW@7300, 215hp=152kW@8000, 260hp=179kW@8000 RPM
+
+**Električni sistem (Vehicle Specifications shop manual, str 499-500)**
+- Idle speed: 1503=1800±50 RPM, 1630=1700±50 RPM (oba ne-podešivi)
+- Engine speed limiter: 1503=8300 RPM, 1630=8400 RPM (software limiter setting)
+- Spark plug: 1503=NGK DCPR8E, 1630=NGK KR9C-G, zazor=0.7-0.8mm za oba
+- Magneto output: 1503=360W@6000, 1630=420W@6000 RPM
+- Ignition coil primary: 1503=0.85-1.15Ω, 1630=0.80-0.97Ω @20°C
+- Ignition coil secondary: 1503=9.5-13.5kΩ, 1630=N.A. (ne testira se)
+
+**Fuel system**
+- Fuel pressure: 386-414 kPa (56-60 PSI) za oba motora — identično svim godištima
+- Throttle body: 1503=62mm, 1630=60mm
+- Injector resistance: 11.4-12.6Ω @20°C (oba motora)
+- Injector color code: 1630=yellow-green
+- Fuel tank: bez suspenzije=60L, sa suspenzijom=70L; rezerva≈12L
+
+**Supercharger**
+- 1630 ACE: max turbine RPM=46800 RPM; clutch slipping moment=14-17Nm (novi), min 11Nm (uhodan)
+- 1503 215/260hp: max turbine RPM=45000 RPM; clutch slipping=9-14Nm (novi), 8-12Nm (uhodan)
+- Gear ratio nije eksplicitno naveden u tekstu (u slikama)
+
+**Sensor specs (1630 ACE EFI sekcija)**
+- CTS: -40°C=38457-52630Ω, 20°C=2233-2780Ω, 80°C=297-349Ω, 120°C=105-122Ω
+- MAPTS (temp): -40°C=40528-56935Ω, 20°C=2193-2863Ω, 80°C=294-368Ω, 120°C=98-122Ω
+- EGTS: identična krivulja kao OTS (NTC termistor, ista vrijednost @temp)
+- OTS: -30°C=11800-13400Ω, 20°C=2200-2800Ω, 80°C=280-370Ω, 120°C=100-125Ω
+- Knock sensor: ≈5MΩ @20°C
+- CTS overheat limit: 110°C (230°F); OTS overheat: 95°C (203°F)
+
+**ECU/ECM**
+- Nema eksplicitnog P/N (278xxxxxx) u tekstu manuala — P/N je na fizičkoj naljepnici ECM modula
+- ECM retaining screws: 5.5Nm (Loctite 243)
+- CAN bus: 2-žični (CAN HI = white/red, CAN LO = white/black); bus-bars u fuse boxu
+- Fuse #19 = ECM power 15A; Fuse #18 = fuel pump 10A; Fuse #13/14/15 = Inj+Ign po cilindru 10A
+
+**Relevantno za ME17Suite**
+- Engine speed limiter 8400 RPM (1630) i 8300 RPM (1503) su SW postavke — odgovaraju period-encoded vrijednostima koje ME17Suite već detektira
+- Idle 1700 RPM za 1630 je konstanta za limp-home i iBR logiku
+- Fuel pressure spec 386-414 kPa je korisno za fuel pump dijagnostiku (nije u tuningu)
+- Sensor resistance krivulje su korisne za verifikaciju DTC kodova (P0117/P0118 CTS range)
+
+### Fajlovi
+- Izvor: `C:\Users\SeaDoo\Desktop\SEADOO\2016 1630 ALL.pdf` (str 877-884 owner spec, str 499-503 shop spec)
+- Izvor: `C:\Users\SeaDoo\Desktop\SEADOO\2016 1503 GTX_RXT_WakePro.pdf` (str 906-913, str 562-566)
+
+---
+
+## 2026-03-20 19:15 — PDF analiza: Sea-Doo 2022 shop manuali (GTX/RXT, RXP, GTI/GTR, Spark)
+
+### Što je napravljeno
+- Pročitana 4 PDF-a: 2022 GTX/RXT/Wake PRO/Fish PRO (269str), 2022 RXP (250str), 2022 GTI/GTR/Wake (291str), 2022 Spark (262str)
+- Korišten pdfplumber za ekstrakciju teksta (pdftoppm nedostupan)
+- Čitane tech specs sekcije (Section 08/09) i engine management sekcije
+- Napisan strukturirani izvještaj
+
+### Ključni nalazi
+- 2022 koristi ISTI Rotax 1630 ACE / 900 ACE motore — nema novog motora
+- ECU ostaje ME17.8.5 (Bosch) — ISTI ECM konektor smr2009-027-005 u svim manualima
+- GTI/GTR manual pokriva OBA motora: 900 ACE (GTI 90) + 1630 ACE (GTI 130/170/230)
+- Fuel pressure 1630 ACE: 386–414 kPa (56–60 PSI) — identično 2019/2021
+- Spark 900 ACE: engine speed limiter = 8000 RPM (tech spec, ne 8300!)
+- GTI 90 impeller 150mm, GTI 130/170 = 155.5mm, GTR 230 = 161mm
+- RXP 300: impeller 161mm, 13.5°/24° pitch (identično GTX LTD 300)
+- Bore/stroke/HP/torque podaci su u slikama (EMS diagram) — tekst-parser ih ne hvata
+- Supercharger: maintenance free (ne mijenja se) za 230 i 300hp motore
+- 2022 nema novih riding moda u odnosu na 2021 (isti iControl, iBR, iTC)
+
+### Datoteke promijenjene
+- `work_log.md`, `chat_log.md`
+
+## 2026-03-20 18:30 — PDF analiza: Sea-Doo Spark 900 ACE shop manuals 2016/2017/2019
+
+### Što je napravljeno
+- Pročitano 8 PDF-ova: 2016 SPARK SERIES SHOP MANUAL (posebni fajlovi: Tech Specs, EFI, DTC, CAN), 2017 SPARK folder (Tech Specs engine+vehicle), 2019 Spark.pdf (zadnjih 20%)
+- Ekstrahovani svi relevantni podaci za ME17Suite: engine specs, sensor otpori, injektori, RPM limiter, limp home RPM, CAN bus, DTC lista
+- Napisan kompletan strukturirani izvještaj
+
+### Ključni nalazi
+- RPM limiter: 8300 RPM (hard cut, ECM) — potvrđeno 2016/2017/2019
+- Max power RPM: 900 ACE = 8000±100 RPM, 900 ACE HO = 8000 RPM @ 66.19kW
+- Idle: 1400 ± 100 RPM (u vodi)
+- Limp home: high temp / high EGTS → 3800 RPM; low oil pressure → 4500 RPM
+- Injector otpor: 11.4–12.6 Ω @ 20°C (isti kao 2017 1503/900 ACE)
+- Fuel pressure: 386–414 kPa (56–60 PSI) — reguliran u fuel pump modulu
+- Ignition coil: primary 0.80–0.97 Ω, secondary 9.5–13.5 kΩ
+- CPS: 775–950 Ω @ 20°C (na ECM adapteru: H1-K2)
+- CTS/MAPTS/EGTS: iste tablice otpora (identično 2014 tech spec)
+- Knock sensor: ~5 MΩ (na ECM adapteru: A-C3 / A-G2)
+- CAN: WH/BG=CAN-HI, WH/BK=CAN-LO; Spark bez iBR = 2 modula, s iBR = 3 modula
+- 60hp vs 90hp razlika: SAMO kalibracija ECM-a — isti hardware, isti sensors, ista throttle body
+- 2019 Spark: deklarirana snaga — 900 ACE = 44.13 kW@7000 RPM (60hp), 900 HO ACE = 66.19 kW@8000 RPM (90hp)
+
+### Datoteke promijenjene
+- `work_log.md`, `chat_log.md`
+
+## 2026-03-20 17:15 — PDF analiza: Sea-Doo 2011-2015 Spark historijski kontekst
+
+### Što je napravljeno
+- Pokušano čitanje 5 PDF-ova: 2011 ALL.pdf (139MB), 2013_4 ALL.pdf (112MB), 2015 1503 ALL.pdf (84MB), Spark DTC 2014, Spark Tech Spec
+- 2 velika PDF-a (>100MB) nedostupna — Read tool limit
+- 2015 1503 ALL.pdf i višestranični Spark iBR PDF-ovi nedostupni — pdftoppm nije instaliran
+- Uspješno pročitano: smr2014-043 (Tech Spec), DTC 2014 Spark, EMS block dijagram, CAN dijagram, Spark Introduction 2014, iBR Tech Spec
+- Napisan strukturirani historijski izvještaj
+
+### Ključni nalazi
+- Spark 2014: ROTAX 900 ACE, 3-cil DOHC, bore=74mm, stroke=69.7mm, 899.31cc, comp=11:1
+- Max HP RPM=8000±100, Engine speed limiter=8300 RPM (potvrđuje ME17Suite CLAUDE.md)
+- Throttle body: Dell'Orto 46mm iTC, 3 injektora, fuel pressure=386-414 kPa
+- Ignition: IDI (Inductive Digital Ignition), NGK CR8EB, gap 0.70-0.80mm
+- ECM fotografija reference: smr2009-027-005 (isti hardware kao za 4-TEC modele — potvrđuje Bosch ME17 kontinuitet)
+- DTC P-kodovi Spark 2014 identični ME17.8.5 strukturi (P0201, P0231, P0335, P1502-P1506 itd.)
+- CAN bus: WH/BG=CAN-HI, WH/BK=CAN-LO; moduli: ECM (B-C1/B-C2), DB (dijagnostički), Gauge
+- ECU P/N NIJE pronađen u dostupnim fajlovima (EFI sekcija nedostupna)
+- ME17 debut 2008 nije mogao biti potvrđen/osporen — 2011 ALL.pdf nedostupan (139MB)
+- 2016 gen (10SW004675): rev=8072RPM, SC bypass=0x3333 potvrđuje stariji layout
+
+### Datoteke promijenjene
+- `work_log.md`, `chat_log.md`
+
+## 2026-03-20 16:30 — PDF analiza: 2021 shop manuali (4 PDFa) — svi motori
+
+### Što je napravljeno
+- Pročitana 4 kompletna 2021 shop manuala: 1630 ACE (191 str), GTX/RXT (274 str), GTI/GTR (934 str), Spark (714 str)
+- Izvučeni svi tehnički podaci relevantni za ECU tuning
+- Napisan strukturirani Markdown izvještaj s razlikama po snagama
+
+### Ključni nalazi
+- 1630 ACE RPM limiter: 130hp=8040 RPM, 170/230/300hp=8440 RPM (ISPRAVKA: prethodni unos imao pogrešno 8300/8400)
+- 900 ACE RPM limiter: 8300 RPM (tehnički spec motornog manuala, "Spark shop" kaže 8000 RPM — razlika owner vs shop)
+- Spark 900 ACE-90: 8000 RPM @ max HP, Engine speed limiter=8300 RPM
+- Gorivo: injektori 11.4–12.6 Ω (1630 + 900 ACE isti resistance), boja YELLOW/GREEN (1630 ACE)
+- Svjećice: 1630 130/170/230hp = NGK DCPR8E, 300hp = NGK KR9E-G, Spark 900 = NGK CR8EB
+- Svjećica razmak: 130/170/230hp = 0.8–0.9mm, 300hp = 0.7–0.8mm
+- Supercharger: 230hp max 45000 RPM, 300hp max 46800 RPM; različiti gear holder alati
+- CAN bus: WHITE/BLACK = CAN HI, WHITE/BEIGE = CAN LO (potvr. u GTX/RXT i Spark manualu)
+- Throttle body: 1630 ACE = 60mm, 900 ACE = 46mm Dell'Orto heated
+- 900 ACE idle: 1400 RPM (shop manual engine spec), 1450 RPM (vehicle spec)
+- GTI 1630 ACE 90hp (GTI90): 900 ACE motor = 66.19 kW @ 8000 RPM, RPM limiter 8300 RPM
+
+### Datoteke promijenjene
+- `work_log.md`, `chat_log.md`
+
+## 2026-03-20 15:30 — PDF analiza: 2017 1630 HO ACE shop manuali (9 PDF-ova)
+
+### Što je napravljeno
+- Pročitano 9 PDF-ova: EMS (smr2017-011), EFI (smr2016-027), CAN (smr2016-023), DTC (smr2016-025), Ignition (smr2016-030), Tech Spec Engine (smr2016-043), Tech Spec Vehicle (smr2016-043), Supercharger (smr2016-019), Rotax Tech Spec (R1630_MY17-011), iControl (smr2016-022)
+- Izvučene sve tehničke vrijednosti relevantne za ME17Suite
+
+### Ključni nalazi
+- Rev limiter: 8300 RPM (ignition manual) vs 8400 RPM (vehicle spec) — neslaganje
+- Fuel pressure: 386–414 kPa (56–60 PSI) za sve modele
+- Injector resistance: 11.4–12.6 Ω @ 20°C, boja žuto-zelena (engine 1603)
+- CPS: 775–950 Ω @ 20°C, ~3.7 Vac za vrijeme okretanja
+- SC max RPM: 46800 RPM; slipping moment 14–17 Nm (novi), min 11 Nm (korišten)
+- CTS overheat: 110°C; Oil limp home >95°C OTS
+- Idle: 1700 ±50 RPM (ne adjustable)
+- Throttle body: 60 mm (1630 ACE HO); ETA limp home @ ~8°
+
+### Datoteke promijenjene
+- `work_log.md`, `chat_log.md`
+
+---
+
+## 2026-03-20 15:00 — Analiza 2017 Sea-Doo shop manual PDF — 1503 NA i 900 ACE
+
+### Što je napravljeno
+- Pročitano svih 8 PDFova iz 2017 service manuala za 1503 NA i 900 ACE seriju
+- Ekstrahirani svi ECU-relevantni podaci: RPM limiteri, sensor specs, injector specs, ignition, CAN, throttle body
+- Napisan strukturirani Markdown izvještaj s kompletnim brojevima
+
+### Ključni nalaz — razlike između serija
+- **1503 NA**: RPM limiter = **8050 RPM**, throttle body = **60mm**, injector resistance = **11.4–12.6Ω**, injector boja = **plava**
+- **900 ACE**: RPM limiter = **8300 RPM**, throttle body = **46mm**, injector resistance = **11.4–12.6Ω** (identično)
+- CTS overheat: 1503=**110°C**, 900 ACE=**100°C**
+- EGTS overheat: 1503=**110°C**, 900 ACE=**95°C**
+- Ignition coil primary: 1503=**0.80–0.97Ω**, 900 ACE=**0.85–1.15Ω**; secondary (900 ACE only)=**9.5–13.5kΩ**
+- CPS resistance (oba): **775–950Ω** @ 20°C; CPS output voltage: **~3.7 Vac** pri okretanju
+- KS resistance (oba): **~5 MΩ** @ 20°C; threshold za test = iznad **5000 RPM**
+- CAN bus: 2 žice (WHITE/BLACK i WHITE/BEIGE), update rate 10ms ili 100ms ovisno o komponenti
+
+## 2026-03-20 00:30 — 2017 gen address audit — potvrđene adrese za 10SW012999
+
+### Što je napravljeno
+- **Binary analysis**: usporedba 2017/230 (10SW012999) vs 2018/230 (10SW025021) dump-ova
+- **Metodologija**: pattern search za poznate mape (boost_factor, temp_fuel, lambda, torque)
+- **Ključni nalaz**: globalni CODE offset -0x2AA = -682B za sve SC mape u regionu 0x025000-0x027000
+
+### Potvrđene adrese za 10SW012999
+| Mapa | 2017 adresa | 2018 adresa | Napomena |
+|------|-------------|-------------|----------|
+| boost_factor | 0x025B4E | 0x025DF8 | flat 23130 × 40 elem |
+| temp_fuel | 0x025BA6 | 0x025E50 | varijabilna × 156 elem Q14 |
+| lambda_main | 0x026446 | 0x0266F0 | 12×18 Q15, mirror +0x518 |
+| lambda_trim | 0x026B0E | 0x026DB8 | 12×18 Q15, 0.955-1.044 |
+| torque_main | 0x02A0D8 | 0x02A0D8 | ISTA adresa! |
+| torque mirror | 0x029BC0 | 0x02A5F0 | ISPRED main-a (-0x518, ne +0x518) |
+| rev limiter | 0x028E94 | 0x028E96 | 5126t = 8072 RPM |
+
+### Datoteke promijenjene
+- `CLAUDE.md` — ažuriran redak za 10SW012999 s konkretnim adresama
+- `_materijali/2017_gen_address_audit.md` — novi fajl, detaljna dokumentacija
+
+### Napomene
+- 10SW012502 (2017/260hp) ima DRUGAČIJI layout — adrese ne odgovaraju 10SW012999
+- 2016 gen (10SW000776/778) ima PRAZNE 0x025DF8-0x025E50 regije — sasvim drugačiji layout
+- temp_fuel u 2017 je VARIJABILNA (2018 je flat 23130) = stariji ECU ima aktivnu temp korekciju
+
+## 2026-03-20 23:58 — 2016/2017 gen podrška implementirana u map_finder.py
+
+### Što je napravljeno
+- **`core/map_finder.py`**: dodani SW ID setovi, detection metode i find_all() grane za 2016 i 2017 gen
+  - `_2016_GEN_SW_IDS`: 10SW000776, 10SW000778, 10SW004675
+  - `_2017_GEN_SW_IDS`: 10SW012999
+  - `_is_2016_gen()`, `_is_2017_gen()` metode
+  - `find_all()`: elif grane — 2016 gen skenira samo rev_limiter + SC bypass; 2017 gen preskace boost/temp_fuel/lambda_trim/torque/inj_lin
+
+### Validacija
+- 2016/215 (10SW000776): 0 mapa — nema false positives
+- 2016/260 (10SW000778): 0 mapa — nema false positives
+- 2016/300 (10SW004675): 4 mape — 2x rev limiter (8738rpm) + 2x SC bypass
+- 2017/230 (10SW012999): 23 mape — parcijalna podrska bez problematicnih skenera
+- 2019/300 (10SW040039): 57 mapa — nema regresije u 2018+ grani
+
+## 2026-03-21 23:55 — SW Kompatibilnost UI dijalog
+
+### Što je napravljeno
+- **novi fajl**: `ui/sw_compat_widget.py` — `SwCompatWidget(QDialog)` modalni dijalog
+  - Dropdown odabir SW ID-a (svi poznati + učitani ECU)
+  - Kompatibilnost matrix: 13 kategorija mapa × 3 kolone (status/adresa/napomena)
+  - Status boje: zelena OK, crvena NEDOSTUPNO, po redu tablice
+  - Badge: PUNA PODRŠKA / PARCIJALNA / OGRANIČENA s brojevima (X od Y)
+  - Info box s upgrade prijedlogom za ograničene SW (2016, 2017)
+  - `COMPAT_DATA`: 4 ograničena SW — 10SW000776, 10SW000778, 10SW004675, 10SW012999
+- **izmjena**: `ui/main_window.py`
+  - import `SwCompatWidget`
+  - toolbar: tipka "🔍 SW Compat" iza Undo/Redo separatora
+  - handler `_open_sw_compat()`: otvara dijalog s `eng1.info.sw_id`
+- Validacija: py_compile OK za oba fajla
+
+## 2026-03-21 — Dokumentacija novih 4TEC 1503 dumpova (2016/2017 gen)
+
+### Što je napravljeno
+Ažurirana dokumentacija s 3 nova dumpa i tehničkim nalazima za 2016 i 2017 generaciju 4TEC 1503.
+
+### Novi dumpovi
+- `2016/4tec1503/215.bin` — SW=10SW000776, 215hp SC 1503
+- `2016/4tec1503/260.bin` — SW=10SW000778, 260hp SC 1503
+- `2017/4tec1503/230.bin` — SW=10SW012999, 230hp SC 1503
+
+### Promijenjeni fajlovi
+- `_docs/dumps_inventory.html` — NEMA promjena (svi 3 unosa već bili prisutni u DUMPS i SW_ALL)
+- `_docs/SW_VERSIONS.md` — dodane sekcije: "4TEC 1503 2016 gen", "4TEC 1503 2017 gen", "SW Kronologijska analiza"
+- `CLAUDE.md` — dopunjeni: SW Varijante (10SW000776, 10SW000778, 10SW012999), map_finder (_is_2016_gen(), _is_2017_gen())
+
+### Ključni tehnički nalazi
+- **2016 gen SC bypass**: `0x012C60 = 0x2020` (ne 0x020534 kao 2018+!) — potpuno drugačija adresa
+- **2017 gen (10SW012999)**: parcijalna 2018 migracija — SC bypass/ign/rev/lambda_main/fuel_2d rade na 2018 adresama; boost_factor=358 (ne 23130), temp_fuel=3000, lambda_trim=0 na drugačijim lokacijama
+- **SW pattern potvrđen**: niži broj = stariji SW; 000776 i 000778 susjedni (±2) = isti release batch; ~13k/godišnji skok
+- **BUDS**: 2016 = BUDS + BUDS2; 2017+ = BUDS2 only; BUDS2 nema pre-2016 backup
+- **Swap kompatibilnost**: stariji motori rade s novijim ECU SW (10SW format)
+
+---
+
+## 2026-03-20 23:30 — OLS binarij ekstrakcija + 1037524060 arhitektura + 4TEC 1503 mapa analiza
+
+### Što je napravljeno
+Ekstrakcija ECU binarija iz WinOLS OLS fajlova i duboka analiza 1037524060 arhitekture + 4TEC 1503 SC vs NA mapa.
+
+### OLS ekstrakcija
+- **TEMP_rxp1503_orig.bin** (128KB, CS=0x1CF16484) — iz `Sea-Doo RXP 1.5 compr.ols`
+- **TEMP_rxtx1503_orig.bin** (128KB, CS=0x53532E7D) — iz `WinOLS (Sea-Doo RXT-X).ols`
+- Ekstrakcija: `ols[SW_idx - 0x1A : SW_idx - 0x1A + 0x20000]` (128KB per block)
+
+### 1037524060 binarij arhitektura (NOVA SPOZNAJA)
+`rxtx_260_524060.bin` je **MULTI-IMAGE CONTAINER** sa 3 ECU slike:
+- Block1 @ 0x000000: RXTX-X stock (CS=0x53532E7D)
+- Block2 @ 0x020000: RXP compr tune (CS=0x1CF16484) — **identičan RXP OLS ekstrakciji**
+- Block3 @ 0x040000: treća varijanta (CS=0x11E707D1)
+- CODE @ 0x060000: dijeljeni TriCore kod
+- CAL @ 0x080000: 0xC3-fill CAL podaci
+
+**KRITIČNO**: 1037524060 je **PRE-10SW ECU format** (starija arhitektura):
+- CODE na 0x060000 (NE 0x010000!)
+- Map adrese iz CLAUDE.md (0x022066 itd.) **NE RADE** za ovu binariju
+- RXP vs RXTX = 96% razlike = potpuno različite kalibracije, nisu "stock vs tuned"
+
+### 4TEC 1503 SC vs NA mapa razlike (potvrđene)
+| Mapa | Adresa | SC 230hp | NA 130hp |
+|------|--------|----------|----------|
+| Fuel max Q15 | 0x022066+0x17E | 0.9524 | 0.4404 |
+| IGN row0 | 0x02B730 | 32.2° (viši advance) | 24.8° (flat) |
+| SC correction Q14 | 0x02220E | 1.021-1.196 | flat 1.000 |
+| SC bypass shadow | 0x020534 | 0x1F1F | 0x1E1E |
+| SC bypass active | 0x0205A8 | 0x1F1F | 0x1E1E |
+| KFPED X-os | 0x029528 | MAP kPa [-80..+90] | pedal° [0..70] |
+| Torque max Nm | 0x029FD4 | 340.0 Nm | 332.8 Nm |
+| Rev limit | 0x028E96 | 7664 RPM | 7699 RPM |
+
+SC correction 0x02220E: **NOVA ADRESA POTVRĐENA** za 4TEC 1503
+
+### Fajlovi promijenjeni
+- `_materijali/TEMP_rxp1503_orig.bin` (novi, 128KB)
+- `_materijali/TEMP_rxtx1503_orig.bin` (novi, 128KB)
+
+## 2026-03-20 22:00 — KP/OLS analiza — 4TEC 1503 mapa verifikacija
+
+### Što je napravljeno
+Kompletna analiza WinOLS KP i OLS fajlova iz `_materijali/unknow/` i verifikacija svih adresa u 4TEC 1503 binarnim dumpovima.
+
+### KP format
+- **Mali KP** (`10974.ols.kp`, 15KB) = WinOLS map lista za **Spark 900 ACE** (NE za 1503!)
+  - Stringovi: "Limiter of maximum Torque", "Map optimal engine torque", "Ignition timing", "Airmass to fuel injector" itd.
+  - CODE adrese: 0x027D10 (RPM limiter), 0x024958 (airmass-to-injector), 0x026A4E (ign timing), 0x0222BE (desired charge)
+  - Zaključak: WinOLS intern format = binary sa pascal-string deskriptorima + CODE adresama, NE direktno parsabilno
+- **Veliki KP** (`Rxp260 maps buds.kp`, 693KB) = Bosch Knowledge Pack — samo opisi parametara (1711 unikatnih stringova), **BEZ ECU adresa** (adrese nisu u KP bazi)
+- **OLS fajl** = WinOLS projekt za RXT-X 260 4TEC 1503, 503 map entries, binary format s FFFFFFFF separatorima
+
+### 4TEC 1503 Verifikacija (10SW025021, 10SW025022, 10SW040008)
+Sve adrese iz CLAUDE.md POTVRĐENE za 4TEC 1503:
+- **Fuel mapa** @ 0x022066 = 12×16 u16LE Q15 RADI (130hp max=0.440, 230hp max=0.952)
+- **Ignition** @ 0x02B730 = 19 mapa, stride 144B, u8 format RADI (17/19 razlikuju SC vs NA)
+- **Lambda main** @ 0x0266F0 = 12×18 u16LE Q15 RADI
+- **Rev limiter** @ 0x028E96 (NA=7700rpm), 0x028E94 (SC=7892/8158rpm) POTVRĐENO
+- **SC correction** @ 0x02220E = 9×7 Q14 RADI (NA=flat 1.0, SC=variable 1.02-1.92)
+- **SC bypass** @ 0x020534 = 0x1E1E (NA 130hp), 0x1F1F (SC 230hp) POTVRĐENO
+- **KFPED** @ 0x029528 (axis) + 0x029548 (data) RADI (NA X-os=pedal°, SC X-os=MAP kPa)
+- **Physical torque curve** @ 0x029FD4 = 30pt u16LE /100=Nm RADI
+
+### Nove spoznaje (nisu u CLAUDE.md)
+- `0x025DF8` za 4TEC = flat 0x5A5A = Q14=1.412 (+41%), IDENTIČNO SC/NA (za 1630 = 1.224 i varijabilno)
+- `0x022282` = SC boost factor curve (NA=flat Q14=1.0, SC=variable Q14 1.18-1.92)
+- `0x029FD4` = Physical torque krivulja u Nm: 2018 SC≠NA, 2019 svi isti (10SW040008 isti za 130/155/230hp)
+- `0x02436C` = NULA za 4TEC (nema injector linearization na toj adresi, za razliku od 1630)
+- `0x02A0D8` (torque main) = mostly flat ~128 BE Q8 za 4TEC — praktički PASIVNA mapa
+- 2019 SW 10SW040008: isti SW za 130/155/230hp, identična fizička torque krivulja i fuel mapa
+- SC 230hp vs NA 130hp: 612 diff regiona u CODE, ukupno ~19KB razlike (slaže s CLAUDE.md MEMORY)
+
+### Fajlovi promijenjeni
+- Nema — research task, kod nije mijenjan
+
+---
+
 ## 2026-03-20 — ui/main_window.py — Integracija MapHeatWidget + MapEditorWidget + CanLivePanel
 
 ### Što je napravljeno
@@ -4544,3 +5391,456 @@ Header @ 0x02202A/0x02202C potvrđuje nR=12 nC=16 za SVE non-Spark ME17.8.5 bina
 - Map count: 57 (300hp), 64 (130/170hp), 63 (GTI 1503)
 
 ## 2026-03-20 — README.md kompletno prepisano (svi motori podržani, točni podaci)
+
+
+## 2026-03-20 13:00 -- 4-TEC 1503 map_finder.py audit
+
+### Sto je istrazeno
+Kompletan binarni audit svih 9 1503 dumpova vs map_finder.py skeneri.
+
+### Zakljucci
+
+**Detekcija (map_finder.py)**:
+- 1503 SW IDovi (10SW025022/025752/025021/040008/040962) triggiraju 
+- Ovo je ISPRAVNO -- isti put kao GTI90/1630 NA
+- 1503 dobiva: sve standardne skenere + _scan_ace1630_injection + _scan_gti_ignition_extra
+
+**VERIFIKOVANE adrese (iste kao 1630/GTI90)**:
+- fuel_2d_header @ 0x02202A: nR=12, nC=16 (identican)
+- fuel_2d_data @ 0x022066: OK (ali razlicite vrijednosti po snazi)
+- ign_base @ 0x02B730: OK (19 mapa, stride 144B, 12x12 u8 0.75deg/bit)
+- extra_ign @ 0x028310: 8 mapa prolaze validaciju (NA range 30-70)
+- lambda_main @ 0x0266F0: OK (aktivna kalibracija, ne flat)
+- lambda_mirror @ 0x026C08: OK
+- torque_main @ 0x02A0D8: OK (sve 32768=100%, flat -- 4-cil manje torque korekcija?)
+- torque_opt @ 0x02A7F0: OK
+- torque_phys @ 0x029FD4: OK (razliciti Nm po varijanti)
+- rpm_axis @ 0x024F46: IDENTICAN 1630
+- sc_correction @ 0x02220E: flat 16384 za 130/155hp (neutralno), aktivno za 230SC
+- lambda_adapt @ 0x0268A0: OK
+- lambda_trim @ 0x026DB8: OK
+- lambda_bias @ 0x0265D6: OK
+- lambda_eff @ 0x02AE5E: OK (razlicite vrijednosti po varijanti)
+- lambda_thresh @ 0x02B378: OK
+- accel_enrich @ 0x028059: OK
+- temp_fuel @ 0x025E50: OK (flat 23130=Q14+41.2%, sto je razlicito od 1630)
+- thermal_enr @ 0x02AA42: OK
+- knock_params @ 0x0256F8: OK (65535/65535=max threshold za 130/155, 44237 za 230SC)
+- deadtime @ 0x0258AA: OK (malo razlicite vrijednosti od 1630)
+- kfped_data @ 0x029548: OK
+- sc_boost_fact @ 0x025DF8: flat 23130 ZA SVE 1503 (Q14=+41.2%)
+- idle_rpm @ 0x02B600: 2018=razlicito, 2019=identican 1630
+- lambda_prot @ 0x02469C: IDENTICAN 1630 (iste vrijednosti)
+- mat_corr @ 0x022726: IDENTICAN 1630 (iste vrijednosti)
+- eff_corr_u8 @ 0x0259DC: OK (malo razlicite vrijednosti)
+
+**SPECIFICNOSTI 1503 vs 1630**:
+- overtemp_lambda @ 0x025ADA: AKTIVNA (38036,38036,...) -- NE 0xFFFF bypass kao 1630!
+- neutral_corr @ 0x025B58: 23130 za 130/155hp (1630=16448); SC 230=16448 (isto)
+- sc_bypass @ 0x020534/0x0205A8/0x029993: 0x1E1E=7710 za 130/155hp (1630 ima razlicit kod)
+- rev_limit @ 0x028E94: 5243 ticks=7892 RPM (2019+); 0x028E96: 5374=7699 RPM (2018)
+- dfco_ramp @ 0x028C30: razlicite vrijednosti (ne vazece 1630 adrese za 1503?)
+- start_inj @ 0x025CDC: razlicita os za 130/155hp vs 230SC (230SC=isti kao 1630)
+
+**FALSE POSITIVES** (bugovi u map_finder.py za 1503):
+1. : 168/192 non-zero, prolazi threshold >=48 -- KRIVO, nije fuel mapa
+2. : 8481=0x2121 je IGN DATA (33,33 u8 = 24.75 deg BTDC), prolazi 4000-13000 range -- KRIVO
+
+**Ignition extra serija @ 0x028300** (NOVO otkrice):
+- 1503 ima 8 blokova @ 0x028300 (stride 144B, ista velicina)
+- 0x028300 je 0x10=16B ISPRED GTI_IGN_BASE=0x028310
+- Blockovi @ 0x028310 (stride 144B) su UNUTAR ovih blokova, ali ne potpuno poklapajuci
+- Oba scannera (0x028300 i 0x028310) nalaze validne ign mape -- jedan je offset, ali 1503 validira na oba
+
+### Zakljucak za implementaciju
+1503 radi uglavnom ispravno kao GTI/NA varijanta BEZ promjena -- jedine akcije:
+- Ukloniti false positive 0x02436C za 1503 (filter po SW ID)
+- Ukloniti false positive 0x02B72A/0x02B73E za 1503 (ili dodati 1503 SW u exlude)
+- Dokumentirati da 1503 ne koristi SC bypass kao indikator (sve varijante imaju non-zero SC bypass kod)
+
+### Fajlovi pregledani
+- core/map_finder.py (cijeli, 3000+ linija)
+- _materijali/dumps/2018/4tec1503/130v1.bin, 155v1.bin, 130v2.bin, 155v2.bin, 230.bin
+- _materijali/dumps/2019/4tec1503/130.bin, 155.bin, 230.bin
+- _materijali/dumps/2020/4tec1503/130.bin
+- _materijali/dumps/2021/1630ace/300.bin (referenca)
+- _materijali/tec1503_audit.md (citanje prethodnih nalaza)
+
+## 2026-03-20 — Planirani novi dumpovi
+
+Korisnik planira dumpati:
+- **2016 300hp** (1630 ACE SC) — SW nepoznat, vjerojatno 10SW004672
+- **2017 300hp** (1630 ACE SC) — SW potpuno nepoznat, prvi put
+- **2016 260hp** (4-TEC 1503 SC) — SW vjerojatno 1037524060 ili stariji
+- **2017 260hp** (4-TEC 1503 SC) — SW nepoznat
+
+Napomena: "300maps" u ECU/MIX je EDITIRAN fajl (BOOT CS invalid, fuel max=1.889>1.0) — nije stock 2016 dump.
+Pravi stock 2016/2017 dumpi se tek trebaju napraviti.
+
+## 2026-03-20 — 2016 300hp dump verificiran: 10SW004675
+
+Korisnik dodao dump: `_materijali/dumps/2016/1630/300.bin`
+- SW: **10SW004675** (NOVI ID — nije 10SW004672 kao što smo mislili!)
+- CS: VALIDAN (CRC32-HDLC OK)
+- Veličina: 1,540,096 B ✓
+- Rev limiter: **5126 ticks = 8072 RPM** @ 0x028E44 i 0x028E94
+- SC bypass @ 0x020534: 0x2626 (shadow, ispravno), @ 0x0205A8: **0x3333** (aktivan — različit od 2018+ koji ima 0x2626!)
+- Fuel mapa: NE @ 0x022066 — vjerojatno @ 0x022016 (0x50 bajta ranije) ili drugačiji layout
+- Dodano u engine.py KNOWN_SW i map_finder.py _300HP_SW_IDS
+
+## 2026-03-20 23:30 — Sesija: unknow folder analiza, 2016 dump, OLS ekstrakcija, map_finder ispravci
+
+### HPT fajl analiza
+- `7A1163NC7FOS1 - 2018 RXT-X.hpt` = **AES enkriptiran** (entropy 7.99 svugdje), nema cleartext
+- Ne može se parsirati bez HP Tuners softvera + licencnog ključa za taj VIN
+- Zaključak: fajl je bekoristan za direktnu ekstrakciju map definicija
+
+### "300maps" u ECU/MIX
+- SW @ 0x001A = nepoznat, BOOT CS **INVALID**, SC bypass 0x3333/0x306D (nedosljedno)
+- Fuel mapa max = 1.889 Q15 (nemoguće — max je 1.0)
+- **Zaključak: ovo je korisnikov raniji eksperiment editiranja, nije stock dump**
+
+### 2016 300hp dump (10SW004675)
+- Dump dodan: `_materijali/dumps/2016/1630/300.bin`
+- SW ID: `10SW004675` (NOVI — nije 10SW004672 kao što smo pretpostavljali)
+- CS: VALIDAN, veličina: 1,540,096 B ✓
+- Rev limiter: **5126 ticks = 8072 RPM** @ 0x028E44 i 0x028E94
+- SC bypass @ 0x0205A8: **0x3333** (razlikuje se od 2018+ koji ima 0x2626!)
+- Fuel mapa: **NE @ 0x022066** — header na toj adresi vrši nR=5333,nC=6400 (garbage)
+  - Vjerojatno @ 0x022016 ili potpuno drugačiji CODE layout za ovaj SW
+  - Mapin pravi format za 2016 ostaje **neistražen**
+- Dodano u: `engine.py` (KNOWN_SW), `map_finder.py` (_300HP_SW_IDS)
+- map_finder za 10SW004675 pronalazi samo ~24 mape (fuel mapa propušta)
+
+### map_finder.py ispravci
+1. **_1503_SW_IDS** set dodan (10SW025021/025022/025752/040008/040962)
+2. **10SW004675** dodan u _300HP_SW_IDS
+3. **_is_1503()** metoda dodana
+4. **find_all()** preskače `_scan_injection` za 1503 (0x02436C = sve nule → false positive)
+5. **_scan_rev_limiter_known()** filtira 0x2121 (IGN DATA bajtovi = 24.75° BTDC, ne rev limiter ticks)
+
+### CAN sniffer fix
+- VCIError "Error warning limit exceeded": IXXAT hard error counter ≥ 96 (BUDS2 je aktivan paralelno)
+- Fix: dodan "warning limit" i "error warning" u exception handler (continue, ne raise)
+- `tools/can_sniffer.py` ažuriran
+
+### OLS ekstractor agent (a61930ae) — ključni nalazi
+- RXP OLS (`Sea-Doo RXP 1.5 compr - 524060.ols`): ECU @ offset 0x62D6D; BOOT počinje `60000000` (NE `c0000000` kao normalni ME17!) — moguć drugačiji extraction format ili OLS varijanta
+- RXTX OLS: ECU @ offset 0xD6543; BOOT `c0000000` (normalan)
+- SW = 1037524060 za oba (4-TEC 1503 RXT-X)
+
+### 4-TEC 1503 SC vs NA — ključne razlike (iz agentovih nalaza)
+- 130hp NA (10SW025022): fuel Q15 max=0.440, ign row0=24.8° svi cols, rev=7699 RPM, SC bypass 0x1E1E
+- 230hp SC (10SW025021): fuel Q15 max=0.952, ign row0: cols 1-6=32.2°/cols 7-12=24.8°, rev=7664 RPM, SC bypass 0x1F1F
+- 155hp NA (10SW025752): identičan 130hp NA (max=0.440, 7699 RPM)
+- 2019 svi (10SW040008): fuel max=0.440, rev=7892 RPM, SC bypass=0x1E1E (svi NA bypass bez obzira na snagu)
+
+### Fajlovi promijenjeni
+- `core/engine.py` — 10SW004675 dodan u KNOWN_SW
+- `core/map_finder.py` — _1503_SW_IDS, 10SW004675, _is_1503(), 0x02436C skip za 1503, 0x2121 filter
+- `tools/can_sniffer.py` — VCIError handler proširen
+
+## 2026-03-20 23:45 — OLS agent završen: rxtx_260 je multi-image container!
+
+### Kritično otkriće: 1037524060 format
+- `rxtx_260_524060.bin` je **multi-image container** s 3 ECU slike, svaka 128KB:
+  - Block1 @ 0x000000: RXTX-X stock (CS=0x53532E7D)
+  - Block2 @ 0x020000: RXP compr (CS=0x1CF16484) — identičan RXP OLS ekstrakciji
+  - Block3 @ 0x040000: treća varijanta
+  - **CODE počinje @ 0x060000** (NE @ 0x010000 kao u standardnom 10SW formatu!)
+- Standardne ME17 adrese (0x022066 itd.) **ne rade** za ovaj format — drugačiji memory layout
+- RXP vs RXTX = 96% razlika između blokova — nisu stock vs tuned, nego **različiti modeli** (RXP-X vs RXT-X)
+
+### OLS ekstrakcija potvrđena
+- TEMP_rxp1503_orig.bin (128KB, CS=0x1CF16484) — ekstrakcija iz RXP OLS uspješna
+- TEMP_rxtx1503_orig.bin (128KB, CS=0x53532E7D) — ekstrakcija iz RXTX OLS uspješna
+- Metoda: `ols[SW_idx - 0x1A : SW_idx - 0x1A + 0x20000]`
+
+### 4TEC 1503 SC vs NA razlike (finalna tablicia, potvrđeno)
+| Mapa | Adresa | SC 230hp | NA 130hp |
+|------|--------|----------|----------|
+| Fuel max Q15 | 0x022066 | 0.9524 | 0.4404 |
+| IGN row0 | 0x02B730 | 32.2° (cols 1-6) | 24.8° flat |
+| SC correction Q14 | 0x02220E | 1.021–1.196 | flat 1.000 |
+| SC bypass | 0x020534/0x0205A8 | 0x1F1F | 0x1E1E |
+| KFPED X-os | 0x029528 | MAP kPa [-80..+90] | pedal° [0..70] |
+| Torque max | 0x029FD4 | 340.0 Nm | 332.8 Nm |
+| Rev limit | 0x028E96 | 7664 RPM | 7699 RPM |
+
+### SC bypass extra lokacija 0x029993
+- SC: 0x1F1F1F1E (zadnji bajt 0x1E — prijelazni kod)
+- NA: 0x1E1E1E23 (zadnji bajt 0x23 — drukčiji suffix)
+
+### Fajlovi promijenjeni
+- Nema — research task
+
+## 2026-03-20 23:55 — 2016/4tec1503/260.bin verificiran; rxtx_524060 = ME17, nije Siemens
+
+### 2016 260hp dump
+- File: `_materijali/dumps/2016/4tec1503/260.bin`
+- SW: **10SW000778** (NOVI ID — RXT-X 260hp SC 2016)
+- CS: VALIDAN (CRC32-HDLC residua OK)
+- Veličina: 1,540,096 B ✓; VME17 string: PRISUTAN ✓
+- **Stariji ME17 format** — CODE adrese drugačije od 2018+ 1503 SW
+  - SC bypass @ standardnim 2018 adresama (0x020534/0x0205A8): 0xFFFF (garbage)
+  - Pravi SC bypass @ **0x012C60 = 0x2020** (novi opcode za stariji 1503 gen)
+  - Boost factor @ 0x025DF8 = 0 (standardna adresa ne radi)
+  - Fuel header @ 0x02202A/C = garbage (0x022066 layout ne radi za ovaj SW)
+- Dodano u engine.py KNOWN_SW
+
+### rxtx_260_524060.bin provjera
+- **NIJE Siemens MSE 3.7** — VME17 + BOSCH string potvrđeni
+- Isti stariji ME17 format kao 10SW000778 (2016/260)
+- **Razlika 2016/260 vs rxtx_524060: samo 1330B** (154B BOOT + 1045B CODE + 131B CAL)
+- SC bypass @ 0x012C60 = 0x2020 (identičan u oba)
+- Zaključak: rxtx_524060 je susjedna SW revizija, vjerojatno 2014-2015 RXT-X 260
+- **Ne treba preimensovati** — ostaje u _materijali/ sa SW oznakom (1037524060)
+
+### Fajlovi promijenjeni
+- `core/engine.py` — 10SW000778 dodan u KNOWN_SW
+
+## 2026-03-21 00:15 — _docs/dumps_inventory.html kreiran
+
+- HTML dump browser s dark temom (konzistentno s ME17Suite UI)
+- 27 dumpova + 1 extra (rxtx_524060); svi CS OK
+- Filteri: godina, ECU tip, SC/NA, snaga, free search, "samo unikatni SW"
+- Sortiranje po svim kolonama (klik na header)
+- Boje po snazi (300hp=crvena, 230hp=žuta, 130/90hp=plava/ljubičasta), SC/NA badge, ECU tip boja
+- Duplikati su osjenčeni (dup marker)
+- Kartice s ukupnom statistikom (total, unikatni SW po ECU tipu, CS valid count)
+
+## 2026-03-21 00:30 — IBR modul MCU dump identificiran (SPC5602P)
+
+- `Desktop/MCU/SPC5602P/u1 478/` = **IBR (Intelligent Braking & Reverse) modul** firmware dump
+- MCU: NXP/Freescale SPC5602P (MPC5602P) — 256KB CFLASH + 64KB DFLASH + 16KB CSHADOW
+- SW @ 0x0000: `08722440` (BRP decimalni format)
+- **NIJE** Siemens MSE 3.7, **NIJE** engine ECU
+- CFLASH sadrži `0590FFFx` / `0101FFF1` stringove — vjerojatno CAN diagnostic service IDs
+- Planirati: CAN reverse engineering IBR ↔ ECU ↔ SAT poruka iz CFLASH stringova
+- `u1 478` = unit 1, 478 radnih sati (analogno `064 211` konvenciji)
+
+## 2026-03-21 00:40 — 2016/215hp dump verificiran + HTML SW Kronologija tab + 215 u engine.py
+
+### 2016 215hp dump
+- File: `_materijali/dumps/2016/4tec1503/215.bin`
+- SW: **10SW000776** — samo 2 manje od 260hp (10SW000778)! Pattern potvrđen.
+- CS: VALIDAN, veličina OK, VME17 potvrđen
+- SC bypass @ 0x012C60 = 0x2020 (identičan 260hp — isti opcode)
+- vs 260hp: 9305B razlike (142B BOOT + 9032B CODE + 131B CAL)
+- Dodano u engine.py KNOWN_SW
+
+### SW Kronologijska analiza — HTML tab
+- Dodan drugi tab "SW Kronologija" u `_docs/dumps_inventory.html`
+- Timeline s grupiranim godišnjim blokovima, vizualni SW bar, pattern kartice
+- SW_ALL lista s predviđenim nedostajućim SW-ovima
+- Ključni nalaz: 215hp (000776) i 260hp (000778) u istoj generacijskoj grupi — release batch razlika = 2
+
+## 2026-03-21 — Kontekst projekta: dumps = vlastiti ECU čitovi
+
+- Svaki .bin u dumps/ = fizički ECU koji je korisnik osobno čitao (BUDS2 + MultiProg)
+- Alat podržava: Spark 2014+, svi ostali 2016–2022
+- Baza je jedinstvena — nisu internet fajlovi, nego vlastiti čitovi s realnih Sea-Doo-a
+- 28 dumpova = 28 ECU-a koje je korisnik imao u rukama
+- Ovo je profesionalni servisni/tuning alat, ne akademski projekt
+
+## 2026-03-21 00:55 — 2017/4tec1503/230.bin verificiran (10SW012999)
+
+- SW: **10SW012999** — između 11328 (Spark) i 23910 (2018 300hp), savršeno u pattern-u
+- CS: VALIDAN, VME17 OK, veličina OK
+- **2017 = parcijalna 2018 migracija**:
+  - RADE na 2018 adresama: SC bypass (0x020534/0x0205A8=0x1F1F), ign_base (0x02B730=43), rev_lim (0x028E94=5126t=8072RPM), sc_corr (0x02220E), lambda_main (0x0266F0), kfped_data (0x029548), fuel_2d (0x022066=8438, vjerojatno OK)
+  - NE RADE: boost_fact (0x025DF8=358≠23130), temp_fuel (0x025E50=3000), lambda_trim (0x026DB8=0), torque_main (0x02A0D8=39424), inj_lin (0x02436C=0 kao 1503)
+  - Rev limiter: samo jedna kopija @ 0x028E94 (ne 0x028E96 kao 2018+)
+- vs 2018/230SC: 400,510B razlike — masivno
+- vs 2016/260: 445,513B razlike — 2017 bliže 2018 nego 2016
+- Dodano u engine.py KNOWN_SW, HTML Inventory i SW Kronologija tab
+
+## 2026-03-20 18:00 — Provjera valjanosti 2016/1503 i 2017/1503 dumpova
+
+Korisnik: "vidi razlika zadnja dva dumpa, mozda nisu ispravni?"
+
+**Analiza:**
+- 2016/4tec1503/215.bin (10SW000776): CS=OK(0x6E23044F), Valid, MCU confirmed
+- 2016/4tec1503/260.bin (10SW000778): CS=OK(0x6E23044F), Valid, MCU confirmed
+- 2017/4tec1503/230.bin (10SW012999): CS=OK(0x6E23044F), Valid, MCU confirmed
+
+**Diff 215 vs 260:** 9305B (BOOT:142, CODE:9032, CAL:131) — poklapa se s prethodnom mjerenjem
+
+**Nalaz:** 0x028E94 = 0x2F2F (12079 ticks) za oba 4TEC 1503 2016 dump — nije rev limiter adresa za tu gen; pravi rev limiter na ovom SW-u još neistražen
+
+**Zaključak:** Dumpi su ispravni. Problem = nepoznata rev limiter adresa za 10SW000776/000778.
+
+## 2026-03-20 18:10 — Novi dump: 2017/4tec1503/260.bin (10SW012502)
+
+- SW: 10SW012502 (nepoznat ranije)
+- CS: OK (0x6E23044F) | Valid | MCU confirmed
+- MD5: 5fde1bb781d142131f91e82af2811cf3
+- SC bypass: 0x012C60=0x2020 (stara gen stil), 0x0205A8=0xFFFF (ne migriran)
+- Rev @ 0x028E94=0x2F2F (nije rev limiter adresa za ovu gen), 0x028E96=0x3331
+- Diff vs 230hp 2017 (012999): 445KB — masivno, potpuno drugaciji CODE layout
+- Klasifikacija: _2016_GEN_SW_IDS (isti CODE layout kao 2016 4TEC 1503)
+- SW=12502 je 497 manji od 012999 = raniji build u istoj godini
+- Ažurirano: engine.py KNOWN_SW, map_finder.py _2016_GEN_SW_IDS, HTML inventory + SW_ALL
+
+## 2026-03-20 18:15 — Agent rezultati: 4 agenta završena, 2017 adrese istraživane
+
+Sva 4 agenta završena:
+
+**Agent 1 (map_finder 2016/2017 gen):**
+- _2016_GEN_SW_IDS, _2017_GEN_SW_IDS, _is_2016_gen(), _is_2017_gen() implementirani
+- 2016 gen: samo rev+SC bypass skeneri, 0 false positives za 215/260
+- 2017 gen: skip injection/torque/boost_factor/temp_fuel/lambda_trim
+- Rezultati: 2016/215=0mapa, 2016/260=0mapa, 2016/300=4mape, 2017/230=23mape, 2019/300=57mapa (bez regresije)
+
+**Agent 2 (SW Compat Widget):**
+- ui/sw_compat_widget.py kreiran (QDialog, 13 kategorija, boje, upgrade info)
+- Toolbar tipka "Prikaz SW Compat" dodan u main_window.py
+
+**Agent 3 (Docs update):**
+- HTML bez duplikata potvrđen
+- SW_VERSIONS.md: dodane sekcije 2016 gen, 2017 gen, SW kronologija
+- CLAUDE.md: 10SW000776/000778/012999 SW varijante + map_finder napomene
+
+**Agent 4 (2017 adrese):**
+- Globalni offset -0x2AA za SC-specifične mape u 10SW012999
+- boost_factor: 0x025B4E, temp_fuel: 0x025BA6
+- lambda_main: 0x026446 (mirror +0x518 @ 0x02695E)
+- lambda_trim: 0x026B0E
+- torque_mirror: 0x029BC0 (ISPRED main-a, ne iza\!)
+- torque_main: 0x02A0D8 (ISTA kao 2018, ali drugačije vrijednosti)
+- Dokumentirano u _materijali/2017_gen_address_audit.md
+
+**Dodano u sesiji:**
+- 2017/4tec1503/260.bin (10SW012502): CS OK, CODE layout = 2016 gen stil
+- Dodano u _2016_GEN_SW_IDS (ne _2017_GEN_SW_IDS)
+- map_finder.py komentari ažurirani s točnim -0x2AA adresama
+
+## 2026-03-20 14:00 — Analiza service bulletina i dijagnostičke dokumentacije
+
+### Što je napravljeno
+- Pročitani svi dostavljeni dokumenti: 2016 SeaDoo ACE 1630 300HP.docx, Bosch_LSU_4.9.pdf, sbg2011-003 enTimingChain.pdf, resources_0 (safety recall 2011-2012), dijagnostički manuali 20/22/23/26/27/33, ECU SIEMENS.pdf/1.pdf
+- Izvučeni ključni tehnički podaci, part numberi, specs
+
+### Ključni nalazi
+- **diag 20**: 6-straničan scanned PDF (Microsoft Print to PDF, 2022-08-02) — OCR nije moguć bez alata; sadržaj vjerojatno DTC tablice/wiring za stariji Siemens MSE
+- **diag 22/23/26/27**: powersports-diag.com BUDS2 tutoriali (Word→PDF, 2023-04): iBR turn off, DESS chip error, Spark 60→90HP upgrade, X package aktivacija
+- **diag 33**: BRP TST artikel #kA83x000000XZic — MY21/MY22 cluster reset procedura (Chrome PDF, 2023-04-21)
+- **ECU SIEMENS.pdf**: PCB shema Siemens MSE 3.7 (C165 MCU) — ekstrahiran djelomični pinout, CAN_TXD/RXD pins vidljivi
+- **ECU SIEMENS1.pdf**: ista PCB shema ali s ćiriličnim natpisima (ruska/ukrajinska varijanta)
+- **Bosch LSU 4.9**: kompletni specs — 6-pinski, IP=pump current, Nernst=300Ω, heater 7.5W/7.5V
+- **sbg2011-003**: timing chain kampanja za SVE 2011 4TEC motore (130/155/215/260hp)
+- **resources**: safety recall 2011-0005/2012-0001 — pucanje poklopca prednjeg pretinca na GTI/GTS MY11/12
+
+### Fajlovi čitani (nisu modificirani)
+- C:\Users\SeaDoo\Desktop\SEADOO\0BULLETIN\* (4 fajla)
+- C:\Users\SeaDoo\Desktop\SEADOO\diaag manual\* (6 fajlova)
+- C:\Users\SeaDoo\Desktop\SEADOO\0WIRING\MIX\ECU SIEMENS*.pdf (2 fajla)
+
+## 2026-03-20 16:30 — Kompletan audit novog dumpa: 2017/1630ace/300.bin = 10SW004672
+
+### Sto je napravljeno
+- Kompletan binarni audit dumpa C:\Users\SeaDoo\Desktop\me_suite\_materijali\dumps\2017\1630ace\300.bin
+- SW identifikacija, rev limiter, SC bypass, ignition, lambda, torque, fuel mapa, MapFinder
+- Diff prema svim poznatim dumpovima, posebno prema 10SW004675 (2016/300hp)
+
+### Kljucni nalaz: 10SW004672 = 2016 gen layout (NIJE 2017!)
+- **SW: 10SW004672** (NIJE 10SW012999 kako je ocekivano za 2017 300hp!)
+- File size: 0x178000 (1540096B) - validan
+- MD5: bf400e70eaceb7403055211a5ce6f418
+
+### Rev limiter
+- 0x028E94: **5126 ticks => 8072 RPM** (identican 10SW004675!)
+- 0x028E96: 11550 ticks => 3582 RPM (nije rev limiter - garbage na ovom SW)
+- 0x028E44: takoder 5126 ticks => 8072 RPM (duplikat)
+
+### SC bypass
+- 0x020534: 0x2626 (300hp 2018+ vrijednost - ali ovo je 2016 gen SW!)
+- 0x0205A8: **0x3333** (2016 gen 300hp vrijednost - kao 10SW004675!)
+- 0x029993: 0x306D (nepoznata vrijednost, razlikuje se od 004675!)
+- 0x012C60: **0x2020** (2016 gen alternativna adresa - kao 10SW000776/000778!)
+
+### Diff prema poznatim SW-ovima
+- vs 10SW004675 (2016 300hp): **1265B** - NAJBLIZI (susjedne SW revizije!)
+  - BOOT: 141B diff (SW string + checksum + RSA potpis)
+  - CODE: 992B diff u 130 blokova
+  - CAL: 132B diff
+- vs 10SW040039 (2019 300hp): 399722B - sasvim razlicit
+- vs 10SW023910 (2018 300hp): 400398B - sasvim razlicit
+- vs 10SW012999 (2017 4TEC 230hp): 17978B - razlicit motor/family
+
+### Ignition mapa
+- IGN_BASE @ 0x02B730 (standardna): Map#0 Row0 = [30,30,30,30,30,30,30,30,25.5,25.5,25.5,25.5] deg
+- IGN_BASE @ 0x02B72C (2018 alternativa): Map#0 Row0 = [26.25,27.75,29.25,30,...] deg - razlicit profil
+
+### Fuel mapa 2D
+- 0x022066: header garbage (nR=213, nC=0) - potvrda da 2016 gen layout NEMA fuel mapu na ovoj adresi
+- Identican problem kao 10SW004675
+
+### Lambda mapa
+- 0x0266F0 (std): min=20 (0.0006), max=34964 (1.0670), 88 unique vrijednosti
+- Nije flat - aktivna lambda mapa, raspon realan za 300hp SC
+- 0x026446 (2017 4TEC alternativa): prvih 5 = [1.0533, 1.0416, 1.0399, 1.0476, 1.05] - moguce lambda @ ovoj adresi?
+
+### Torque mapa
+- 0x02A0D8: min=26368 (103%), max=35840 (140%) - row0 sve 32768 (128%) = flat/neaktivno
+- IDENTICAN 10SW004675 (True)
+- 0x02A5F0 mirror: garbage vrijednosti - NE koristi standardnu mirror adresu
+
+### Boost factor
+- 0x025B4E: flat **20046** = Q14 * 1.2235 (+22.4%) - IDENTICAN 10SW004675!
+- Adresa poklapa se s 2017 gen offsetom (-0x2AA) - ali i 2016 gen koristi ovu adresu
+- 0x025DF8 (std 2018+): garbage - ne koristi se za 2016 gen
+
+### MapFinder rezultat
+- **24 mape** - kao ocekivano za 2016 gen
+- IGN_BASE @ 0x02B730 (koristi standardnu, ne 2018 varijantu)
+- SC bypass @ 0x020534 detektiran (iako aktivna kopija je @ 0x0205A8 s 0x3333!)
+
+### Zakljucak
+- **10SW004672 je 2016 gen layout** - ista generacija kao 10SW004675, NIJE 2017 gen
+- Susjedne SW revizije: 004672 i 004675 (razlika u SW broju = 3)
+- Razlike od 004675: 1265B uglavnom u 0x012C80 bloku + scatter promjene u 0x027xxx (ignition kalibracije?)
+- 2017 folder je KRIVE GODINE - ovaj ECU je 2016 hardware s 2016 gen SW
+- Ili: BRP je koristio stariji 2016 gen SW i u 2017 godisnim modelima (moguci overlap)
+
+### Fajlovi promijenjeni
+- work_log.md (ovaj unos)
+- chat_log.md
+
+---
+
+## 2026-03-20 — Signature search: sekundarne lambda mape u 2016 gen 4-TEC 1503
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_1503_lambda_secondary.md` (novo)
+
+### Rezultati
+- **Globalni offset: −0x1AA6** — konzistentan za SVE lambda sekundarne mape
+- **overtemp_lambda**: **0x024034** (2018: 0x025ADA) — identičan sadržaj ref230 SC; 260hp==215hp
+- **neutral_corr**: **0x0240B2** (2018: 0x025B58) — flat 0x4040 SC bypass za oba; odmah iza overtemp
+- **lambda_bias**: **0x024B30** (2018: 0x0265D6) — SC krivulja, 260hp vs 215hp potpuno različiti (141/141)
+- **lambda_main** (bonus): **0x024C4A** (2018: 0x0266F0) — all Q15, diff 260vs215 = 216/216
+- **lambda_mirror** (bonus): **0x025162** (2018: 0x026C08)
+- **lambda_adapt** (bonus): **0x024DFA** (2018: 0x0268A0)
+- **lambda_trim** (bonus): **0x025312** (2018: 0x026DB8)
+- **KFWIRKBA** (41×18 Q15): **NIJE PRONAĐENA** — ni signature ni content match ni offset match; konzistentno s ~24 mapa limitom 2016 gen
+
+### Metodologija
+- Signature search (8/6/4B), content search, Q15 blok scan, OS sekvenca search, brute-force 4B segmenti
+- Proba s ref230 (SC), ref130 (NA), ref2017 (10SW012999) kao referencama
+
+## 2026-03-20 17:30 — Binary istraživanje sekundarnih mapa 2016 gen 1630 ACE
+
+### Fajlovi promijenjeni
+- `_docs/scan_2016_ace_secondary.md` (novo)
+
+### Rezultati
+- **Boost factor @ 0x025B4E** (ne 0x025DF8!) — flat 20046 (0x4E4E) Q14=1.2235 (+22.4%); identičan 2018+!
+  - CLAUDE.md za 004672 imao pravo s adresom; vrijednost 2018+ je također 20046 (ne 20054 kako stoji u CLAUDE.md)
+- **SC correction @ 0x0221FA** (Agent5 potvrđen) — offset 2018 samo +0x14; sadržaj identičan 2018+ ref!
+- **Overtemp lambda @ 0x025830** — flat 0xFFFF, offset = +0x2AA vs 2018
+- **Neutral corr @ 0x0258AE** — flat 0x4040, offset = +0x2AA vs 2018
+- **DFCO @ 0x02899C** (BONUS) — sadržaj identičan 2018 ref (0x028C30), offset = +0x294
+- Dominantni CODE offset: **+0x2AA** (boost/overtemp/neutral/second-0xFFFF sve na istom); DFCO +0x294
+- 10SW004675 == 10SW004672 bit-for-bit za SVE pronađene mape
+- 2016 gen fuel mapa @ 0x022066 = garbage (potvrđeno — header nevaljan)

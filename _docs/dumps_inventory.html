@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<title>ME17Suite — Dumps Inventory</title>
+<style>
+  :root {
+    --bg: #111113;
+    --bg2: #18181c;
+    --bg3: #1f1f24;
+    --border: #2a2a32;
+    --accent: #4FC3F7;
+    --accent2: #81D4FA;
+    --text: #e0e0e0;
+    --text2: #9e9e9e;
+    --green: #4CAF50;
+    --red: #EF5350;
+    --orange: #FF8C00;
+    --yellow: #FFD600;
+    --purple: #CE93D8;
+    --teal: #80CBC4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 { font-size: 18px; color: var(--accent); letter-spacing: 1px; }
+  header span { color: var(--text2); font-size: 12px; }
+
+  .controls {
+    padding: 12px 24px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .controls label { color: var(--text2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  select, input[type=text] {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    border-radius: 3px;
+    outline: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+
+  .stat-bar {
+    padding: 8px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .stat { color: var(--text2); font-size: 11px; }
+  .stat b { color: var(--accent); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    background: var(--bg3);
+    color: var(--text2);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th.sort-asc::after  { content: ' ▲'; color: var(--accent); }
+  thead th.sort-desc::after { content: ' ▼'; color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: var(--bg3); }
+  tbody tr.dup { opacity: 0.65; }
+
+  td {
+    padding: 7px 10px;
+    vertical-align: middle;
+  }
+
+  /* Year badge */
+  .badge-year {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+    background: #1a2a3a;
+    color: var(--accent2);
+  }
+
+  /* Power badges */
+  .badge-hp {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+  }
+  .hp-300 { background: #2a1a1a; color: #FF8A80; }
+  .hp-260 { background: #2a1e1a; color: #FFB74D; }
+  .hp-230 { background: #2a2a1a; color: #FFD54F; }
+  .hp-170 { background: #1a2a1a; color: #A5D6A7; }
+  .hp-155 { background: #1a2a1e; color: #80CBC4; }
+  .hp-130 { background: #1a2a2a; color: #81D4FA; }
+  .hp-90  { background: #1e1a2a; color: #CE93D8; }
+
+  /* SC/NA badge */
+  .badge-sc  { background: #2a1a2a; color: #E040FB; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+  .badge-na  { background: #1a2a1a; color: #69F0AE; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+
+  /* ECU type */
+  .ecu-1630  { color: var(--accent); }
+  .ecu-1503  { color: var(--teal); }
+  .ecu-900   { color: var(--purple); }
+
+  /* SW ID */
+  .sw-id {
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    color: var(--yellow);
+  }
+  .sw-decimal { color: #FF8C00; }
+
+  /* Map count */
+  .maps-high  { color: var(--green); }
+  .maps-mid   { color: var(--yellow); }
+  .maps-low   { color: var(--orange); }
+
+  /* CS */
+  .cs-ok   { color: var(--green); font-size: 11px; }
+  .cs-fail { color: var(--red); font-size: 11px; font-weight: bold; }
+
+  /* Notes */
+  .note { color: var(--text2); font-size: 11px; font-style: italic; }
+  .note-warn { color: var(--orange); font-size: 11px; }
+
+  /* File path */
+  .fpath { color: #555; font-size: 11px; }
+
+  /* Duplicate indicator */
+  .dup-marker {
+    font-size: 10px;
+    color: #555;
+    background: #1a1a1a;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid #2a2a2a;
+  }
+
+  .no-results {
+    text-align: center;
+    padding: 40px;
+    color: var(--text2);
+  }
+
+  /* Summary cards */
+  .summary {
+    display: flex;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .summary-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 14px;
+    min-width: 100px;
+    text-align: center;
+  }
+  .summary-card .val { font-size: 22px; font-weight: bold; color: var(--accent); }
+  .summary-card .lbl { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  .table-wrap { overflow-x: auto; }
+
+  /* ── Tabs ── */
+  .tab-bar {
+    display: flex;
+    background: var(--bg2);
+    border-bottom: 2px solid var(--border);
+    padding: 0 24px;
+    gap: 2px;
+  }
+  .tab-btn {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text2);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    cursor: pointer;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── SW Kronologija tab ── */
+  .sw-page { padding: 24px; max-width: 1100px; }
+  .sw-page h2 { color: var(--accent); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .sw-page h3 { color: var(--accent2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin: 24px 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+
+  .timeline {
+    position: relative;
+    padding-left: 16px;
+    border-left: 2px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .tl-group {
+    margin-bottom: 28px;
+    position: relative;
+  }
+  .tl-group::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 10px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .tl-year {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--accent);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tl-year .range {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .sw-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+  }
+  .sw-row:hover { background: var(--bg3); }
+  .sw-row.no-dump { opacity: 0.45; }
+  .sw-row.predicted { opacity: 0.35; font-style: italic; }
+
+  .sw-num {
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: bold;
+    min-width: 130px;
+    color: var(--yellow);
+  }
+  .sw-num.decimal { color: var(--orange); }
+  .sw-num.predicted { color: #555; }
+
+  .sw-model { flex: 1; color: var(--text); font-size: 12px; }
+  .sw-ecu { font-size: 11px; min-width: 90px; }
+  .sw-maps { font-size: 11px; min-width: 60px; text-align: right; }
+  .sw-note-sm { font-size: 11px; color: var(--text2); flex: 1.2; }
+
+  .badge-dump { background: #1a2a1a; color: var(--green); padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+  .badge-nodump { background: #2a1a1a; color: #666; padding: 1px 6px; border-radius: 3px; font-size: 10px; }
+  .badge-predicted { background: #1a1a2a; color: #444; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-style: italic; }
+
+  .pattern-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .pattern-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .pattern-card .pc-num { font-size: 22px; font-weight: bold; color: var(--accent); margin-bottom: 4px; }
+  .pattern-card .pc-title { font-size: 11px; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .pattern-card .pc-body { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .pattern-card .pc-body b { color: var(--text); }
+
+  .gap-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 8px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .gap-seg {
+    height: 18px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: #fff;
+    min-width: 30px;
+    padding: 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ME17Suite — ECU Dump Inventory</h1>
+  <span>Bosch ME17.8.5 | Sea-Doo / Rotax | ažurirano 2026-03-20</span>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="inventory">Dump Inventory</button>
+  <button class="tab-btn" data-tab="sw-timeline">SW Kronologija</button>
+</div>
+
+<!-- TAB 1: Inventory -->
+<div class="tab-panel active" id="tab-inventory">
+
+<div class="summary" id="summary-cards">
+  <!-- filled by JS -->
+</div>
+
+<div class="controls">
+  <div class="filter-group">
+    <label>Godina</label>
+    <select id="filter-year">
+      <option value="">Sve</option>
+      <option>2016</option><option>2018</option><option>2019</option>
+      <option>2020</option><option>2021</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Motor</label>
+    <select id="filter-ecu">
+      <option value="">Svi</option>
+      <option value="1630">1630 ACE</option>
+      <option value="1503">4TEC 1503</option>
+      <option value="900">900 ACE</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>SC/NA</label>
+    <select id="filter-scna">
+      <option value="">Svi</option>
+      <option value="SC">SC (turbine)</option>
+      <option value="NA">NA (atmosferski)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Snaga</label>
+    <select id="filter-hp">
+      <option value="">Sve</option>
+      <option>300hp</option><option>260hp</option><option>230hp</option>
+      <option>170hp</option><option>155hp</option><option>130hp</option><option>90hp</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Traži</label>
+    <input type="text" id="filter-search" placeholder="SW, model, opis..." style="width:200px">
+  </div>
+  <div class="filter-group">
+    <label style="cursor:pointer">
+      <input type="checkbox" id="filter-unique"> Samo unikatni SW
+    </label>
+  </div>
+</div>
+
+<div class="stat-bar" id="stat-bar">
+  <span class="stat">Prikazano: <b id="stat-count">—</b></span>
+  <span class="stat">Unikatnih SW: <b id="stat-sw">—</b></span>
+  <span class="stat">CS OK: <b id="stat-cs">—</b></span>
+</div>
+
+<div class="table-wrap">
+<table id="dump-table">
+<thead>
+  <tr>
+    <th data-col="year">Godina</th>
+    <th data-col="hp">Snaga</th>
+    <th data-col="scna">SC/NA</th>
+    <th data-col="ecu">Motor/ECU</th>
+    <th data-col="sw">SW ID</th>
+    <th data-col="maps">Mape</th>
+    <th data-col="cs">CS</th>
+    <th data-col="revlim">Rev limit</th>
+    <th data-col="path">Fajl</th>
+    <th data-col="note">Napomena</th>
+  </tr>
+</thead>
+<tbody id="table-body"></tbody>
+</table>
+<div class="no-results" id="no-results" style="display:none">Nema rezultata za odabrane filtere.</div>
+</div>
+
+</div><!-- /tab-inventory -->
+
+<!-- TAB 2: SW Kronologija -->
+<div class="tab-panel" id="tab-sw-timeline">
+<div class="sw-page">
+
+  <h2>SW ID → Kronologijska analiza</h2>
+
+  <div class="pattern-grid">
+    <div class="pattern-card">
+      <div class="pc-num">100%</div>
+      <div class="pc-title">Kronološki redosljed</div>
+      <div class="pc-body">Niži SW broj = stariji SW, <b>bez iznimke</b>. Potvrđeno na svim 19 unikatnih SW ID-ova.</div>
+    </div>
+    <div class="pattern-card">
+      <div class="pc-num">±2k</div>
+      <div class="pc-title">Raspon unutar godišta</div>
+      <div class="pc-body">Sve varijante <b>iste godine</b> padaju u uski raspon (2018: 23k–25k, 2020: 53k–54k). Lakše pronalaženje nepoznatih SW-ova.</div>
+    </div>
+    <div class="pattern-card">
+      <div class="pc-num">~13k</div>
+      <div class="pc-title">SW brojeva / godišnji skok</div>
+      <div class="pc-body">Prosječni skok između generacijskih godina. Korelira s brojem SW revizija u cijelom Bosch ME17 ekosustavu.</div>
+    </div>
+    <div class="pattern-card">
+      <div class="pc-num">10SW</div>
+      <div class="pc-title">Format promjena</div>
+      <div class="pc-body"><b>1037xxxxxx</b> = pre-2016 decimalni (4TEC 1503 starija gen). <b>10SWxxxxxx</b> = 2016+ standardizirani Bosch format za sve platforme.</div>
+    </div>
+    <div class="pattern-card">
+      <div class="pc-num">Spark</div>
+      <div class="pc-title">Najmanji razvoj</div>
+      <div class="pc-body">10SW011328 → 10SW039116: jedan SW skok za <b>4+ godišta</b> (2016–2021). Spark nije prioritet Bosch R&amp;D-a.</div>
+    </div>
+    <div class="pattern-card">
+      <div class="pc-num">082806</div>
+      <div class="pc-title">Zadnji poznati (no dump)</div>
+      <div class="pc-body">~82k → predviđamo <b>2022/23 godište</b>. Nema dumpa. Prema obrascu: 2022 ≈ 10SW079xxx–083xxx.</div>
+    </div>
+  </div>
+
+  <h3>Vizualni SW raspored (po broju)</h3>
+  <div class="gap-bar">
+    <span>0</span>
+    <div class="gap-seg" style="background:#1a3a5a;width:14px" title="10SW000778 (2016 260hp)">●</div>
+    <div class="gap-seg" style="background:#1a3a5a;width:14px" title="10SW004675 (2016 300hp)">●</div>
+    <div class="gap-seg" style="background:#555;width:28px;font-size:9px" title="gap ~6k">···</div>
+    <div class="gap-seg" style="background:#4a3a1a;width:14px" title="10SW011328 (Spark)">●</div>
+    <div class="gap-seg" style="background:#555;width:36px;font-size:9px" title="gap ~12k">···</div>
+    <div class="gap-seg" style="background:#3a1a1a;width:14px" title="10SW023910">●</div>
+    <div class="gap-seg" style="background:#3a1a1a;width:48px" title="10SW025021/022/752 (2018 1503)">2018</div>
+    <div class="gap-seg" style="background:#555;width:40px;font-size:9px" title="gap ~13k">···</div>
+    <div class="gap-seg" style="background:#1a3a1a;width:14px" title="10SW039116">●</div>
+    <div class="gap-seg" style="background:#1a3a1a;width:48px" title="10SW040008/039/962 (2019)">2019</div>
+    <div class="gap-seg" style="background:#555;width:36px;font-size:9px" title="gap ~12k">···</div>
+    <div class="gap-seg" style="background:#2a1a3a;width:60px" title="10SW053727/729/774/054296 (2020)">2020</div>
+    <div class="gap-seg" style="background:#555;width:28px;font-size:9px" title="gap ~12k">···</div>
+    <div class="gap-seg" style="background:#1a2a3a;width:14px" title="10SW066726 (2021)">●</div>
+    <div class="gap-seg" style="background:#555;width:24px;font-size:9px" title="gap ~16k">···</div>
+    <div class="gap-seg" style="background:#2a2a2a;width:14px" title="10SW082806 (no dump)">?</div>
+    <span>~83k</span>
+  </div>
+
+  <h3>Kompletna lista — sortirano po SW broju</h3>
+
+  <div id="sw-timeline-rows"></div>
+
+  <h3>Predviđeni / nedostajući SW-ovi</h3>
+  <div style="font-size:12px;color:var(--text2);line-height:2">
+    <div><span class="badge-predicted">predict</span> <span style="color:#555;font-family:Consolas">10SW006xxx–009xxx</span> — 2016 Spark 900 ACE (između 000778 i 011328)</div>
+    <div><span class="badge-predicted">predict</span> <span style="color:#555;font-family:Consolas">10SW013xxx–018xxx</span> — 2017 300hp 1630 ACE</div>
+    <div><span class="badge-predicted">predict</span> <span style="color:#555;font-family:Consolas">10SW0xxxxx</span> — 2016 215hp 4TEC 1503 SC (ispod 000778 ili decimal format)</div>
+    <div><span class="badge-predicted">predict</span> <span style="color:#555;font-family:Consolas">10SW079xxx–083xxx</span> — 2022 300hp SC 1630 ACE</div>
+    <div><span class="badge-predicted">verified</span> <span style="color:var(--yellow);font-family:Consolas">10SW082806</span> — 2022 300hp SC; dump dostupan; TUNED (nije ORI); CODE layout promijenjen (236KB diff vs 2021)</div>
+    <div><span class="badge-nodump">no dump</span> <span style="color:var(--yellow);font-family:Consolas">10SW004672</span> — 2016 300hp SC (možda isti model kao 10SW004675?)</div>
+  </div>
+
+</div>
+</div><!-- /tab-sw-timeline -->
+
+<script>
+const DUMPS = [
+  // year, hp, scna, ecu, sw, maps, cs_ok, rev_rpm, path, note, is_dup_sw
+  { year:2016, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW004675",  maps:24,  cs:true,  rev:8072, path:"2016/1630ace/300.bin",     note:"SC bypass 0x3333 (ne 0x2626!); fuel mapa addr neistražena; CODE layout razlikuje od 2018+", warn:true },
+  { year:2016, hp:215, scna:"SC", ecu:"4TEC 1503",    sw:"10SW000776",  maps:24,  cs:true,  rev:null, path:"2016/4tec1503/215.bin",    note:"SW=000776 — samo 2 manje od 260hp! SC bypass 0x2020 @ 0x012C60; ~9305B razlike vs 260hp", warn:true },
+  { year:2016, hp:260, scna:"SC", ecu:"4TEC 1503",    sw:"10SW000778",  maps:24,  cs:true,  rev:null, path:"2016/4tec1503/260.bin",    note:"Stariji ME17 format; SC bypass 0x2020 @ 0x012C60; std adrese ne rade", warn:true },
+  { year:2017, hp:260, scna:"SC", ecu:"4TEC 1503",    sw:"10SW012502",  maps:0,   cs:true,  rev:null, path:"2017/4tec1503/260.bin",    note:"CODE layout = 2016 gen stil (SC bypass 0x2020 @ 0x012C60); 445KB razlika od 230hp 2017; SW=12502 (497 manje od 012999 — raniji build)", warn:true },
+  { year:2017, hp:230, scna:"SC", ecu:"4TEC 1503",    sw:"10SW012999",  maps:null,cs:true,  rev:8072, path:"2017/4tec1503/230.bin",    note:"Parcijalna 2018 migracija — SC bypass/ign/rev/lambda rade na 2018 adresama; boost/temp_fuel/lambda_trim na drugačijim adresama", warn:true },
+  { year:2018, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW023910",  maps:63,  cs:true,  rev:8168, path:"2018/1630ace/300.bin",     note:"2× injection (0x022066 + 0x02436C); 2× ignition set; IGN_BASE @0x02B72C (4B ranije!)" },
+  { year:2018, hp:130, scna:"NA", ecu:"4TEC 1503",    sw:"10SW025022",  maps:60,  cs:true,  rev:7699, path:"2018/4tec1503/130v1.bin",  note:"v1 — 130v1=155v1 identični; SC bypass 0x1E1E" },
+  { year:2018, hp:155, scna:"NA", ecu:"4TEC 1503",    sw:"10SW025022",  maps:60,  cs:true,  rev:7699, path:"2018/4tec1503/155v1.bin",  note:"v1 — identičan 130v1", dup:true },
+  { year:2018, hp:130, scna:"NA", ecu:"4TEC 1503",    sw:"10SW025752",  maps:60,  cs:true,  rev:7699, path:"2018/4tec1503/130v2.bin",  note:"v2 — 130v2=155v2 identični; razlika v1→v2: 2901B" },
+  { year:2018, hp:155, scna:"NA", ecu:"4TEC 1503",    sw:"10SW025752",  maps:60,  cs:true,  rev:7699, path:"2018/4tec1503/155v2.bin",  note:"v2 — identičan 130v2", dup:true },
+  { year:2018, hp:230, scna:"SC", ecu:"4TEC 1503",    sw:"10SW025021",  maps:59,  cs:true,  rev:7664, path:"2018/4tec1503/230.bin",    note:"SC s fizičkim ventilom @ 0x020534; ~19KB razlika od NA" },
+  { year:2018, hp:90,  scna:"NA", ecu:"900 ACE Spark",sw:"10SW011328",  maps:54,  cs:true,  rev:8081, path:"2018/900ace/spark90.bin",  note:"2016=2018 isti SW" },
+  { year:2019, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW040039",  maps:57,  cs:true,  rev:8158, path:"2019/1630ace/300.bin",     note:"NPRo base — SW string nepromijenjen u tuning verziji" },
+  { year:2019, hp:130, scna:"NA", ecu:"4TEC 1503",    sw:"10SW040008",  maps:59,  cs:true,  rev:7892, path:"2019/4tec1503/130.bin",    note:"Isti SW za 130/155/230hp!", dup:false },
+  { year:2019, hp:155, scna:"NA", ecu:"4TEC 1503",    sw:"10SW040008",  maps:59,  cs:true,  rev:7892, path:"2019/4tec1503/155.bin",    note:"Isti SW za 130/155/230hp!", dup:true },
+  { year:2019, hp:230, scna:"NA", ecu:"4TEC 1503",    sw:"10SW040008",  maps:59,  cs:true,  rev:7892, path:"2019/4tec1503/230.bin",    note:"Isti SW za 130/155/230hp! SC bypass=0x1E1E za SVE", dup:true },
+  { year:2019, hp:90,  scna:"NA", ecu:"900 ACE Spark",sw:"10SW039116",  maps:54,  cs:true,  rev:8081, path:"2019/900ace/spark90.bin",  note:"2019=2020=2021 MD5 identični" },
+  { year:2020, hp:130, scna:"NA", ecu:"1630 ACE",     sw:"10SW053729",  maps:64,  cs:true,  rev:7892, path:"2020/1630ace/130.bin",     note:"130hp=170hp isti SW; fuel max Q15=0.524" },
+  { year:2020, hp:170, scna:"NA", ecu:"1630 ACE",     sw:"10SW053729",  maps:64,  cs:true,  rev:7892, path:"2020/1630ace/170.bin",     note:"130hp=170hp isti SW", dup:true },
+  { year:2020, hp:230, scna:"SC", ecu:"1630 ACE",     sw:"10SW053727",  maps:56,  cs:true,  rev:8168, path:"2020/1630ace/230.bin",     note:"fuel max Q15=0.785" },
+  { year:2020, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW054296",  maps:57,  cs:true,  rev:8158, path:"2020/1630ace/300.bin",     note:"2020 ORI" },
+  { year:2020, hp:130, scna:"NA", ecu:"4TEC 1503",    sw:"10SW040962",  maps:59,  cs:true,  rev:7892, path:"2020/4tec1503/130.bin",    note:"" },
+  { year:2020, hp:90,  scna:"NA", ecu:"900 ACE GTI90",sw:"10SW053774",  maps:62,  cs:true,  rev:7043, path:"2020/900ace/gti90.bin",    note:"DTC @ 0x0217EE; lambda mirror aktivna (0.90-1.02)" },
+  { year:2020, hp:90,  scna:"NA", ecu:"900 ACE Spark",sw:"10SW039116",  maps:54,  cs:true,  rev:8081, path:"2020/900ace/spark90.bin",  note:"2019=2020=2021 MD5 identični", dup:true },
+  { year:2021, hp:130, scna:"NA", ecu:"1630 ACE",     sw:"10SW053729",  maps:64,  cs:true,  rev:7892, path:"2021/1630ace/130.bin",     note:"", dup:true },
+  { year:2021, hp:170, scna:"NA", ecu:"1630 ACE",     sw:"10SW053729",  maps:64,  cs:true,  rev:7892, path:"2021/1630ace/170.bin",     note:"", dup:true },
+  { year:2021, hp:230, scna:"SC", ecu:"1630 ACE",     sw:"10SW053727",  maps:56,  cs:true,  rev:8168, path:"2021/1630ace/230.bin",     note:"", dup:true },
+  { year:2021, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW066726",  maps:57,  cs:true,  rev:8158, path:"2021/1630ace/300.bin",     note:"ORI 2021 baseline" },
+  { year:2021, hp:90,  scna:"NA", ecu:"900 ACE GTI90",sw:"10SW053774",  maps:62,  cs:true,  rev:7043, path:"2021/900ace/gti90.bin",    note:"", dup:true },
+  { year:2021, hp:90,  scna:"NA", ecu:"900 ACE Spark",sw:"10SW039116",  maps:54,  cs:true,  rev:8081, path:"2021/900ace/spark90.bin",  note:"2019=2020=2021 MD5 identični", dup:true },
+  { year:2022, hp:300, scna:"SC", ecu:"1630 ACE",     sw:"10SW082806",  maps:14,  cs:true,  rev:null, path:"2022/300.bin",             note:"TUNED dump (nije ORI); rev @ 0x028E96 = 100 ticks (tuneovan); CODE layout promijenjen vs 2021 (236KB diff); IGN adresa drugacija; MapFinder: 14 mapa; cisti ORI dump potreban", warn:true },
+];
+
+// Extra: rxtx_260 u materijali (nije u dumps/)
+const EXTRA = [
+  { year:"~2015", hp:260, scna:"SC", ecu:"4TEC 1503", sw:"1037524060", maps:24, cs:true, rev:null, path:"_materijali/rxtx_260_524060.bin", note:"Decimal SW format; 1330B razlika od 10SW000778; isti stariji ME17 layout", warn:true, extra:true },
+];
+
+// Sorter state
+let sortCol = 'year', sortDir = 1;
+let data = [...DUMPS, ...EXTRA];
+
+function hpClass(hp) {
+  const m = {300:'hp-300',260:'hp-260',230:'hp-230',170:'hp-170',155:'hp-155',130:'hp-130',90:'hp-90'};
+  return m[hp] || '';
+}
+
+function ecuClass(ecu) {
+  if (ecu.includes('1630')) return 'ecu-1630';
+  if (ecu.includes('1503')) return 'ecu-1503';
+  return 'ecu-900';
+}
+
+function mapsClass(m) {
+  if (m >= 60) return 'maps-high';
+  if (m >= 50) return 'maps-mid';
+  return 'maps-low';
+}
+
+function swClass(sw) {
+  return /^\d{10}$/.test(sw) ? 'sw-decimal' : '';
+}
+
+function renderRow(d) {
+  const rowClass = d.dup ? ' class="dup"' : '';
+  const scBadge = d.scna === 'SC'
+    ? '<span class="badge-sc">SC</span>'
+    : '<span class="badge-na">NA</span>';
+  const revStr = d.rev ? `${d.rev} RPM` : '<span style="color:#555">—</span>';
+  const noteHtml = d.warn
+    ? `<span class="note-warn">⚠ ${d.note}</span>`
+    : `<span class="note">${d.note || '—'}</span>`;
+  const dupMark = d.dup ? ' <span class="dup-marker">≡dup</span>' : '';
+  const extraMark = d.extra ? ' <span class="dup-marker" style="color:#FF8C00;border-color:#FF8C00">extra</span>' : '';
+  return `<tr${rowClass}>
+    <td><span class="badge-year">${d.year}</span></td>
+    <td><span class="badge-hp ${hpClass(d.hp)}">${d.hp}hp</span></td>
+    <td>${scBadge}</td>
+    <td class="${ecuClass(d.ecu)}">${d.ecu}</td>
+    <td><span class="sw-id ${swClass(d.sw)}">${d.sw}</span>${dupMark}${extraMark}</td>
+    <td><span class="${mapsClass(d.maps)}">${d.maps}</span></td>
+    <td><span class="${d.cs ? 'cs-ok' : 'cs-fail'}">${d.cs ? '✓ OK' : '✗ FAIL'}</span></td>
+    <td style="font-size:11px;color:#9e9e9e">${revStr}</td>
+    <td><span class="fpath">${d.path}</span></td>
+    <td>${noteHtml}</td>
+  </tr>`;
+}
+
+function getFilteredData() {
+  const yr  = document.getElementById('filter-year').value;
+  const ecu = document.getElementById('filter-ecu').value;
+  const scna= document.getElementById('filter-scna').value;
+  const hp  = document.getElementById('filter-hp').value;
+  const srch= document.getElementById('filter-search').value.toLowerCase();
+  const uniq= document.getElementById('filter-unique').checked;
+
+  let seen = new Set();
+  return data.filter(d => {
+    if (yr   && String(d.year) !== yr)  return false;
+    if (ecu  && !d.ecu.includes(ecu))   return false;
+    if (scna && d.scna !== scna)         return false;
+    if (hp   && String(d.hp)+'hp' !== hp) return false;
+    if (srch && ![d.sw, d.ecu, d.note||'', d.path, String(d.hp), String(d.year)].join(' ').toLowerCase().includes(srch)) return false;
+    if (uniq) {
+      if (seen.has(d.sw)) return false;
+      seen.add(d.sw);
+    }
+    return true;
+  });
+}
+
+function sortData(arr) {
+  const colKey = {
+    year: d => d.year,
+    hp:   d => d.hp,
+    scna: d => d.scna,
+    ecu:  d => d.ecu,
+    sw:   d => d.sw,
+    maps: d => d.maps,
+    cs:   d => d.cs ? 1 : 0,
+    revlim: d => d.rev || 0,
+    path: d => d.path,
+    note: d => d.note || '',
+  };
+  const fn = colKey[sortCol] || (d => d.year);
+  return [...arr].sort((a, b) => {
+    const va = fn(a), vb = fn(b);
+    if (va < vb) return -sortDir;
+    if (va > vb) return  sortDir;
+    return 0;
+  });
+}
+
+function updateSummaryCards(allVisible) {
+  const total = DUMPS.length + EXTRA.length;
+  const uniqSW = new Set(data.map(d=>d.sw)).size;
+  const csOk = data.filter(d=>d.cs).length;
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="summary-card"><div class="val">${total}</div><div class="lbl">Dumpova</div></div>
+    <div class="summary-card"><div class="val">${uniqSW}</div><div class="lbl">Unikatnih SW</div></div>
+    <div class="summary-card"><div class="val" style="color:var(--green)">${csOk}</div><div class="lbl">CS Valid</div></div>
+    <div class="summary-card"><div class="val" style="color:var(--red)">${data.filter(d=>!d.cs).length}</div><div class="lbl">CS Fail</div></div>
+    <div class="summary-card"><div class="val" style="color:var(--accent2)">${[...new Set(data.filter(d=>d.ecu.includes('1630')).map(d=>d.sw))].length}</div><div class="lbl">1630 ACE SW</div></div>
+    <div class="summary-card"><div class="val" style="color:var(--teal)">${[...new Set(data.filter(d=>d.ecu.includes('1503')).map(d=>d.sw))].length}</div><div class="lbl">4TEC 1503 SW</div></div>
+    <div class="summary-card"><div class="val" style="color:var(--purple)">${[...new Set(data.filter(d=>d.ecu.includes('900')).map(d=>d.sw))].length}</div><div class="lbl">900 ACE SW</div></div>
+  `;
+}
+
+function render() {
+  const filtered = getFilteredData();
+  const sorted = sortData(filtered);
+  const tbody = document.getElementById('table-body');
+
+  if (sorted.length === 0) {
+    tbody.innerHTML = '';
+    document.getElementById('no-results').style.display = '';
+  } else {
+    document.getElementById('no-results').style.display = 'none';
+    tbody.innerHTML = sorted.map(renderRow).join('');
+  }
+
+  const uniqSwInView = new Set(sorted.map(d=>d.sw)).size;
+  const csOkInView = sorted.filter(d=>d.cs).length;
+  document.getElementById('stat-count').textContent = sorted.length;
+  document.getElementById('stat-sw').textContent = uniqSwInView;
+  document.getElementById('stat-cs').textContent = `${csOkInView}/${sorted.length}`;
+}
+
+// Header click → sort
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortDir *= -1;
+    else { sortCol = col; sortDir = 1; }
+    document.querySelectorAll('thead th').forEach(t => t.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    render();
+  });
+});
+
+// Filters
+['filter-year','filter-ecu','filter-scna','filter-hp','filter-search','filter-unique'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener(el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change', render);
+});
+
+// Init
+updateSummaryCards();
+render();
+
+// Set default sort indicator
+document.querySelector('th[data-col="year"]').classList.add('sort-asc');
+
+// ── Tab switching ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── SW Timeline ──
+const SW_ALL = [
+  // decimal era
+  { sw:'1037524060', year:'~2015', hp:260, scna:'SC', ecu:'4TEC 1503',     maps:24,  hasDump:true,  note:'stariji ME17 format; 1330B razlika od 10SW000778' },
+  // 10SW era
+  { sw:'10SW000776', year:'2016',  hp:215, scna:'SC', ecu:'4TEC 1503',     maps:24,  hasDump:true,  note:'SW=000776 — samo 2 manje od 260hp (000778)! SC bypass 0x2020; ~9305B razlike vs 260hp' },
+  { sw:'10SW000778', year:'2016',  hp:260, scna:'SC', ecu:'4TEC 1503',     maps:24,  hasDump:true,  note:'SC bypass 0x2020 @ 0x012C60; kod layout drugačiji od 2018+' },
+  { sw:'10SW004672', year:'2016?', hp:300, scna:'SC', ecu:'1630 ACE',      maps:null,hasDump:false, note:'možda identičan 10SW004675? nema dumpa' },
+  { sw:'10SW004675', year:'2016',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:24,  hasDump:true,  note:'SC bypass 0x3333; fuel addr neistražena; CODE layout drugačiji' },
+  { sw:'10SW011328', year:'2016–18',hp:90, scna:'NA', ecu:'900 ACE Spark', maps:54,  hasDump:true,  note:'2016 i 2018 isti SW; Spark low-priority' },
+  { sw:'10SW012502', year:'2017',  hp:260, scna:'SC', ecu:'4TEC 1503',    maps:0,   hasDump:true,  note:'CODE layout = 2016 gen stil; SC bypass 0x2020 @ 0x012C60; 445KB razlika od 230hp 2017 (012999); raniji build (SW 497 manje)' },
+  { sw:'10SW012999', year:'2017',  hp:230, scna:'SC', ecu:'4TEC 1503',    maps:null,hasDump:true,  note:'Parcijalna 2018 migracija: SC bypass/ign/rev/sc_corr/fuel RADE; boost/temp_fuel/lambda_trim na drugačijim adresama; rev=8072RPM@0x028E94' },
+  { sw:'10SW023910', year:'2018',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:63,  hasDump:true,  note:'2× injection set + 2× ignition set; IGN_BASE 4B ranije' },
+  { sw:'10SW025021', year:'2018',  hp:230, scna:'SC', ecu:'4TEC 1503',     maps:59,  hasDump:true,  note:'fizički SC ventil @ 0x020534; ~19KB razlika od NA' },
+  { sw:'10SW025022', year:'2018',  hp:130, scna:'NA', ecu:'4TEC 1503',     maps:60,  hasDump:true,  note:'v1 — 130v1=155v1 identični' },
+  { sw:'10SW025752', year:'2018',  hp:155, scna:'NA', ecu:'4TEC 1503',     maps:60,  hasDump:true,  note:'v2 — razlika v1→v2: 2901B (ign+lambda+inj)' },
+  { sw:'10SW039116', year:'2019–21',hp:90, scna:'NA', ecu:'900 ACE Spark', maps:54,  hasDump:true,  note:'2019=2020=2021 MD5 identični; skok od 2018' },
+  { sw:'10SW040008', year:'2019',  hp:230, scna:'NA', ecu:'4TEC 1503',     maps:59,  hasDump:true,  note:'isti SW za 130/155/230hp! SC bypass=0x1E1E za sve snage' },
+  { sw:'10SW040039', year:'2019',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:57,  hasDump:true,  note:'NPRo base — SW string nepromijenjen u tune verziji' },
+  { sw:'10SW040962', year:'2020',  hp:130, scna:'NA', ecu:'4TEC 1503',     maps:59,  hasDump:true,  note:'minor update' },
+  { sw:'10SW053727', year:'2020–21',hp:230, scna:'SC', ecu:'1630 ACE',     maps:56,  hasDump:true,  note:'fuel max Q15=0.785' },
+  { sw:'10SW053729', year:'2020–21',hp:170, scna:'NA', ecu:'1630 ACE',     maps:64,  hasDump:true,  note:'130hp=170hp isti SW; fuel max Q15=0.524' },
+  { sw:'10SW053774', year:'2020–21',hp:90,  scna:'NA', ecu:'900 ACE GTI90',maps:62,  hasDump:true,  note:'DTC @ 0x0217EE; lambda mirror aktivna (0.90–1.02)' },
+  { sw:'10SW054296', year:'2020',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:57,  hasDump:true,  note:'2020 ORI baseline' },
+  { sw:'10SW066726', year:'2021',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:57,  hasDump:true,  note:'2021 ORI baseline; referentni SW za tuning' },
+  { sw:'10SW082806', year:'2022',  hp:300, scna:'SC', ecu:'1630 ACE',      maps:14,  hasDump:true,  note:'VERIFICIRAN 2026-03-20; TUNED dump (nije ORI); CODE layout znacajno promijenjen vs 2021 (236KB diff); rev tuneovan na 100 ticks; MapFinder: 14/57 mapa' },
+];
+
+function ecuColorSW(ecu) {
+  if (ecu.includes('1630')) return 'color:var(--accent)';
+  if (ecu.includes('1503')) return 'color:var(--teal)';
+  return 'color:var(--purple)';
+}
+
+function renderSWTimeline() {
+  const container = document.getElementById('sw-timeline-rows');
+
+  // Group by year
+  const groups = {};
+  SW_ALL.forEach(d => {
+    const y = d.year;
+    if (!groups[y]) groups[y] = [];
+    groups[y].push(d);
+  });
+
+  let html = '<div class="timeline">';
+  for (const [yr, items] of Object.entries(groups)) {
+    const hasAnyDump = items.some(d => d.hasDump);
+    const swNums = items.map(d => {
+      const num = parseInt(d.sw.replace('10SW','').replace('1037',''));
+      return isNaN(num) ? 0 : num;
+    });
+    const minSW = Math.min(...swNums), maxSW = Math.max(...swNums);
+    const rangeStr = minSW === maxSW
+      ? `~${(minSW/1000).toFixed(0)}k`
+      : `~${(minSW/1000).toFixed(0)}k – ${(maxSW/1000).toFixed(0)}k`;
+
+    html += `<div class="tl-group">
+      <div class="tl-year">${yr} <span class="range">SW ${rangeStr}</span></div>`;
+
+    items.forEach(d => {
+      const dumpBadge = d.hasDump
+        ? '<span class="badge-dump">DUMP ✓</span>'
+        : '<span class="badge-nodump">NO DUMP</span>';
+      const isDecimal = /^\d{10}$/.test(d.sw);
+      const swClass = isDecimal ? 'sw-num decimal' : 'sw-num';
+      const scBadge = d.scna === 'SC'
+        ? '<span class="badge-sc">SC</span>'
+        : '<span class="badge-na">NA</span>';
+      const mapsStr = d.maps ? `<span class="${d.maps>=60?'maps-high':d.maps>=50?'maps-mid':'maps-low'}">${d.maps} mapa</span>` : '<span style="color:#444">—</span>';
+      const rowCls = !d.hasDump ? ' no-dump' : '';
+
+      html += `<div class="sw-row${rowCls}">
+        <span class="${swClass}">${d.sw}</span>
+        ${dumpBadge}
+        ${scBadge}
+        <span class="sw-ecu" style="${ecuColorSW(d.ecu)}">${d.ecu}</span>
+        <span class="sw-model">${d.hp}hp</span>
+        <span class="sw-maps">${mapsStr}</span>
+        <span class="sw-note-sm">${d.note}</span>
+      </div>`;
+    });
+
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+renderSWTimeline();
+</script>
+</body>
+</html>

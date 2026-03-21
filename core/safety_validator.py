@@ -5,11 +5,20 @@ Bosch ME17.8.5 / Rotax ACE 1630
 Limiti kalibrirani na temelju stvarnih firmware vrijednosti:
   - ori_300 (ORI, 10SW066726)   — sigurna referentna baza
   - npro_stg2_300 (STG2)        — potvrđene gornje granice
+  - sve poznate ORI varijante (300/230/170/130hp SC/NA, Spark 900, GTI 1503)
 
 Tri razine:
   OK       — vrijednost unutar normalnog raspona
   WARNING  — vrijednost izvan tipičnog raspona, ali ne nužno opasna
   ERROR    — vrijednost koja može oštetiti motor ili uzrokovati kvar
+
+Rev limiter — binarno izmjereni ECU limiti (≠ manual WOT RPM):
+  300hp SC = 8158 RPM (5072t) | 230hp SC (1630) = 8158 RPM (5072t, =300hp!)
+  130/170hp NA = 7892 RPM (5243t) — ISTI SW = ISTI ECU limit!
+  Spark 900    = 8081 RPM (5120 ticks, soft-cut)
+  GTI 1503     = 7699–8072 RPM (ovisno o SW)
+  GTI90 ≈ 7043 RPM
+  Manual WOT RPM (dijagnostički, u vodi) je VIŠI od ECU limita — bez opterećenja svi vrte više.
 """
 
 from __future__ import annotations
@@ -55,6 +64,13 @@ class ValidationResult:
 #   ERROR_RICH < 0.75  — opasno bogato, neizgoreno gorivo, pregrijavanje katalizatora (N/A)
 #   ERROR_LEAN > 1.15  — opasno siromasno, pistons/valves pri punom gasu
 #
+# Fuel 2D mapa (Q15, scale=1/32767, unit="Q15"):
+#   Relativna masa goriva (0.0 = isključeno, 1.0 = puna doza)
+#   ORI max: 300hp=0.944, 230hp=0.785, 170/130hp=0.524, GTI 1503=0.440
+#   Q15 fizikalni max = 32767/32767 = 1.0 (ne može biti > 1.0)
+#   WARN  > 1.0  — iznad Q15 max, neočekivano (može značiti overflow ili greška)
+#   ERROR > 1.1  — sigurno pogrešan unos, nije fizikalno izvedivo
+#
 # Injection pulse (raw u16, scale=1.0):
 #   Max hardware limit: 65535  |  ORI max: ~49151 (75%)  |  STG2: saturira na 65535
 #   Bez fizičke A2L jedinice — ne možemo dati smisleni ERROR limit na raw vrijednosti.
@@ -63,7 +79,7 @@ class ValidationResult:
 # Torque factor (display = 100.0/32768.0, unit=%):
 #   ORI: 92.97–119.53%  |  STG2: ~91–122%
 #   WARN  > 125.0% — iznad STG2 max uz buffer
-#   ERROR > 160.0% — fizikalno nemoguće, obično greška u unosu
+#   ERROR > 160.0% — fizikalno nemoguće za ACE 1630
 #
 # SC bypass (display = 100/255, unit="% bypass"):
 #   0% = puni boost (bypass zatvoren)  |  100% = nema boosta (bypass otvoren)
@@ -77,6 +93,13 @@ class ValidationResult:
 # Temp fuel / lambda bias (isti format kao SC correction, unit="%"):
 #   WARN > +80%  — >80% obogaćivanja od nominalnog
 #   ERROR > +150%
+#
+# Rev limiter (period-encoded ticks):
+#   Binarno izmjereni ECU limiti (NE manual WOT RPM):
+#     300/230hp SC=8158 RPM (5072t), 130/170hp NA=7892 RPM (5243t, ISTI SW = isti limit!)
+#     Spark 900=8081 RPM (5120t), GTI 1503=7699–8072 RPM, GTI90=~7043 RPM
+#   WARN  > 8700 rpm — iznad svih poznatih stock ECU limita (SC max = 8158 RPM)
+#   ERROR > 9200 rpm — iznad fizikalnog max Rotax ACE 1630
 
 _IGNITION_WARN_DEG  = 38.25
 _IGNITION_ERROR_DEG = 43.50
@@ -87,6 +110,9 @@ _LAMBDA_WARN_LEAN   = 1.05
 _LAMBDA_ERROR_RICH  = 0.75
 _LAMBDA_ERROR_LEAN  = 1.15
 
+_FUEL_Q15_WARN  = 1.0    # Q15 fizikalni max; >1.0 je neočekivano
+_FUEL_Q15_ERROR = 1.1    # sigurno greška — nije fizikalno izvedivo
+
 _INJECTION_WARN_RAW  = 62000
 _INJECTION_ERROR_RAW = 65535   # fizički max — samo warn, ne error
 
@@ -95,6 +121,9 @@ _TORQUE_ERROR_DISP = 160.0   # fizikalno nemoguće za ACE 1630
 
 _SC_CORR_WARN   = 150.0   # +150% korekcija — iznad ORI max (+119%)
 _SC_CORR_ERROR  = 250.0   # +250% — prekomjerno, gotovo sigurno greška
+
+_REV_WARN_RPM  = 8700    # iznad svih poznatih stock varijanti (170hp NA=8440)
+_REV_ERROR_RPM = 9200    # iznad fizikalnog max Rotax ACE 1630
 
 _FACTOR_WARN  = 80.0    # +80% obogaćivanja
 _FACTOR_ERROR = 150.0   # +150% — prekomjerno
@@ -127,6 +156,9 @@ class SafetyValidator:
 
         if cat == "injection":
             return self._check_injection(defn, display_val)
+
+        if cat == "fuel":
+            return self._check_fuel(defn, display_val)
 
         if cat == "torque":
             return self._check_torque(display_val)
@@ -210,6 +242,10 @@ class SafetyValidator:
         return ValidationResult(Level.OK, "")
 
     def _check_injection(self, defn: "MapDef", val: float) -> ValidationResult:
+        # Q15 fuel mape (unit="Q15", scale≈1/32767) — relativna masa goriva 0.0–1.0
+        if getattr(defn, "unit", "") == "Q15":
+            return self._check_fuel_q15(val)
+
         # SC correction, temp fuel, lambda bias — prikazani kao % (offset=-100)
         # scale ~ 100/16384 ili 100/32768 → uvijek < 0.01
         is_factor = defn.scale < 0.01   # Q14/Q15 → % format
@@ -251,14 +287,41 @@ class SafetyValidator:
                 f"Torque {val:.1f}% — prekomjerno smanjen, motor nece razviti snagu.")
         return ValidationResult(Level.OK, "")
 
-    def _check_rev_limiter(self, rpm: float) -> ValidationResult:
-        if rpm > 9000:
+    def _check_fuel_q15(self, val: float) -> ValidationResult:
+        """Q15 relativna masa goriva (0.0 = isključeno, 1.0 = max duty)."""
+        if val > _FUEL_Q15_ERROR:
             return ValidationResult(Level.ERROR,
-                f"Rev limiter {rpm:.0f} rpm iznad max Rotax ACE 1630 (9000 rpm). "
-                f"Rizik od mehanickog kvara.")
-        if rpm > 7500:
+                f"Gorivo Q15 {val:.4f} — iznad fizikalnog max ({_FUEL_Q15_ERROR}). "
+                f"Sigurno pogresan unos (raw overflow ili tipfehler).")
+        if val > _FUEL_Q15_WARN:
             return ValidationResult(Level.WARNING,
-                f"Rev limiter {rpm:.0f} rpm iznad STG2 max (~7500 rpm). Provjerite ventile.")
+                f"Gorivo Q15 {val:.4f} > 1.0 — iznad normalnog Q15 raspona. "
+                f"ORI max: 300hp=0.944, 230hp=0.785, 130/170hp=0.524.")
+        if val < 0.0:
+            return ValidationResult(Level.ERROR,
+                f"Gorivo Q15 {val:.4f} negativno — nije moguće.")
+        return ValidationResult(Level.OK, "")
+
+    def _check_fuel(self, defn: "MapDef", val: float) -> ValidationResult:
+        """Category 'fuel' — cold start enrichment, deadtime, ostale fuel tablice."""
+        # Deadtime mape su read-only (unit="µs") — ne validiramo granično
+        unit = getattr(defn, "unit", "")
+        if unit in ("µs", "raw"):
+            return self._check_generic(defn, val)
+        # Q15 format
+        if unit == "Q15":
+            return self._check_fuel_q15(val)
+        return self._check_generic(defn, val)
+
+    def _check_rev_limiter(self, rpm: float) -> ValidationResult:
+        if rpm > _REV_ERROR_RPM:
+            return ValidationResult(Level.ERROR,
+                f"Rev limiter {rpm:.0f} rpm iznad max ({_REV_ERROR_RPM} rpm). "
+                f"Rizik od mehanickog kvara motora (klipovi/ventili).")
+        if rpm > _REV_WARN_RPM:
+            return ValidationResult(Level.WARNING,
+                f"Rev limiter {rpm:.0f} rpm iznad svih poznatih stock vrijednosti "
+                f"(170hp NA max=8440 rpm). Provjeri ventile i ulje pod opterecenjem.")
         if rpm < 3000:
             return ValidationResult(Level.WARNING,
                 f"Rev limiter {rpm:.0f} rpm prenizak — motor nece razviti punu snagu.")

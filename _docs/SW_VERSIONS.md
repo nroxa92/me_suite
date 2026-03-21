@@ -21,13 +21,53 @@
 
 ## 2. All Known SW Versions
 
+### 4TEC 1503 — 2016 generacija (stariji ME17 format)
+
+| SW ID | HP | SC/NA | Notes |
+|-------|----|-------|-------|
+| **10SW000776** | 215hp | SC | Susjedni SW s 260hp (razlika 2) — isti release batch |
+| **10SW000778** | 260hp | SC | Referentni 2016 1503 dump |
+| **1037524060** | 260hp | SC | Decimalni format (~2015); 1330B razlika od 10SW000778 |
+
+**BUDS kompatibilnost:**
+- 2016 modeli rade s oba BUDS (stari BUDS + BUDS2)
+- BUDS2 nema backup za pre-2016; 2017+ = BUDS2 only
+
+**CODE layout razlike (2016 vs 2018+):**
+- SC bypass adresa: `0x012C60` = `0x2020` (ne `0x020534/0x0205A8` kao 2018+!)
+- Rev limiter radi @ `0x028E94` (isto kao 2018)
+- Fuel mapa, boost factor, lambda_trim, torque NE rade na standardnim 2018+ adresama
+- map_finder: ~24 mape (ograničena podrška — većina skenera propušta)
+- SW brojevi 000776 i 000778 su susjedni u istom release batchu — male razlike kalibracije
+
+---
+
+### 4TEC 1503 — 2017 generacija (parcijalna 2018 migracija)
+
+| SW ID | HP | SC/NA | Notes |
+|-------|----|-------|-------|
+| **10SW012999** | 230hp | SC | Jedini poznati 2017 1503 dump; ~400KB razlika vs 2018/230SC |
+
+**Adrese koje RADE (na 2018 lokacijama):**
+- SC bypass @ `0x0205A8`, ign_base @ `0x02B730`, rev_lim @ `0x028E94` (jedna kopija, ne 0x028E96!)
+- lambda_main @ `0x0266F0`, sc_corr @ `0x02220E`, kfped @ `0x029548`, fuel_2d @ `0x022066`
+
+**Adrese koje NE RADE (na drugačijim lokacijama vs 2018+):**
+- boost_factor @ `0x025DF8` = 358 (ne 23130 kao 2018+ 1503)
+- temp_fuel @ `0x025E50` = 3000 (ne standardna 2018 kalibracija)
+- lambda_trim @ `0x026DB8` = 0 (prazno)
+
+**SW kronologijski pattern:** 10SW012999 je između 2016 (000778) i 2018 (023910) — potvrđuje ~13k/godišnji skok i djelomičan CODE refaktor 2016→2018.
+
+---
+
 ### Rotax 1630 SC (Sea-Doo 300hp / 230hp)
 
 | SW ID | Description | Vehicles | Notes |
 |-------|-------------|----------|-------|
 | **10SW066726** | ORI baseline 300hp SC (2016–2021) | RXP-X 300, RXT-X 300, GTX 300 | **Primary reference binary** |
 | **10SW054296** | 300hp SC 2020 ORI | RXP/RXT/GTX 300, 2020 model | Confirmed: `dumps/2020/1630ace/300.bin` |
-| **10SW082806** | 300hp SC variant (newer) | RXP-X 300 (2022+?) | `_materijali/backup_flash_082806.bin`, 11462 changed regions vs ori_300 |
+| **10SW082806** | 300hp SC 2022 | RXP-X 300, RXT-X 300, GTX 300 (2022) | **VERIFICIRAN 2026-03-20** — `dumps/2022/300.bin`; TUNED dump (nije ORI); CODE reorganiziran vs 2021 (236KB diff); rev @ 0x028E96 = 100 ticks (tuneovan); IGN @ 0x02B730 = novi format; MapFinder: 14 mapa (adrese promijenjene u 2022 SW) |
 | **10SW004672** | 300hp SC (2016) | RXP-X 300 / RXT-X 300 | Older variant |
 | **10SW040039** | 2019 stock / NPRo baseline 300hp | RXP-X 300 (tuned) | SW string nije promijenjen u NPRo tunu — isti SW ID. CODE diff vs ori_300: 7087B (2021) / 6038B (2020) |
 | **10SW053727** | GTI SE 230 / Wake Pro 230 (2021) | GTI SE 230, Wake Pro 230 | SC motor, hard cut ~8158 RPM |
@@ -66,7 +106,35 @@
 
 ---
 
-## 3. Dumps Available
+## 3. SW Kronologijska analiza
+
+### Pattern: niži broj = stariji SW
+
+Potvrđeno na svim poznatim SW ID-ovima bez iznimke:
+
+| Raspon SW broja | Godište | Napomena |
+|----------------|---------|---------|
+| 000776 – 000778 | 2016 | 4TEC 1503; susjedni u release batchu (razlika 2) |
+| 004675 | 2016 | 1630 ACE 300hp |
+| 011328 | 2016–18 | Spark 900; jedan SW za 3+ godišta |
+| 012999 | 2017 | 4TEC 1503 230hp; jedini poznati 2017 dump |
+| 023910 – 025752 | 2018 | 1630 ACE + 4TEC 1503; raspon ±2k unutar godišta |
+| 039116 – 040962 | 2019–20 | Spark + 1503 + 1630; raspon ~2k |
+| 053727 – 054296 | 2020 | 1630 ACE svi modeli; raspon <1k |
+| 066726 | 2021 | 1630 ACE 300hp |
+| 082806 | 2022 | 1630 ACE 300hp — **VERIFICIRAN 2026-03-20** (dump dostupan; TUNED) |
+
+**Prosječni godišnji skok:** ~13k SW brojeva
+**Raspon unutar godišta:** ±2k (sve varijante iste generacije)
+**Iznimka:** Spark 900 — jedan SW pokriva 2016–2021 (low-priority platforma)
+
+### Swap/upgrade kompatibilnost
+
+Stariji motori rade s novijim 10SW ECU SW-om (swap/upgrade moguć). Primjer: 2016 motor s 2018+ ECU firmwareom funkcionira — razlika je u kalibracijskim parametrima, ne u temeljnoj arhitekturi.
+
+---
+
+## 4. Dumps Available
 
 ### Directory structure: `dumps/YYYY/{1630ace,900ace,4tec1503}/`
 
@@ -117,6 +185,19 @@
 - 2018 (10SW011328) vs 2019+ (10SW039116): **622,954 bytes different** — completely different CODE layout
 - All maps at different addresses
 - 2019/2020/2021 are truly identical binaries
+
+### 300hp SC: 2021 (10SW066726) vs 2022 (10SW082806)
+- SW ID: razliciti (066726 vs 082806)
+- BOOT diff: 769B — SW string, checksum, + 313 bloka ×2B TriCore adresnih pointera (normalno za SW update)
+- CODE diff: **236,401B** (vs samo 2,891B za 2020→2021!) — ZNACAJNO vece promjene, indicira veliku CODE reorganizaciju
+- CAL diff: 235,564B
+- Ukupno: **472,734B (30.7%)** razlicito
+- IGN @ 0x02B730: promijenjen u 2022 (u16 LE vrijednosti umjesto u8) — IGN je na DRUGOJ adresi u 2022 SW
+- Rev limiter @ 0x028E96: 100 ticks u 2022 (tuneovano) — originalna vrijednost nepoznata
+- SC bypass shadow (0x020534): **IDENTICAN** 2021 i 2022 (0x2626)
+- SC bypass active (0x0205A8): **IDENTICAN** 2021 i 2022 (0x2626)
+- MapFinder: **14 mapa** (vs 57 za 2021) — vecina adresa se promijenila u 2022 SW
+- **NAPOMENA:** Dump je TUNED (modificiran) — nije cisti ORI; za pravi audit potreban cisti ORI 2022 dump
 
 ---
 

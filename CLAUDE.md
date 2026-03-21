@@ -17,9 +17,12 @@
 
 ## Memorija Map (CODE regija 0x010000-0x05FFFF):
 - RPM ose: 0x024F46, 0x025010, 0x0250DC — u16 BE, 1×16 točaka (512–8448 rpm)
-- Rev limiter (stvarni, period-encoded LE u16): 0x028E96 (1630 SC/NA), 0x028E94 (2018 SW, 2B ranije)
-  - 300hp SC=8223 RPM, 230hp SC=8168 RPM, 130/170hp NA=8750 RPM (NA viši jer bez SC tlaka)
-  - Spark 900 @ 0x028E34 = 5120t = 8081 RPM; GTI90 @ 0x028E7C = 5875t = 7043 RPM
+- Rev limiter (stvarni, period-encoded LE u16): 0x028E96 (1630 SC/NA 2019+), 0x028E94 (2018 SW / 2017 gen 230hp, 2B ranije)
+  - **Binary izmjereno**: 300hp SC=5072t=8158 RPM; **230hp SC (1630)=5072t=8158 RPM** (=300hp!); 130/170hp NA=5243t=7892 RPM (oba isti SW!)
+  - **Manual WOT RPM** (dijagnostički, u vodi, NE ECU cut): 300hp≈8200, 170hp≈8400, 130hp≈8000 — bez opterećenja svi vrte više
+  - **Napomena**: 130hp i 170hp NA = ISTI SW (10SW053729, 0B razlika) → ISTI ECU limit (7892 RPM); manual razlika je WOT operativni RPM, ne ECU
+  - Spark 900 @ 0x028E34 = 5120t = 8082 RPM; GTI90 @ 0x028E7C = 5875t = 7043 RPM
+  - **2016 gen 1503** (10SW000776/778, 10SW012502): rev @ **0x026E1E** = 5126t = 8072 RPM; mirror @ 0x026D82 (−0x9C); ISTI limit za 215/260hp; offset vs 1630 ACE = −0x2076
   - **UPOZORENJE**: 0x02B72A/0x02B73E su IGN DATA (u8 bajtovi, 0x22=25.5°BTDC), NISU rev limiteri!
 - Ignition (1630 ACE): IGN_BASE=0x02B730, stride=144B, 19 mapa, 12×12 u8, scale=0.75°/bit
   - #00-#07 osnovna; #08-#09 knock trim; #10-#15 aux A/B/SC; #16-#17 extended (NPRo); #18 uvjetna/fallback
@@ -52,7 +55,7 @@
 - Lambda trim: 0x026DB8 — 12×18 u16 LE Q15
 - Lambda bias: 0x0265D6 — 1×141 u16 LE Q15
 - SC correction: 0x02220E — 9×7 u16 LE Q14 (NA=flat 16384=1.0, SC aktivno)
-- SC boost factor: 0x025DF8 — 1×40 u16 LE Q14 (=1.224, +22%)
+- SC boost factor: 0x025DF8 — 1×40 u16 LE Q14 (1630=1.224/+22%; **4-TEC 1503=flat 23130=Q14×1.412/+41.2% za SVE varijante SC/NA**)
 - SC bypass: 3 kopije @ 0x020534 (shadow), 0x0205A8 (active), 0x029993 (extra)
   - NPRo mijenja samo 0x0205A8 i 0x029993; opcodes: 300hp=0x2626, 230hp=0x1F1F, 170/130hp=0x1E1E
 - Temp fuel correction: 0x025E50 — 1×156 u16 LE Q14
@@ -66,10 +69,13 @@
 - Accel enrichment: 0x028059 — 5×5 u16 LE Q14 (kompleksan format: 1B global + 5 sub-tablica)
 - Start injection: 0x025CDC — 1×6 u16 LE + 6-pt osa
 - Deadtime: 0x0258AA (ne 0x025900!) — 10×14 u16 LE; X-os trajanje, Y-os temp °C (read-only)
-- Decel RPM ramp (DFCO): 0x028C30 — 16×11 u16 LE (stride 22B, 80% conf.)
+- Decel RPM ramp (DFCO): 0x028C30 — 16×11 u16 LE (stride 22B, **90% conf.**)
 - Knock params: 0x0256F8 — 52 u16 (104B); ispravak s prijašnjih 24
 - KFPED (drive-by-wire): header 0x029528, data 0x029548 — 10×20 u8; mirror 0x029630
   - SC X-os = MAP kPa gauge (signed u8, boost/vakuum); NA X-os = pedal° [0..70]
+- **FWM (vozačev zahtjev momenta)**: 0x02A7F0 — 16×16 u16 BE Q8; SC 300hp=75–98% (limiting), NA 130hp=100–116% (boost); **DID 0x213B→FWM→DID 0x2103 potvrđeno; 95% conf.**
+- **KFWIRKBA tranzijentni** (4 uvjeta): 0x0275FD — 16×16 u8 /128, 4 kopije (stride 290B); NPRo mijenja C0/C1 → agresivniji throttle; **80% conf.**
+- **Lambda zaštita — pragovi**: 0x02B378 — 1×79 u16 LE Q15; NPRo STG2=sve 0xFFFF (bypass); **DID 0x2107/0x2158=0xFFFF bench potvrda; 95% conf.**
 - 0x02B380: 36×u16 lookup tablica koja skalira po snazi — NE tunabilna mapa
 - 0x012C80: 96B embedded konstante s 0xDEADBEEF markerom — READ-ONLY
 - CAL regija 0x060000–0x15FFFF = TriCore bytekod — NE PISATI!
@@ -78,9 +84,36 @@
 - **10SW023910** (2018 300hp): IGN_BASE=0x02B72C, rev limiter @0x028E94, 2× injection set (GTI 0x022066 + std 0x02436C), 2× ignition set; CAN TX @0x03DF1E
 - **10SW040039** (2019 300hp = NPRo base): NPRo NE mijenja SW string; diff: BOOT=140B, CODE=7087B, CAL=169912B (4482B CODE, 83 bloka)
 - **10SW053729**: 130hp == 170hp (0 razlika, isti SW); **0x02436C (linearization) identičan 300hp; 0x022066 fuel mapa RAZLICITA!**
-- **10SW053774** (GTI90): ign=0x02B730 (=1630!), inj=0x022066 (GTI format), DTC @0x0217EE, rev=7043RPM
-- **10SW039116** (Spark 900): ign≈0x026A50, inj=0x0222BE (30×20), DTC NIJE na 0x0217EE, rev=8081RPM; 2019=2020=2021 MD5 identični
+- **10SW053774** (GTI90): ign=0x02B730 (=1630!), inj=0x022066 (GTI format), DTC @0x0217EE, rev=7043RPM, SC bypass=**0x1C1B** @ 0x0205A8
+- **10SW039116** (Spark 900): ign≈0x026A50, inj=0x0222BE (30×20), DTC NIJE na 0x0217EE, rev=8082RPM; 2019=2020=2021 MD5 identični
 - **10SW011328** (Spark 2016/2018): iste mape adrese kao 2019+, samo drugačija kalibracija
+- **10SW004675** (2016 300hp SC ORI — VERIFICIRAN 2026-03-20): rev=8072RPM @ 0x028E44/0x028E94; SC bypass 0x3333 @ 0x0205A8 (razlikuje se od 2018+ koji ima 0x2626!); fuel mapa NIJE @ 0x022066 — 2016 ima drugačiji CODE layout (fuel adresa neistražena)
+- **10SW004672** (2016/17 300hp SC — VERIFICIRAN 2026-03-20): **2016 gen layout**, samo 1265B razlike od 10SW004675 (susjedne SW revizije, SW broj razlika = 3); rev=8072RPM @ 0x028E94; SC bypass 0x3333 @ 0x0205A8 (=identičan 004675!); SC bypass 0x2020 @ 0x012C60 (2016 gen alternativna adresa); boost_factor @ 0x025B4E flat=20046 (Q14=1.2235, +22.4%); fuel @ 0x022066 = garbage (kao 004675); MapFinder = 24 mape; torque @ 0x02A0D8 = identičan 004675; diff CODE = 130 blokova, uglavnom 0x012C7C (132B) + 0x027xxx scatter (ignition kalibracije); **u _materijali/dumps/2017/1630ace/300.bin ali je 2016 gen SW** — BRP je koristio 2016 gen SW i u 2017 modelima (ili kriva oznaka foldera)
+- **10SW025021** (GTI 230hp 1503 SC 2018): fuel max=0.952 Q15, ign row0 cols1-6=32.2° cols7-12=24.8°, rev=7664RPM, SC bypass=0x1F1F
+- **10SW025022** (GTI 130hp 1503 NA 2018 v1): fuel max=0.440 Q15, ign row0=24.8° svi, rev=7699RPM, SC bypass=0x1E1E
+- **10SW025752** (GTI 155hp 1503 NA 2018 v2): identičan 10SW025022 (fuel max=0.440, 7699RPM)
+- **10SW040008** (GTI 130/155/230hp 1503 2019): ISTI SW za sve snage; fuel max=0.440, rev=7892RPM, SC bypass=0x1E1E (NA bypass za SVE snage!)
+- **10SW000776** (215hp SC 2016 4TEC 1503): rev=8072RPM @ **0x026E1E** (mirror 0x026D82); SC bypass 0x2020 @ 0x012C60; isti rev limit kao 260hp; offset vs 1630 ACE ekvivalenta = -0x2076; fuel/boost neistraženi
+- **10SW000778** (260hp SC 2016 4TEC 1503): rev=8072RPM @ **0x026E1E** (mirror 0x026D82); SC bypass 0x2020 @ 0x012C60; ~1330B razlika od decimalne 1037524060 (~2015); map_finder ~24 mape
+- **10SW012502** (260hp SC 2017 4TEC 1503): **2016 gen adresa** — rev=8072RPM @ **0x026E1E** (ista kao 2016 gen, ne 0x028E94!); verificirano binarno 2026-03-21
+- **10SW082806** (2022 300hp SC — VERIFICIRAN 2026-03-21 — ČISTI ORI): **potpuno novi CODE layout** — 236,401B diff vs 2021 (10SW066726); adrese svih mapa promijenjene; SC bypass shadow/active (0x020534/0x0205A8) = 0x2626 (jedine potvrđene adrese); rev limiter NIJE na 0x028E96; fuel NIJE na 0x022066; IGN NIJE na 0x02B730; MapFinder (2021 adrese): samo 14/57 mapa — potreban kompletni redizajn skenera za 2022; **PRIJELAZNA PLATFORMA** za 2023+ (325hp novi SC, blow-off, E-kontrolirani tlak goriva, FPR relay, vanjska O2 sonda)
+- **10SW012999** (230hp SC 2017 4TEC 1503): globalni CODE offset **-0x2AA** za SC mape vs 2018:
+  - `boost_factor` @ **0x025B4E** (ne 0x025DF8!), flat 23130 (Q14=1.412) × 40 elem
+  - `temp_fuel` @ **0x025BA6** (ne 0x025E50!), varijabilna 12850–23130 × 156 elem Q14
+  - `lambda_main` @ **0x026446** (ne 0x0266F0!), 12×18 Q15, mirror @ 0x02695E (+0x518)
+  - `lambda_trim` @ **0x026B0E** (ne 0x026DB8!), 12×18 Q15, range 0.955–1.044
+  - `torque_main` @ **0x02A0D8** (ISTA adresa), ali mirror @ **0x029BC0** (= main - 0x518, ISPRED!)
+  - Rev limiter: **0x028E94** = 5126t = **8072 RPM** (adresa 0x028E96 nije kopirana!)
+  - Ostale mape (fuel_2d/ign/sc_bypass/sc_corr/kfped) na 2018 adresama
+  - 10SW012502 (2017/260hp) ima DRUGAČIJI layout — offset -0x2AA ne vrijedi za 260hp SW!
+
+## XCU platforma (2024+) — IZVAN ME17Suite scope
+- **XCU = BRP naziv za novi ECU** (2024+); pin format 3-cifreni decimalni (101–256), ~48 pinova — fizički nekompatibilan harness s ME17.8.5
+- **2024: XCU SAMO za 130/170hp NA** — Spark, 230hp, 300hp SC **ostaju na ME17.8.5** (ECM RELAY u wiring dijagramima)
+- **325hp SC (2023+)**: ECM RELAY u dijagramu, ali XCU fuse box layout + novi sustavi (FPR relay zasebni, vanjska O2 sonda 6-pin, E-fuel pressure); ME17.8.5 adrese vjerojatno ne rade za 325hp
+- **Spark 2024**: ME17.8.5 identičan 2021/2022 — pin format nepromijenjen
+- **2023 wiring nedostupan** — godina XCU uvođenja za 130/170hp nepoznata (ili 2023 ili 2024)
+- **MG1/XCU scope**: izvan ME17Suite — čeka se xhorse protokol za read/write
 
 ## Komande
 - Pokreni: `python main.py` (iz me_suite foldera)
@@ -93,6 +126,11 @@
   - GTI/NA varijanta: +2 skenera (_scan_gti_injection + _scan_gti_ignition_extra)
   - Spark 900 ACE (1037xxx / 10SW011328 / 10SW039116): 4 skenera, **52 mape** (2 false positive uklonjeni)
   - GTI90 (10SW053774): **60 mapa**; 1503 GTI: **59–62 mapa** (ovisno o SW)
+  - **10SW004675** (2016 300hp): ~24 mape (fuel mapa propušta — 0x022066 header je garbage za ovaj SW)
+  - **10SW082806** (2022 300hp): samo 14 mapa (sve adrese promijenjene) — MapFinder ne podržava 2022 bez redizajna skenera; SC bypass @ 0x020534/0x0205A8 jedine potvrđene adrese
+  - **4-TEC 1503** (_is_1503()): preskače _scan_injection (0x02436C=sve nule); filtira 0x2121 IGN DATA u rev limiter skeneru
+  - **2016 gen** (_is_2016_gen()): 10SW000776/000778/004675 — ograničena podrška, skips most scanners; ~24 mape; SC bypass @ 0x012C60 (ne 0x020534)
+  - **2017 gen** (_is_2017_gen()): 10SW012999 — skip boost_factor/temp_fuel/lambda_trim skenere (adrese ne odgovaraju); ostali skeneri rade na 2018 adresama
 - `core/map_editor.py` — MapEditor: read_map/read_raw, write_cell/write_map (auto-mirror sync), backup/restore; validacija raw_min/raw_max; write_rev_limit_scalar/write_rev_limit_row
 - `core/dtc.py` — DTC_REGISTRY: **121 kod** (111 P-kodova ECM + 10 U16Ax CAN timeout); Enable tablica @ 0x021080–0x0210BD (slot 0–61); Mapping tablica @ 0x0239B4; Mirror offset=0x0366 (ori_300); DtcScanner dinamički detektira offset; DtcEngine: dtc_off / dtc_on / dtc_off_all / disable_all_monitoring; DTC OFF blokiran za Spark/rxtx_260 (single-storage arhitektura)
 - `core/checksum.py` — CRC32-HDLC (poly=0xEDB88320, reflected); BOOT [0x0000–0x7EFF] = 0x7F00 bajta; CS @ 0x30 (BE u32) uključen u izračun (closed-form); residua=0x6E23044F; CODE promjene NE zahtijevaju CS promjenu; compute_new_cs() = MITM inverzni CRC
@@ -132,6 +170,7 @@
 - SW scalar u byte[4] od 0x0102: 0x14=300hp (10SW066726), 0x0E=230hp (10SW053727), 0x12=130/170hp (10SW053729)
 - RIDING_MODES: 0x01=SPORT, 0x02=ECO, 0x03=CRUISE, 0x06=SKI, 0x07=SLOW SPEED, 0x08=DOCK, 0x0F=LIMP HOME, 0x14=KEY MODE
 - XOR checksum byte[7]=XOR(byte[0..6]) vrijedi za 0x102/0x103/0x110/0x122/0x516; ostali nemaju CS
+- **CAN ID 0x122**: 10ms period, XOR checksum format identičan ECU; bytes[4:6]=engine hours (0x0B5E=2910h na bench) — hipoteza: **IBR (Intelligent Braking and Reverse) modul**
 
 ## EEPROM
 - HW 064 (1037550003): 130/170/230/300hp ACE 1630 + GTI90; ODO prim @ 0x0562, backup 0x0D62, mirror 0x1562, stari 0x4562, old-064 0x0490
