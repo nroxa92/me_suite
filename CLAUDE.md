@@ -13,7 +13,7 @@
 - Bosch ME17.8.5 ECU tuning software za Rotax ACE 1630 (Sea-Doo 300)
 - MCU: Infineon TC1762 (TriCore, Little Endian)
 - Python 3.14 + PyQt6
-- _materijali/_BRIEFING.md za kompletan kontekst projekta
+- _docs/_BRIEFING.md za kompletan kontekst projekta
 
 ## Memorija Map (CODE regija 0x010000-0x05FFFF):
 - RPM ose: 0x024F46, 0x025010, 0x0250DC — u16 BE, 1×16 točaka (512–8448 rpm)

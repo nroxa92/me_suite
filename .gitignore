@@ -1,29 +1,17 @@
-# ─── Screenshots (reference only) ───────────────────────────────────────────
+# ─── Smece folder (arhiva, ne za git) ─────────────────────────────────────────
+smece/
+
+# ─── CAN sniff logovi (CSV) ───────────────────────────────────────────────────
+*.csv
+sniff_*.csv
+tools/sniff_*.csv
+
+# ─── Screenshots ──────────────────────────────────────────────────────────────
 Screenshot*.png
 screenshot*.png
 
-# ─── CAN sniff logovi (CSV) ───────────────────────────────────────────────────
-# Pokriva sve lokacije gdje sniffer može snimiti
-tools/sniff_*.csv
-tools/*.csv
-*.csv
-sniff_*.csv
-
-# ─── Analitički skripti (privremeni, generirani od agenata) ──────────────────
-_materijali/run_*.py
-_materijali/*_audit.py
-_materijali/cross_sw_audit.py
-_materijali/spark_gti90_audit.py
-_materijali/dtc_cross_sw_audit.py
-cross_sw_audit.py
-tools/analyze_can*.py
-tools/ecu_simulator.py
-
-# ─── Analitički MD fajlovi (generirani, ne dokumentacija) ────────────────────
-_materijali/*_audit.md
-_materijali/spark_gti90_audit.md
-_materijali/tec1503_audit.md
-_materijali/can_cross_sw_audit.md
+# ─── TEMP binarni fajlovi ─────────────────────────────────────────────────────
+_materijali/TEMP_*.bin
 
 # ─── Claude worktrees (privremeni agent folderi) ─────────────────────────────
 .claude/
@@ -47,10 +35,3 @@ env/
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-*.csv
-tools/sniff_cdid.csv
-tools/sniff_live.csv
-tools/sniff_livedata.csv
-*.csv
-tools/sniff_cdid.csv
-tools/sniff_live.csv

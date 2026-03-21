@@ -3,6 +3,11 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-22 00:20]**
+👤 baci se na detaljnu analizu apsolutno sve dokumentacije, azuriraj, organiziraj foldere, docs, materijali, tool i root, uredi sve to poslozi, nista ne brisi, ali napravi folder smece u root i tamo baci sve sto nam nece trebati jer je dokumentirano kroz md i html...
+🤖 Kompletan pregled ~80 fajlova. Stvoreno smece/ s 8 podfoldera. Premješteno: 14 audit/scan MD-ova, svi jednonamjenski Python skripti, raw txt ekstrakti, 47 DTC PNG slika, UI mockupi, 6 CSV sniff fajlova, 2 TEMP bin fajla, live data screenshotovi. Ništa nije obrisano. .gitignore redizajniran, CLAUDE.md ispravka putanje _BRIEFING.md.
+
+---
 **[2026-03-21 23:55]**
 👤 loogiraj sve. odlican posao...
 🤖 Logirano u work_log.md i chat_log.md. Dvije popravke: _on_main_tab_changed sad koristi show/hide umjesto netočnih setCurrentIndex poziva; Kalkulator tab premješten na poziciju 1 i skraćen na "Calc" — sada vidljiv u uskom panelu.

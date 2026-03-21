@@ -1,5 +1,37 @@
 # ME17Suite — Work Log
 
+## 2026-03-22 00:20 — Organizacija projekta: smece folder + .gitignore + CLAUDE.md
+
+### Zadatak
+Kompletna reorganizacija repozitorija: dokumentacija analizirana, sve nepotrebno premješteno u `smece/`, ništa nije obrisano. Aktivan kod i referencni dokumenti ostali na mjestima.
+
+### Stvoren: `smece/` folder (u .gitignore)
+- `smece/analysis_scripts/` — root skripte (analyze_maps.py, cross_sw_audit.py) + tools skripte (analyze_can*.py, ecu_simulator.py) + _py_scripts/ (svi checksum_round*.py, run_*.py, spark_gti90_audit.py itd.)
+- `smece/audit_results/` — 14 MD fajlova: can/dtc/maps cross-SW auditi, svi scan_2016_* rezutati, 2017_gen_address_audit, bregaste_catalog
+- `smece/raw_extracts/` — efi_full.txt (2009L), dtc_spark.txt (1431L) — sirovi izvaci iz PDF-ova
+- `smece/dtc_pages/` — 39+8 PNG slika PDF stranica (izvorni PDF-ovi ostaju u _docs/)
+- `smece/mockups/` — me17suite_style2_mockup.html, map_dependency_viewer_OLD.html (stara verzija; nova je ui/map_dependency_viewer.html)
+- `smece/screenshots/` — Screenshot_1.png, Screenshot_39.png + live_data_info/ (7 screenshotova)
+- `smece/sniff_csv/` — 6 CSV fajlova (sniff_buds2/cdid/live/live2/livedata/maps24)
+- `smece/temp_bins/` — TEMP_rxp1503_orig.bin, TEMP_rxtx1503_orig.bin
+- `smece/knowledge/` — prazan folder (ostao iz starije session)
+- `smece/sniff data/` — prazan folder
+
+### Ostalo čisto (ništa nije obrisano):
+- `_docs/`: 10 referencnih MD + USER_MANUAL.html + dumps_inventory.html + 2 PDF izvora
+- `_materijali/`: dumps/ + eeprom dumps/ + rxtx_260_524060.bin + unknow/
+- `tools/`: samo can_sniffer.py + did_map.py
+- `core/`, `ui/`, `test/`, `main.py` — nepromijenjen kod
+
+### Ostale izmjene
+- `.gitignore` — redizajniran: uklonjen kaotičan duplikat, dodan `smece/` i `_materijali/TEMP_*.bin`
+- `CLAUDE.md` — ispravka: `_materijali/_BRIEFING.md` → `_docs/_BRIEFING.md` (ispravna putanja)
+- `MEMORY.md` (root) — sinkroniziran s authoritative verzijom iz `.claude/projects/.../memory/`
+
+### Fajlovi
+- `.gitignore`, `CLAUDE.md`, `MEMORY.md` — ažurirani
+- `smece/` — novi folder (~80 fajlova premješteno)
+
 ## 2026-03-21 23:55 — UI fix: _on_main_tab_changed + Kalkulator tab vidljivost
 
 ### Zadatak
