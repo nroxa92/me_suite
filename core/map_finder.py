@@ -2648,6 +2648,17 @@ _2017_GEN_SW_IDS = {
     "10SW012999",  # 230hp SC 2017 4TEC 1503 (jedini s parcijalnom migracijom)
 }
 
+# ─── 2017 gen 4-TEC 1503 — potvrdjene adrese (offset -0x2AA od 2018) ──────────
+# Vrijedi SAMO za 10SW012999. Potvrdjeno binarno 2026-03-21.
+LAM_MAIN_2017      = 0x026446   # vs 2018: 0x0266F0 (−0x2AA); Q15 0.986-1.034, 114u
+LAM_ADAPT_2017     = 0x0265F6   # = LAM_MAIN_2017 + 432 (odmah iza main); Q15 0.988-1.122, 97u
+LAM_TRIM_2017      = 0x026B0E   # vs 2018: 0x026DB8 (−0x2AA); Q15 0.955-1.044, 86u
+LAM_MIRROR_2017    = 0x026A5E   # = LAM_MAIN_2017 + 0x518
+BOOST_FACTOR_2017  = 0x025B4E   # vs 2018: 0x025DF8 (−0x2AA); flat 23130 (Q14=1.412)
+TEMP_FUEL_2017     = 0x025BA6   # vs 2018: 0x025E50 (−0x2AA); 12850-23130, 50u
+TORQUE_MAIN_2017   = 0x02A0D8   # ISTA adresa kao 2018! Q8 128-159 Nm, 15u
+TORQUE_MIRROR_2017 = 0x029BC0   # ISPRED main-a (main − 0x518), ne +0x518!
+
 # ─── 2016 gen 4-TEC 1503 — potvrdjene adrese mapa ────────────────────────────
 # Vrijedi za: 10SW000776 (215hp), 10SW000778 (260hp), 10SW012502 (260hp 2017)
 # Offset vs 1630 ACE 2016: -0x2076 (rev limiter), ostatak nema jednostavan globalni offset
@@ -2661,7 +2672,11 @@ IGN_STRIDE_2016_1503 = 144        # isti stride kao 2018+
 
 LAM_TRIM_2016_1503   = 0x024A90   # Lambda trim — sve >1.0 (lean bias); potvrđeno agent a227/a12791
 LAM_MAIN_2016_1503   = 0x024C4A   # Lambda main — structural proof: lambda_bias(0x024B30)+141×2=0x024C4A; crosses ±1.0
-# LAM_ADAPT_2016_1503 = neidentificirana — tražiti poslije 0x025308 (oba agenta)
+# LAM_ADAPT_2016_1503: ne postoji — 2016 gen 1503 nema adapt tablicu (potvrdjeno 2026-03-21)
+# @ 0x024DFA (main+432) = 48/216 van Q15 opsega, 260hp vs 215hp razlika 192/216 (inkoherentno)
+# RPM os pocinje @ 0x024F46 — prelazi preko potencijalne adapt tablice (samo 162 validnih val)
+# Offset -0x1AA6 od 2018 addr (0x0268A0) = garbage bytecode za oba dump-a
+# ECU firmware 10SW000778/776 vjerojatno ne koristi zasebnu lambda adaptaciju
 LAM_MIRROR_2016_1503 = 0x518      # Mirror offset (isti kao 2018+ za sve lambda mape)
 # Mirrors: trim @ 0x024FA8 (=trim+0x518), main @ 0x025162 (=main+0x518)
 
@@ -3134,32 +3149,29 @@ class MapFinder:
 
         elif is_2017_gen:
             # ── 2017 generacija — parcijalna 2018 migracija ───────────────────
-            # RADE na 2018 adresama: ign, rev_lim, sc_bypass, sc_corr, lambda_main,
-            #                        kfped, fuel_2d (0x022066)
-            # NE RADE: boost_fact (0x025DF8=358), temp_fuel (0x025E50≈3000),
-            #           lambda_trim (0x026DB8=0), torque_main (0x02A0D8=39424),
-            #           inj_lin (0x02436C=0)
+            # RADE na 2018 adresama: ign, rev_lim, sc_bypass, sc_corr, kfped, fuel_2d
+            # OFFSET -0x2AA za SC mape: boost, temp_fuel, lambda_main/trim/adapt, torque_mirror
+            # inj_lin @ 0x02436C = 0 za 2017 → skipati uvijek
             if progress_cb: progress_cb(
                 f"2017 gen SW detektiran ({self._sw()}) -- "
-                "parcijalna podrska (boost/temp_fuel/lambda_trim/torque/inj_lin preskoceni)."
+                "SC mape na adresama -0x2AA od 2018 (boost/temp/lambda/torque_mirror)."
             )
             self._scan_rpm_axes(progress_cb)
             self._scan_rev_limiter_known(progress_cb)
             self._scan_rev_limiter_heuristic(progress_cb)
             self._scan_ignition(progress_cb)
             # inj_lin @ 0x02436C = 0 za 2017 → skipati
-            # torque @ 0x02A0D8 = 39424 (nije 32768 Q8 baseline) → skipati
-            self._scan_lambda(progress_cb)
+            self._scan_2017_lambda(progress_cb)
             self._scan_sc(progress_cb)
             self._scan_cold_start(progress_cb)
             self._scan_knock_params(progress_cb)
             self._scan_cts_temp_axis(progress_cb)
             self._scan_sc_correction(progress_cb)
-            # temp_fuel @ 0x025E50 ≈ 3000 (ne ~23000) → skipati
+            self._scan_2017_temp_fuel(progress_cb)
             self._scan_lambda_bias(progress_cb)
             self._scan_lambda_prot(progress_cb)
-            # lambda_trim @ 0x026DB8 = 0 → skipati
-            self._scan_lambda_adapt(progress_cb)
+            self._scan_2017_lambda_trim(progress_cb)
+            self._scan_2017_lambda_adapt(progress_cb)
             self._scan_deadtime(progress_cb)
             self._scan_dfco(progress_cb)
             self._scan_decel_rpm_cut(progress_cb)
@@ -3171,12 +3183,13 @@ class MapFinder:
             self._scan_eff_corr(progress_cb)
             self._scan_overtemp_lambda(progress_cb)
             self._scan_neutral_corr(progress_cb)
-            # boost_fact @ 0x025DF8 = 358 (ne 23130 Q14) → skipati
+            self._scan_2017_boost_factor(progress_cb)
             self._scan_lambda_eff(progress_cb)
             self._scan_lambda_thresh(progress_cb)
             self._scan_kfped(progress_cb)
             self._scan_mat(progress_cb)
-            # fuel_2d @ 0x022066 vjerojatno radi za 2017 gen
+            self._scan_2017_torque(progress_cb)
+            # fuel_2d @ 0x022066 radi za 2017 gen (potvrdeno)
             self._scan_ace1630_injection(progress_cb)
 
         else:
@@ -5328,6 +5341,99 @@ class MapFinder:
                       f"  ({min(raw)*0.75:.1f}°–{max(raw)*0.75:.1f}°BTDC)")
 
         if cb: cb(f"  Ignition 2016 1503: {found} mapa pronadjeno")
+
+    # ── 2017 gen skeneri (offset -0x2AA od 2018 za SC mape) ──────────────────
+
+    def _scan_2017_lambda(self, cb=None):
+        """Lambda main @ 0x026446 (vs 2018: 0x0266F0 -0x2AA). Mirror @ 0x026A5E."""
+        if cb: cb("2017 gen: trazim lambda mapu (0x026446)...")
+        data = self.eng.get_bytes()
+        addr = LAM_MAIN_2017
+        n    = _LAMBDA_DEF.rows * _LAMBDA_DEF.cols  # 12x18=216
+        if addr + n * 2 > len(data): return
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        non_zero = sum(1 for v in vals if v > 100)
+        if non_zero < n // 2:
+            if cb: cb(f"  2017 Lambda @ 0x{addr:06X}: previse nula — preskacam"); return
+        self.results.append(FoundMap(defn=_LAMBDA_DEF, address=addr, sw_id=self._sw(), data=vals))
+        if cb: cb(f"  2017 Lambda @ 0x{addr:06X}  12x18  Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]"
+                  f"  mirror@0x{LAM_MIRROR_2017:06X}")
+
+    def _scan_2017_lambda_adapt(self, cb=None):
+        """Lambda adapt @ 0x0265F6 (= main+432). Potvrdjeno: Q15 0.988-1.122, 97u."""
+        if cb: cb("2017 gen: trazim lambda adapt (0x0265F6)...")
+        data = self.eng.get_bytes()
+        addr = LAM_ADAPT_2017
+        n    = _LAMBDA_ADAPT_DEF.rows * _LAMBDA_ADAPT_DEF.cols  # 12x18=216
+        if addr + n * 2 > len(data): return
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        in_range = sum(1 for v in vals if 25000 <= v <= 40000)
+        if in_range < int(n * 0.85):
+            if cb: cb(f"  2017 Lambda adapt @ 0x{addr:06X}: premalo Q15 ({in_range}/{n}) — preskacam"); return
+        self.results.append(FoundMap(defn=_LAMBDA_ADAPT_DEF, address=addr, sw_id=self._sw(), data=vals))
+        if cb: cb(f"  2017 Lambda adapt @ 0x{addr:06X}  12x18  Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    def _scan_2017_lambda_trim(self, cb=None):
+        """Lambda trim @ 0x026B0E (vs 2018: 0x026DB8 -0x2AA). Q15 0.955-1.044."""
+        if cb: cb("2017 gen: trazim lambda trim (0x026B0E)...")
+        data = self.eng.get_bytes()
+        addr = LAM_TRIM_2017
+        n    = _LAMBDA_TRIM_DEF.rows * _LAMBDA_TRIM_DEF.cols  # 12x18=216
+        if addr + n * 2 > len(data): return
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        in_range = sum(1 for v in vals if 25000 < v < 40000)
+        if in_range < int(n * 0.90):
+            if cb: cb(f"  2017 Lambda trim @ 0x{addr:06X}: premalo Q15 ({in_range}/{n}) — preskacam"); return
+        self.results.append(FoundMap(defn=_LAMBDA_TRIM_DEF, address=addr, sw_id=self._sw(), data=vals))
+        if cb: cb(f"  2017 Lambda trim @ 0x{addr:06X}  12x18  Q15=[{min(vals)/32768:.3f}-{max(vals)/32768:.3f}]")
+
+    def _scan_2017_boost_factor(self, cb=None):
+        """SC boost factor @ 0x025B4E (vs 2018: 0x025DF8 -0x2AA). Flat 23130 (Q14=1.412)."""
+        if cb: cb("2017 gen: trazim SC boost factor (0x025B4E)...")
+        data = self.eng.get_bytes()
+        ax_addr = BOOST_FACTOR_2017 - 0x10  # axis je 16B ispred (isti offset kao 2018)
+        addr    = BOOST_FACTOR_2017
+        n       = 40
+        if addr + n * 2 > len(data): return
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        in_range = sum(1 for v in vals if 8000 <= v <= 32768)
+        if in_range < n // 2:
+            if cb: cb(f"  2017 Boost @ 0x{addr:06X}: previse izvan Q14 — preskacam"); return
+        self.results.append(FoundMap(defn=_SC_BOOST_FACTOR_DEF, address=addr, sw_id=self._sw(), data=vals))
+        if cb: cb(f"  2017 Boost factor @ 0x{addr:06X}  1x40  Q14=[{min(vals)/16384:.3f}-{max(vals)/16384:.3f}]")
+
+    def _scan_2017_temp_fuel(self, cb=None):
+        """Temp fuel correction @ 0x025BA6 (vs 2018: 0x025E50 -0x2AA). 1x156 Q14."""
+        if cb: cb("2017 gen: trazim temp fuel correction (0x025BA6)...")
+        data = self.eng.get_bytes()
+        addr = TEMP_FUEL_2017
+        n    = _TEMP_FUEL_DEF.cols  # 156
+        if addr + n * 2 > len(data): return
+        vals = [int.from_bytes(data[addr+i*2:addr+i*2+2], 'little') for i in range(n)]
+        in_range = sum(1 for v in vals if 8192 <= v <= 32768)
+        if in_range < int(n * 0.80):
+            if cb: cb(f"  2017 Temp fuel @ 0x{addr:06X}: premalo Q14 ({in_range}/{n}) — preskacam"); return
+        self.results.append(FoundMap(defn=_TEMP_FUEL_DEF, address=addr, sw_id=self._sw(), data=vals))
+        if cb: cb(f"  2017 Temp fuel @ 0x{addr:06X}  1x156  Q14=[{min(vals)/16384:.3f}-{max(vals)/16384:.3f}]")
+
+    def _scan_2017_torque(self, cb=None):
+        """Torque main @ 0x02A0D8 (ista adresa kao 2018), mirror @ 0x029BC0 (main-0x518!).
+        Potvrdjeno: Q8 128-159 Nm, 15 unique. Mirror je ISPRED main-a (ne +0x518)."""
+        if cb: cb("2017 gen: trazim torque mapu (main=0x02A0D8, mirror=0x029BC0)...")
+        data = self.eng.get_bytes()
+        for addr in [TORQUE_MAIN_2017, TORQUE_MIRROR_2017]:
+            n = 256  # 16x16
+            if addr + n * 2 > len(data): continue
+            valid, vals = True, []
+            for i in range(n):
+                o  = addr + i * 2
+                hi = data[o]; lo = data[o + 1]
+                if lo != 0x00: valid = False; break
+                if not (80 <= hi <= 210): valid = False; break
+                vals.append((hi << 8) | lo)
+            if not valid: continue
+            self.results.append(FoundMap(defn=_TORQUE_DEF, address=addr, sw_id=self._sw(), data=vals))
+            if cb: cb(f"  2017 Torque @ 0x{addr:06X}  16x16  Q8=[{min(v>>8 for v in vals)}-{max(v>>8 for v in vals)} Nm]")
 
     def _scan_2016_1503_lambda(self, cb=None):
         """Lambda mape — 2016 gen 1503.

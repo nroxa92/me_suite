@@ -3,6 +3,11 @@
 History razgovora s Claude-om. Svaki unos = jedna razmjena poruka.
 
 ---
+**[2026-03-21]**
+👤 rijesi tocke 1 i 2.... (2017 gen 012999 mape + 2016 gen 1503 lambda adapt)
+🤖 2017 gen: 7 novih skenera (-0x2AA offset), 23→28 mapa. 2016 gen lambda_adapt potvrdjeno ne postoji (192/216 razlika 260hp vs 215hp, RPM os @ 0x024F46 presjeca tablicu, obje adrese garbage).
+
+---
 **[2026-03-20 17:30]**
 👤 Istrazi adresu lambda adapt baze u 2016 gen 4-TEC 1503. Conflict: Session A kaze 0x024C40, Session B kaze 0x024DFA. Fajlovi: 260.bin, 215.bin, 2018/230.bin kao ref. Zadatak: 5 pitanja, rezultat u _docs/scan_2016_1503_lambda_verify.md.
 🤖 Session A adresa 0x024C40 je lambda_MAIN (ne adapt) — raspon 0.988-1.050 prelazi +/-1.0. Session B 0x024DFA je misaligned (10B unutar Map C, garbage). 0x024A90 je lambda_trim/sekundarna (sve >1.0, lean bias). Prava lambda_adapt 2016 gen 1503 ostaje neidentificirana. Rezultati u scan_2016_1503_lambda_verify.md.

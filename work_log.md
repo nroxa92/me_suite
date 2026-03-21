@@ -1,5 +1,28 @@
 # ME17Suite — Work Log
 
+## 2026-03-21 — 2017 gen skeneri + 2016 lambda adapt (sesija)
+
+### Zadatak 1: 2017 gen (10SW012999) — implementirani -0x2AA offset skeneri
+**Nove konstante:**
+- `LAM_MAIN_2017 = 0x026446`, `LAM_ADAPT_2017 = 0x0265F6`, `LAM_TRIM_2017 = 0x026B0E`
+- `BOOST_FACTOR_2017 = 0x025B4E`, `TEMP_FUEL_2017 = 0x025BA6`
+- `TORQUE_MAIN_2017 = 0x02A0D8` (ista adresa!), `TORQUE_MIRROR_2017 = 0x029BC0` (main-0x518)
+
+**Nove metode:** `_scan_2017_lambda`, `_scan_2017_lambda_adapt`, `_scan_2017_lambda_trim`,
+`_scan_2017_boost_factor`, `_scan_2017_temp_fuel`, `_scan_2017_torque`
+
+**Rezultat:** 10SW012999: **23 → 28 mapa** (+5 neto: 7 novih - 2 false-positive uklonjeni)
+
+### Zadatak 2: 2016 gen 1503 lambda_adapt — ne postoji
+**Dokaz:** @ 0x024DFA: 48/216 garbage, 260hp vs 215hp razlika **192/216**
+- RPM os @ 0x024F46 počinje unutar potencijalne adapt tablice (samo 162 validnih val)
+- Adresa -0x1AA6 od 2018 (0x0268A0) = garbage bytecode za oba dump-a
+- ECU firmware 10SW000778/776 ne koristi zasebnu lambda adaptaciju
+- `LAM_ADAPT_2016_1503` komentar ažuriran s obrazloženjem
+
+**Fajl:** `core/map_finder.py`
+**Testovi:** sve SW varijante OK bez regresija
+
 ## 2026-03-22 01:00 — Imenovanje mapa + dokumentacija (sesija završena)
 
 ### Fajlovi promijenjeni
