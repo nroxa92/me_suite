@@ -1,6 +1,3 @@
-# ─── Smece folder (arhiva, ne za git) ─────────────────────────────────────────
-smece/
-
 # ─── CAN sniff logovi (CSV) ───────────────────────────────────────────────────
 *.csv
 sniff_*.csv
@@ -9,6 +6,7 @@ tools/sniff_*.csv
 # ─── Screenshots ──────────────────────────────────────────────────────────────
 Screenshot*.png
 screenshot*.png
+_screenshots/
 
 # ─── TEMP binarni fajlovi ─────────────────────────────────────────────────────
 _materijali/TEMP_*.bin
