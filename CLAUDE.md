@@ -121,7 +121,7 @@
 
 ## Struktura
 - `core/engine.py` — load/save, read/write primitivi (u8/u16 BE/LE/i16); FILE_SIZE=0x178000; BOOT=0x0000–0x7EFF, CODE=0x010000–0x05FFFF, CAL=0x060000–0x15FFFF; SW @ 0x001A (10B), MCU string @ 0x01FE00
-- `core/map_finder.py` — MapFinder.find_all() s detekcijom ECU tipa:
+- `core/map_finder.py` — MapFinder.find_all() s detekcijom ECU tipa; `FoundMap` dataclass: `.data` (raw flat lista), `.ori_data` (snapshot pri prvom prikazu za dirty-tracking i reset, None dok se mapa prvi put ne otvori):
   - 300hp SC (10SWxxxxxx): 33 skenera → **56 mapa** (ne 54! — ispravak 2026-03-20)
   - GTI/NA varijanta: +2 skenera (_scan_gti_injection + _scan_gti_ignition_extra)
   - Spark 900 ACE (1037xxx / 10SW011328 / 10SW039116): 4 skenera, **52 mape** (2 false positive uklonjeni)
@@ -138,8 +138,14 @@
 - `core/eeprom.py` — EepromParser/EepromEditor: EEPROM_SIZE=32768; HW 064 (MPEM 10375500xx): ODO @ 0x0562, backup 0x0D62/0x1562; HW 063 (MPEM 10375258xx): max(0x0562, 0x4562); HW 062 (MPEM 10375091/92xx): rotacija 0x5062→0x4562→0x1062; Hull ID @ 0x0082, ECU serial @ 0x004D, MPEM SW @ 0x0032, prog count @ 0x004C; ODO u minutama (u16 LE); set_odo_raw() piše u sve relevantne ODO adrese
 - `tools/can_sniffer.py` — IXXAT VCI4 USB-to-CAN, interface='ixxat', monitor=True (pasivni, listen-only); default 500kbps, --bitrate 250000 za cluster; CSV log; statistika po ID-u (freq, checksum errors, rolling counter jumps); koristi CanDecoder.decode()
 - `tools/did_map.py` — UDS SID 0x22 (ReadDataByIdentifier) + KWP SID 0x21 (ReadDataByLocalId); 34 DID-a u livedata ciklusu; 5 vraća NRC 0x12; temp: raw/2-40=°C; lambda: raw/128; pressure: raw×0.5=kPa
-- `ui/main_window.py` — PyQt6 trostupičasti layout: Map Library | Map Table + Hex + Log | Tab panel; dark theme #111113, accent #4FC3F7
-  - Tabovi: Map Editor | DTC Off | Diff | Map Diff | Kalkulator | EEPROM | CAN Network | CAN Logger | CAN Live | Vizualizacija | Mape
+- `ui/main_window.py` — PyQt6 trostupičasti layout: Map Library | Map Table + Hex + Log | PropertiesPanel; dark theme #111113, accent #4FC3F7
+  - **`_main_tabs`** (top-level): Tab0=MAPE | Tab1=EEPROM (full-page + header s Back gumbom) | Tab2=DTC (full-page + header s Back gumbom) | Tab3=DIFF (skriven) | Tab4=MAP DIFF (skriven)
+  - **Sidebar** (`_sidebar_stack`): vidljiv samo na Tab0 (MAPE); Tab1/2 imaju vlastite ugradjene panele (eeprom_sidebar/dtc_sidebar kao QSplitter unutar taba)
+  - **`PropertiesPanel`** (desna strana): tabovi Cell | Calc | Mapa | SW | ECU | DTC | History (Calc = CalculatorWidget na poziciji 1)
+  - Menu bar skriven; shortcuts: Ctrl+1/2, Ctrl+S, Ctrl+Z/Y, F5, Ctrl+Q
+  - **`FoundMap.ori_data`** — snapshot pri `_show_map`; `refresh_cell` uspoređuje s ori_data za dirty/clean boju (žuta=dirty, JET=clean)
+  - **Scale bar**: +/- gumbi + step slider (0.1–2.0%) za skaliranje cijele tablice; zoom slider (5–20 = 0.5x–2.0x, default 10=1.0x)
+  - **CS Fix dialog**: prikazuje stored/computed CS, status OK/FAIL, gumb "Upiši novi CS"
   - Novi UI widgeti (importirani, dijelom integrirani):
 - `core/safety_validator.py` — ValidationResult (OK/WARNING/ERROR); limiti: ign <43.5°, lambda >0.75, torque <160%, rev <9000rpm
 - `core/map_differ.py` — MapDiffer.compare_all_maps(); CellDiff/MapDiff; diff report je stub
@@ -151,6 +157,7 @@
 - `ui/eeprom_widget.py` — EepromWidget: read svih polja + write hull_id/dealer; ODO set NIJE spojen (postoji u core)
 - `ui/can_network_widget.py` — CAN bus topologija (statična); nema live animacije
 - `ui/can_logger_widget.py` — CSV logging (timestamp/ID/data_hex/decoded); gauge refresh spor
+- `ui/map_dependency_viewer.html` — D3.js v7 force-directed graph; 31 čvora, 6 grupa (GORIVO/PALJENJE/LAMBDA/MOMENT/SC-BOOST/OSTALO), 33 usmjerene veze s labelama; otvara se via `webbrowser.open()` iz toolbar gumba "Mapa veza"; desni sidebar pokazuje OVISI O (plavo) / UTJEČE NA (narančasto) za svaki čvor
 
 ## DTC
 - DTC_REGISTRY: 121 kod — 111 P-kodova (ECM) + 10 U16Ax (CAN timeout 0xD6A1–0xD6AB)

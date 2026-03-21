@@ -1,10 +1,18 @@
 # ME17Suite — Memorija projekta
 
 ## Sljedeća sesija
-- Running engine CAN log strategija: kratki WOT pulsevi u plivajućem dock-u, IXXAT na 500k, bilježiti DIDs u vodi
-- Lambda adapt za 2016 gen 1503 — još neidentificirana, tražiti poslije 0x025308
-- 2017 gen 1503 (10SW012999): samo 23 mape, -0x2AA offset nije implementiran za sve skenere
+- Running engine CAN log strategija: kratki WOT pulsevi u plivajućem dock-u, IXXAT na 250k (Delphi J1!), bilježiti DIDs u vodi
 - UI + grafika + CAN prikazi — pro level polish — vidjeti project_next_session.md
+- ~~Lambda adapt 2016 gen 1503~~ — **ne postoji** (potvrdeno 2026-03-21)
+- ~~2017 gen 012999~~ — **riješeno**: 28 mapa
+
+## Cluster projekt — ključni nalaz (2026-03-21)
+- **JEDNA CAN mreza** @ 250kbps na Delphi J1 pin2/3 (ne dvije odvojene!)
+- BUDS2 MPI VCI + IXXAT sniffer + ECU + SAT = SVI na istom 250kbps busu
+- OBD konektor 500kbps = nije korišten u ovom projektu
+- ESP32 firmware: **CAN_BITRATE = 250kbps** obavezno
+- VP230 (WCMCU-230): Rs=10kΩ→GND (slope control, TX aktivan), ne Rs=VCC bug
+- TX/RX spajanje za CAN: **NE križa se** (MCU_TX→modul_TX direktno)
 
 ## Korisničke preference i napomene
 - BRP manuals: Tech Specs su **zadnjih 20% stranica** — vidjeti feedback_manual_search.md
@@ -51,6 +59,7 @@
 | 10SW025752 | GTI 130/155hp 1503 **2018 v2** | **60** | 155hp tune; 130v2=155v2 identični; razlika v1→v2: 2901B (ign+lambda+inj) |
 | 10SW040008 | GTI 130/155/230hp 1503 2019 | 59 | ISTI SW za sve snage! |
 | 10SW040962 | GTI 130hp 1503 2020 | 59 | |
+| 10SW012999 | GTI **230hp SC 2017** 4TEC 1503 | **28** | RIJEŠENO 2026-03-21; -0x2AA offset SC mape implementirane: lambda(0x026446), adapt(0x0265F6), trim(0x026B0E), boost(0x025B4E), temp_fuel(0x025BA6), torque mirror(0x029BC0=main-0x518) |
 | 10SW000778 | **RXT-X 260hp SC 2016** | ~24 | VERIFICIRAN 2026-03-20; stariji ME17 format (CODE adrese drugačije od 2018+); SC bypass **0x2020** @ 0x012C60; 1330B razlike od 1037524060 |
 | 1037524060 | RXT-X 260hp SC ~2015 | ~24 | Decimal SW format; isti stariji ME17 format kao 10SW000778; 1330B razlike (susjedne SW revizije); **nije Siemens MSE 3.7** (VME17+BOSCH potvrđen) |
 | 10SW004675 | **300hp SC 2016 ORI** | ~24 | VERIFICIRAN 2026-03-20; fuel NIJE @ 0x022066 (2016 drugačiji CODE layout!); rev=8072RPM; SC bypass=**0x3333** (ne 0x2626!) |
@@ -151,6 +160,3 @@
 - **IBR modul MCU**: `Desktop/MCU/SPC5602P/u1 478/` = SPC5602P firmware; CFLASH=256KB, DFLASH=64KB; SW=08722440; CAN IDs za istraživanje u CAN sesiji (`0590FFFx`, `0101FFF1` stringovi)
 - **rxtx_260_524060.bin** = multi-image container (3×128KB ECU slike); CODE @ 0x060000 (NE 0x010000!); standardne 10SW adrese ne rade; Block1=RXTX stock, Block2=RXP compr, Block3=treća varijanta; RXP vs RXTX = 96% razlika (različiti modeli, ne tune razlika)
 
----
-*Kopija iz: C:\Users\SeaDoo\.claude\projects\C--Users-SeaDoo-Desktop-me-suite\memory\MEMORY.md*
-*Datum kopije: 2026-03-22*
